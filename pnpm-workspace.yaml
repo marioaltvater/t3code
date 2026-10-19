@@ -1,3 +1,6 @@
+# Keep the filtered web setup from triggering an implicit full-workspace install.
+verifyDepsBeforeRun: false
+
 packages:
   - apps/*
   - infra/*

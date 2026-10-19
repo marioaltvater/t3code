@@ -48,7 +48,10 @@
     "dist:desktop:win:x64": "node scripts/build-desktop-artifact.ts --platform win --target nsis --arch x64",
     "release:smoke": "node scripts/release-smoke.ts",
     "clean": "rm -rf node_modules apps/*/node_modules packages/*/node_modules apps/*/dist apps/*/dist-electron packages/*/dist .vite-plus apps/*/.vite-plus packages/*/.vite-plus",
-    "sync:repos": "node scripts/sync-reference-repos.ts"
+    "sync:repos": "node scripts/sync-reference-repos.ts",
+    "fork:setup": "pnpm install --filter @t3tools/monorepo --filter @t3tools/web... --filter t3... --filter @t3tools/scripts... --filter @t3tools/oxlint-plugin-t3code... --frozen-lockfile",
+    "fork:dev": "node scripts/dev-runner.ts dev --home-dir .t3",
+    "fork:check": "node scripts/fork-check.mjs"
   },
   "devDependencies": {
     "@coderabbitai/config": "1.1.0",
@@ -56,6 +59,7 @@
     "@shadcn/lint": "0.1.5",
     "@types/node": "catalog:",
     "knip": "6.34.0",
+    "oxlint": "1.85.0",
     "tsc-rs": "0.7.0",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
