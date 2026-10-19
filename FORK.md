@@ -76,9 +76,9 @@ the upstream themes available and saves your selection locally.
 | Composer        | `#2b2b2b` |
 | Accent          | `#0169cc` |
 
-The Codex theme uses solid surfaces and bundled Geist fonts. SF Mono is used
-when installed, with system monospace fallbacks. Geist's OFL license is included
-beside the font files. The sidebar artwork and wordmark are removed while the
+The Codex theme uses solid surfaces, Geist for interface text, and Geist Mono
+for code and terminal text. Both fonts are bundled with their OFL licenses beside
+the font files. Geist Mono is sourced from [Google Fonts](https://github.com/google/fonts/tree/main/ofl/geistmono). The sidebar artwork and wordmark are removed while the
 sidebar toggle remains available. Thread search shows the current match and
 keyboard shortcuts.
 

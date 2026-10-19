@@ -16,7 +16,7 @@ export const DEFAULT_SANS_FONT_STACK =
 // Concrete names first: some engines alias `ui-monospace` to the
 // proportional system UI font, which would break every code surface.
 export const DEFAULT_CODE_FONT_STACK =
-  '"SF Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace';
+  '"Geist Mono", "SFMono-Medium", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace';
 
 export const TYPOGRAPHY_ADVANCED_STORAGE_KEY = "t3code:typography-advanced";
 
@@ -278,8 +278,8 @@ export function resolveDefaultFamilyLabel(stack: string): string | null {
   for (const raw of stack.split(",")) {
     const family = raw.trim().replace(/^(['"])(.*)\1$/, "$2");
     if (family.length === 0) continue;
-    // Geist ships with the app, even before the webfont has finished loading.
-    if (family === "Geist") return family;
+    // These faces ship with the app, even before the webfonts finish loading.
+    if (family === "Geist" || family === "Geist Mono") return family;
     if (
       /^(system-ui|sans-serif|serif|monospace|ui-monospace|-apple-system|BlinkMacSystemFont)$/i.test(
         family,

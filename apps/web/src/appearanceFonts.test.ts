@@ -54,6 +54,7 @@ describe("cssFontFamilies", () => {
 describe("resolveDefaultFamilyLabel", () => {
   it("identifies the bundled interface font before browser font discovery", () => {
     expect(resolveDefaultFamilyLabel(DEFAULT_SANS_FONT_STACK)).toBe("Geist");
+    expect(resolveDefaultFamilyLabel(DEFAULT_CODE_FONT_STACK)).toBe("Geist Mono");
   });
   it("skips generic keywords and returns null for a stack of only generics", () => {
     expect(resolveDefaultFamilyLabel("system-ui, sans-serif")).toBeNull();
