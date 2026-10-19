@@ -6,24 +6,25 @@ import { truncateProjectName } from "./DraftProjectName.logic";
 
 export function DraftProjectName({ value }: { value: string }) {
   const containerRef = useRef<HTMLSpanElement>(null);
+  const measurementRef = useRef<HTMLSpanElement>(null);
   const [displayName, setDisplayName] = useState(value);
 
   useLayoutEffect(() => {
     const container = containerRef.current;
-    const context = document.createElement("canvas").getContext("2d");
-    if (!container || !context) return;
+    const measurement = measurementRef.current;
+    if (!container || !measurement) return;
 
     const update = () => {
-      const style = getComputedStyle(container);
-      context.font = style.font;
-      context.letterSpacing = style.letterSpacing === "normal" ? "0px" : style.letterSpacing;
-      setDisplayName(
-        truncateProjectName(
-          value,
-          container.getBoundingClientRect().width,
-          (text) => context.measureText(text).width,
-        ),
-      );
+      // Measure in the same DOM/font/zoom coordinates as the available space.
+      // Canvas metrics can differ enough to truncate even an unconstrained name.
+      const availableWidth = container.getBoundingClientRect().width;
+      const fittedName = truncateProjectName(value, availableWidth, (text) => {
+        measurement.textContent = text;
+        return measurement.getBoundingClientRect().width;
+      });
+      // Preserve the full name's intrinsic width between measurements.
+      measurement.textContent = value;
+      setDisplayName(fittedName);
     };
     update();
     const stopObserving = observeResize(container, update);
@@ -44,7 +45,9 @@ export function DraftProjectName({ value }: { value: string }) {
         aria-hidden="true"
         className="invisible col-start-1 row-start-1 min-w-0 overflow-hidden select-none"
       >
-        {value}
+        <span ref={measurementRef} className="inline-block w-max">
+          {value}
+        </span>
       </span>
       <span aria-label={value} className="col-start-1 row-start-1 min-w-0 overflow-hidden">
         {displayName}
