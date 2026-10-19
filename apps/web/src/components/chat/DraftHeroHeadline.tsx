@@ -259,9 +259,13 @@ export function DraftHeroHeadline({
             />
           }
         >
-          <DraftProjectName
-            value={isScratchDraft ? "No project" : (activeProjectDisplayName ?? "Choose a project")}
-          />
+          {isScratchDraft ? (
+            "No project"
+          ) : activeProjectDisplayName ? (
+            <DraftProjectName value={activeProjectDisplayName} />
+          ) : (
+            "Choose a project"
+          )}
         </TooltipTrigger>
         {activeProjectDisplayName && !isScratchDraft ? (
           <TooltipPopup side="top">{activeProjectDisplayName}</TooltipPopup>
@@ -287,7 +291,11 @@ export function DraftHeroHeadline({
                 ) : null}
                 <Tooltip>
                   <TooltipTrigger render={<span className="min-w-0 flex-1 text-sm" />}>
-                    <DraftProjectName value={item.label} />
+                    {item.value === ADD_PROJECT_VALUE ? (
+                      item.label
+                    ) : (
+                      <DraftProjectName value={item.label} />
+                    )}
                   </TooltipTrigger>
                   <TooltipPopup side="top">{item.label}</TooltipPopup>
                 </Tooltip>
@@ -367,7 +375,7 @@ export function DraftHeroHeadline({
       </h1>
       {}
       {scratchWorkspaceRoot === null ? null : (
-        <p className="mt-2 flex h-6 w-full items-center justify-center text-sm">
+        <p className="mt-2 flex min-h-6 w-full items-center justify-center text-base">
           {isScratchDraft ? projectSelector : orStartWithoutProject}
         </p>
       )}
