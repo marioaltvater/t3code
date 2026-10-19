@@ -2383,3 +2383,56 @@ code {
     }
   }
 }
+
+/* The personal fork's Codex theme uses solid surfaces, including composer glass. */
+html[data-theme-id="codex"] body {
+  --font-sans: Geist, Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "SFMono-Medium", "SF Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --font-composer: var(--font-sans);
+  --glass-opacity: 100%;
+  --glass-blur: 0px;
+  --glass-saturation: 1;
+  --success: #00a240;
+  --diff-addition: #00a240;
+  --diff-deletion: #e02e2a;
+  --diff-addition-foreground: #00a240;
+  --diff-deletion-foreground: #e02e2a;
+  --diffs-addition-color-override: #00a240;
+  --diffs-deletion-color-override: #e02e2a;
+}
+
+html[data-theme-id="codex"] [data-composer-skill] {
+  color: #b06dff;
+}
+
+@font-face {
+  font-family: "Geist";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/geist/geist-400.ttf") format("truetype");
+}
+
+@font-face {
+  font-family: "Geist";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/fonts/geist/geist-500.ttf") format("truetype");
+}
+
+@font-face {
+  font-family: "Geist";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/geist/geist-600.ttf") format("truetype");
+}
+
+@font-face {
+  font-family: "Geist";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/geist/geist-700.ttf") format("truetype");
+}

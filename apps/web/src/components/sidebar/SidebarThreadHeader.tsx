@@ -88,6 +88,28 @@ export function SidebarThreadHeader({
           className="min-w-0 flex-1"
         />
         {isSearching ? (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <span
+                  className="shrink-0 text-xs tabular-nums text-sidebar-muted-foreground"
+                  role="status"
+                  aria-label={
+                    activeResultExists
+                      ? `Result ${activeSearchResultIndex + 1} of ${searchResultCount}`
+                      : `${searchResultCount} matching threads`
+                  }
+                />
+              }
+            >
+              {activeResultExists
+                ? `${activeSearchResultIndex + 1}/${searchResultCount}`
+                : `${searchResultCount} results`}
+            </TooltipTrigger>
+            <TooltipPopup side="bottom">↑↓ navigate · Enter open · Esc clear</TooltipPopup>
+          </Tooltip>
+        ) : null}
+        {isSearching ? (
           <Button
             type="button"
             size="icon-micro"
