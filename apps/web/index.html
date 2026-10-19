@@ -51,6 +51,14 @@
         // Keep this small boot-time copy in sync with the built-in palettes so
         // the selected theme is visible before the app has mounted.
         const BUILT_IN_THEME_PALETTES = {
+          codex: {
+            dark: {
+              background: "oklch(0.177638 0 0)",
+              foreground: "oklch(0.991069 0 0)",
+              accent: "oklch(0.528649 0.173447 254.975)",
+              chrome: "oklch(0.177638 0 0)",
+            },
+          },
           "t3-chat": {
             light: {
               background: "oklch(0.982446 0.010114 325.653)",
@@ -131,6 +139,7 @@
           ]),
         );
         const RESERVED_THEME_IDS = [
+          "codex",
           "system",
           "light",
           "dark",
@@ -217,6 +226,12 @@
         };
 
         try {
+          // New desktop profiles should open with this fork's appearance.
+          if (window.desktopBridge && window.localStorage.getItem("t3code:theme") === null) {
+            window.localStorage.setItem("t3code:theme", "codex");
+            window.localStorage.setItem(THEME_APPEARANCE_MODE_STORAGE_KEY, "dark");
+            window.localStorage.setItem(THEME_FOLLOW_SYSTEM_STORAGE_KEY, "false");
+          }
           const storedTheme = window.localStorage.getItem("t3code:theme");
           const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
           // Older builds stored the dark T3 Chat palette as its own theme id

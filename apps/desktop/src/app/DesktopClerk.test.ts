@@ -130,7 +130,7 @@ describe("DesktopClerk", () => {
             storage: storageAdapter,
             manageSingleInstanceLock: false,
             passkeys: true,
-            renderer: { scheme: "t3code-dev", host: "app" },
+            renderer: { scheme: "t3code-personal-dev", host: "app" },
           },
         ],
       ]);
@@ -157,7 +157,7 @@ describe("DesktopClerk", () => {
       name: "packaged Linux",
       isDevelopment: false,
       platform: "linux" as const,
-      userData: "/tmp/app-data/t3code-v2",
+      userData: "/tmp/app-data/t3code-personal",
     },
     {
       name: "packaged Windows",
@@ -290,9 +290,9 @@ describe("DesktopClerk", () => {
     createClerkBridgeMock.mockReturnValue({ cleanup: vi.fn(), isPrimaryInstance: true });
     const listeners = new Map<string, (...args: unknown[]) => void>();
     const received: string[] = [];
-    const first = "t3code://new?prompt=first";
-    const second = "t3code://threads/env-1/thread-1";
-    const later = "t3code://new?prompt=later";
+    const first = "t3code-personal://new?prompt=first";
+    const second = "t3code-personal://threads/env-1/thread-1";
+    const later = "t3code-personal://new?prompt=later";
     const delivered = Promise.withResolvers<void>();
     const electronApp = {
       on: (name: string, listener: (...args: unknown[]) => void) =>
@@ -354,7 +354,7 @@ describe("DesktopClerk", () => {
 
         assert.isTrue(Exit.hasInterrupts(exit));
         assert.deepEqual(events, [
-          "setPath:userData:/tmp/app-data/t3code-v2",
+          `setPath:userData:/tmp/app-data/${platform === "linux" ? "t3code-personal" : "t3code-v2"}`,
           "requestSingleInstanceLock",
           "quit",
         ]);
@@ -387,19 +387,19 @@ it.effect(
       const clerk = yield* DesktopClerk.DesktopClerk;
       yield* clerk.configure;
       const event = { preventDefault: vi.fn() };
-      listeners.get("open-url")!(event, "t3code-dev://app/auth/callback?code=clerk-code");
-      listeners.get("open-url")!(event, "t3code://app/welcome");
+      listeners.get("open-url")!(event, "t3code-personal-dev://app/auth/callback?code=clerk-code");
+      listeners.get("open-url")!(event, "t3code-personal://app/welcome");
       assert.equal(loadURL.mock.calls.length, 0);
       assert.equal(event.preventDefault.mock.calls.length, 0);
       listeners.get("second-instance")!({}, [
         "t3",
-        "t3code-dev://app/settings/providers?instanceId=work&code=never-forward",
+        "t3code-personal-dev://app/settings/providers?instanceId=work&code=never-forward",
       ]);
       yield* Effect.promise(() => revealed.promise);
       assert.deepEqual(loadURL.mock.calls, [
-        ["t3code-dev://app/settings/providers?instanceId=work"],
+        ["t3code-personal-dev://app/settings/providers?instanceId=work"],
       ]);
-      listeners.get("open-url")!(event, "t3code-dev://app/welcome#agents:machine-id");
+      listeners.get("open-url")!(event, "t3code-personal-dev://app/welcome#agents:machine-id");
       assert.equal(event.preventDefault.mock.calls.length, 1);
     }).pipe(
       Effect.scoped,
@@ -520,16 +520,16 @@ it.effect("hands web and app links to the renderer and leaves other links alone"
       };
       assert.strictEqual(open("https://example.com/page"), 1);
       assert.strictEqual(open("http://localhost:3000/"), 1);
-      assert.strictEqual(open("t3code://new?prompt=hi"), 1);
-      assert.strictEqual(open("t3code://threads/env-1/thread-1"), 1);
+      assert.strictEqual(open("t3code-personal://new?prompt=hi"), 1);
+      assert.strictEqual(open("t3code-personal://threads/env-1/thread-1"), 1);
       assert.strictEqual(open("mailto:hello@example.com"), 0);
-      assert.strictEqual(open("t3code://somewhere-else"), 0);
+      assert.strictEqual(open("t3code-personal://somewhere-else"), 0);
       yield* Effect.yieldNow;
       assert.deepStrictEqual(received, [
         "https://example.com/page",
         "http://localhost:3000/",
-        "t3code://new?prompt=hi",
-        "t3code://threads/env-1/thread-1",
+        "t3code-personal://new?prompt=hi",
+        "t3code-personal://threads/env-1/thread-1",
       ]);
     }).pipe(
       Effect.provide(layerDesktopClerk(true, [], "darwin", undefined, undefined, listeners)),

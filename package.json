@@ -51,7 +51,10 @@
     "sync:repos": "node scripts/sync-reference-repos.ts",
     "fork:setup": "pnpm install --filter @t3tools/monorepo --filter @t3tools/web... --filter t3... --filter @t3tools/scripts... --filter @t3tools/oxlint-plugin-t3code... --frozen-lockfile",
     "fork:dev": "node scripts/dev-runner.ts dev --home-dir .t3",
-    "fork:check": "node scripts/fork-check.mjs"
+    "fork:check": "node scripts/fork-check.mjs",
+    "fork:desktop:setup": "pnpm fork:setup --filter @t3tools/desktop...",
+    "fork:desktop:build": "node scripts/build-desktop-artifact.ts --platform linux --target AppImage --arch x64 --build-version 0.1.0-personal.1 --output-dir release/personal",
+    "fork:desktop:install": "bash scripts/install-personal-linux.sh"
   },
   "devDependencies": {
     "@coderabbitai/config": "1.1.0",

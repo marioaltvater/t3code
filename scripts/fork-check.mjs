@@ -27,5 +27,11 @@ if (sourceFiles.length) {
   run(process.execPath, [vp, "lint", "--report-unused-disable-directives", ...sourceFiles]);
 }
 run("pnpm", ["--filter", "@t3tools/web", "--filter", "@t3tools/shared", "typecheck"]);
-run(process.execPath, [vp, "test", "run", "apps/web/src/themePalette.test.ts"]);
+run(process.execPath, [
+  vp,
+  "test",
+  "run",
+  "apps/web/src/themePalette.test.ts",
+  "apps/web/src/themeBoot.test.ts",
+]);
 run("git", ["diff", "--check", base]);

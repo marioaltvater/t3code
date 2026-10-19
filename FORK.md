@@ -31,9 +31,36 @@ set `VITE_HTTP_URL` or `VITE_WS_URL`; development uses the built-in same-origin
 proxy. The fork command explicitly isolates T3 state from the official install;
 `.t3/`, `.env*` and provider credentials must stay out of Git.
 
-For a full desktop/mobile setup, use the upstream
-[development guide](docs/operations/development.md). This fork's quick setup and
-CI cover the web development path; they do not build desktop installers.
+## Install the Linux desktop app
+
+This builds the actual Electron app, with its bundled web interface and local
+server. It runs independently of the web development server.
+
+On Fedora, install `gcc`, `pkgconf-pkg-config`, `libsecret-devel`, `cargo` and
+`rust`. Then use Node 24 and the pinned pnpm version:
+
+```sh
+pnpm fork:desktop:setup
+pnpm fork:desktop:build
+pnpm fork:desktop:install
+```
+
+Launch **T3 Code Personal** from the application menu. The AppImage is installed
+at `~/Applications/T3-Code-Personal.AppImage`; the launcher is
+`~/.local/share/applications/t3-code-personal.desktop`. Installing again keeps a
+backup of the previous AppImage. No system package installation is needed.
+
+The fork uses `~/.t3-personal` for its own data and a separate Chromium profile.
+It registers `t3code-personal://` links and does not replace the official app's
+launcher or profile. Fresh desktop profiles open in Codex dark; existing saved
+appearance preferences remain respected. Automatic upstream updates are disabled;
+rebuild and run the install command after updating the fork. Your existing
+provider CLI logins remain usable, while conversations and app settings start
+in the personal profile.
+
+For other platforms, use the upstream
+[development guide](docs/operations/development.md). The fork CI covers web and
+theme checks; the installed Linux artifact is validated separately.
 
 ## Appearance
 

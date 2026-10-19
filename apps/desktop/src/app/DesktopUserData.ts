@@ -39,6 +39,12 @@ export const resolveUserDataPath = Effect.fn("desktop.userData.resolveUserDataPa
   }) {
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
+    if (input.platform === "linux") {
+      return path.join(
+        input.appDataDirectory,
+        input.isDevelopment ? "t3code-personal-dev" : "t3code-personal",
+      );
+    }
     const names = input.isDevelopment
       ? { current: "t3code-dev", legacy: "T3 Code (Dev)" }
       : { current: "t3code-v2", legacy: "T3 Code (Alpha)" };

@@ -18,6 +18,8 @@ import {
   toCanonicalThemeColor,
 } from "./themePalette";
 
+import { CODEX_THEME } from "@t3tools/shared/themePalettes";
+
 const THEME_STORAGE_KEY = "t3code:theme";
 const DEFAULT_DARK_CHROME = getDefaultThemeColors("dark").chrome;
 
@@ -39,6 +41,7 @@ type BootResult = {
 function runBootScript(options: {
   storage?: Record<string, string>;
   storageThrows?: boolean;
+  desktop?: boolean;
   prefersDark: boolean;
 }): BootResult {
   const classes = new Set<string>();
@@ -72,11 +75,16 @@ function runBootScript(options: {
     documentElement,
     querySelectorAll: (selector: string) => (selector === 'meta[name="theme-color"]' ? [meta] : []),
   };
+  const storage = { ...options.storage };
   const fakeWindow = {
+    desktopBridge: options.desktop ? {} : undefined,
     localStorage: {
       getItem: (key: string): string | null => {
         if (options.storageThrows) throw new Error("storage blocked");
-        return options.storage?.[key] ?? null;
+        return storage[key] ?? null;
+      },
+      setItem: (key: string, value: string) => {
+        storage[key] = value;
       },
     },
     matchMedia: () => ({ matches: options.prefersDark }),
@@ -508,4 +516,18 @@ describe("index.html boot script", () => {
     const dark = runBootScript({ storageThrows: true, prefersDark: true });
     expect(dark.isDark).toBe(true);
   });
+});
+
+it("starts a fresh desktop profile in Codex dark without replacing saved preferences", () => {
+  const fresh = runBootScript({ desktop: true, prefersDark: false });
+  expect(fresh.themeId).toBe("codex");
+  expect(fresh.isDark).toBe(true);
+  expect(fresh.backgroundColor).toBe(CODEX_THEME.colors.canvas);
+  const saved = runBootScript({
+    desktop: true,
+    prefersDark: false,
+    storage: { [THEME_STORAGE_KEY]: "light" },
+  });
+  expect(saved.isDark).toBe(false);
+  expect(saved.themeId).toBeUndefined();
 });

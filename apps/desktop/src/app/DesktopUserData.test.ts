@@ -71,3 +71,32 @@ it.effect.each(["t3code", "T3 Code (Alpha)"])(
       );
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
+
+it.effect.each([
+  { isDevelopment: false, expected: "t3code-personal" },
+  { isDevelopment: true, expected: "t3code-personal-dev" },
+])(
+  "uses a separate Linux $expected profile without migrating official data",
+  ({ isDevelopment, expected }) =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const directory = yield* fs.makeTempDirectoryScoped({ prefix: "t3-personal-profile-" });
+      const official = path.join(directory, isDevelopment ? "t3code-dev" : "t3code-v2");
+      yield* fs.makeDirectory(official, { recursive: true });
+      yield* fs.writeFileString(path.join(official, "Local State"), "official profile");
+
+      const resolved = yield* resolveUserDataPath({
+        appDataDirectory: directory,
+        isDevelopment,
+        platform: "linux",
+      });
+
+      assert.equal(resolved, path.join(directory, expected));
+      assert.equal(
+        yield* fs.readFileString(path.join(official, "Local State")),
+        "official profile",
+      );
+      assert.isFalse(yield* fs.exists(resolved));
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
