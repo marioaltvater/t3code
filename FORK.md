@@ -1,6 +1,6 @@
 # Personal T3 Code fork
 
-[marioaltvater/t3code-personal](https://github.com/marioaltvater/t3code-personal) follows
+[marioaltvater/t3code](https://github.com/marioaltvater/t3code) follows
 [pingdotgg/t3code](https://github.com/pingdotgg/t3code). The upstream license and
 history are retained. This fork concentrates on the web interface, which is also
 used inside the desktop app.
@@ -11,8 +11,8 @@ Use Node **24.18.0** (`.node-version` / `.nvmrc`) and pnpm **11.10.0** (pinned i
 `package.json`). With nvm installed:
 
 ```sh
-git clone https://github.com/marioaltvater/t3code-personal.git
-cd t3code-personal
+git clone https://github.com/marioaltvater/t3code.git
+cd t3code
 nvm install
 nvm use
 corepack enable
