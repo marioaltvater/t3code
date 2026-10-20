@@ -12,6 +12,7 @@ export function FileTagChipContent(props: {
   return (
     <>
       <WorkspaceEntryIcon
+        inheritColor
         path={props.path}
         environmentId={props.environmentId}
         cwd={props.cwd}

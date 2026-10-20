@@ -9,6 +9,7 @@ export function WorkspaceEntryIcon(props: {
   environmentId?: EnvironmentId | null | undefined;
   cwd?: string | undefined;
   theme: "light" | "dark";
+  inheritColor?: boolean;
 }) {
   const metadata = useFileMetadata(props.environmentId, props.path, props.cwd);
   return (
@@ -17,6 +18,7 @@ export function WorkspaceEntryIcon(props: {
       kind={metadata?.kind === "directory" ? "directory" : "file"}
       mimeType={metadata?.mimeType}
       theme={props.theme}
+      inheritColor={props.inheritColor ?? false}
     />
   );
 }

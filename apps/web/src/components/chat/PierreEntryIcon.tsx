@@ -1,5 +1,5 @@
 import { FileIcon, FolderIcon } from "lucide-react";
-import { memo, useInsertionEffect } from "react";
+import { memo, useId, useInsertionEffect } from "react";
 
 import { ensurePierreIconSprite, resolvePierreIconForEntry } from "../../pierre-icons";
 import { cn } from "~/lib/utils";
@@ -64,16 +64,30 @@ export const PierreEntryIcon = memo(function PierreEntryIcon(props: {
   kind: "file" | "directory";
   mimeType?: string | undefined;
   theme: "light" | "dark";
+  inheritColor?: boolean;
   className?: string;
 }) {
+  const maskId = useId();
   useInsertionEffect(ensurePierreIconSprite, []);
   const icon = resolvePierreIconForEntry(props.pathValue, props.kind, props.mimeType);
 
   if (!icon) {
     return props.kind === "directory" ? (
-      <FolderIcon className={cn("size-4 text-icon-muted", props.className)} />
+      <FolderIcon
+        className={cn(
+          "size-4",
+          props.inheritColor ? "text-inherit" : "text-icon-muted",
+          props.className,
+        )}
+      />
     ) : (
-      <FileIcon className={cn("size-4 text-icon-muted", props.className)} />
+      <FileIcon
+        className={cn(
+          "size-4",
+          props.inheritColor ? "text-inherit" : "text-icon-muted",
+          props.className,
+        )}
+      />
     );
   }
 
@@ -84,10 +98,21 @@ export const PierreEntryIcon = memo(function PierreEntryIcon(props: {
       data-pierre-icon={icon.name}
       data-icon-token={icon.token}
       className={cn("size-4 shrink-0", props.className)}
-      style={{ color: colors?.[props.theme === "light" ? 0 : 1] }}
+      style={props.inheritColor ? undefined : { color: colors?.[props.theme === "light" ? 0 : 1] }}
       viewBox="0 0 16 16"
     >
-      <use href={`#${icon.name}`} />
+      {props.inheritColor ? (
+        <>
+          <defs>
+            <mask id={maskId} style={{ maskType: "alpha" }}>
+              <use href={`#${icon.name}`} />
+            </mask>
+          </defs>
+          <rect width="16" height="16" fill="currentColor" mask={`url(#${maskId})`} />
+        </>
+      ) : (
+        <use href={`#${icon.name}`} />
+      )}
     </svg>
   );
 });
