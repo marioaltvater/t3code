@@ -30,6 +30,7 @@ const bootScript = (() => {
 })();
 
 type BootResult = {
+  storage: Record<string, string>;
   isDark: boolean;
   themeId: string | undefined;
   themeSelected: string | undefined;
@@ -98,6 +99,7 @@ function runBootScript(options: {
   new Function("window", "document", "CSS", bootScript)(fakeWindow, fakeDocument, fakeCss);
 
   return {
+    storage,
     isDark: classes.has("dark"),
     themeId: documentElement.dataset.themeId,
     themeSelected: documentElement.dataset.themeSelected,
@@ -523,6 +525,11 @@ it("starts a fresh desktop profile in Codex dark without replacing saved prefere
   expect(fresh.themeId).toBe("codex");
   expect(fresh.isDark).toBe(true);
   expect(fresh.backgroundColor).toBe(CODEX_THEME.colors.canvas);
+  expect(fresh.storage).toEqual({
+    [THEME_STORAGE_KEY]: "codex",
+    [THEME_APPEARANCE_MODE_STORAGE_KEY]: "dark",
+    [THEME_FOLLOW_SYSTEM_STORAGE_KEY]: "false",
+  });
   const saved = runBootScript({
     desktop: true,
     prefersDark: false,
@@ -530,4 +537,18 @@ it("starts a fresh desktop profile in Codex dark without replacing saved prefere
   });
   expect(saved.isDark).toBe(false);
   expect(saved.themeId).toBeUndefined();
+  expect(saved.storage).toEqual({ [THEME_STORAGE_KEY]: "light" });
+});
+
+it.each([
+  { [THEME_APPEARANCE_MODE_STORAGE_KEY]: "light" },
+  { [THEME_APPEARANCE_MODE_STORAGE_KEY]: "dark" },
+  { [THEME_APPEARANCE_MODE_STORAGE_KEY]: "system" },
+  { [THEME_FOLLOW_SYSTEM_STORAGE_KEY]: "true" },
+  { [THEME_FOLLOW_SYSTEM_STORAGE_KEY]: "false" },
+])("preserves desktop appearance preferences without a theme ID: %j", (storage) => {
+  const boot = runBootScript({ desktop: true, prefersDark: false, storage });
+
+  expect(boot.storage).toEqual(storage);
+  expect(boot.isDark).toBe(runtimeResolvedAppearance(storage, false) === "dark");
 });

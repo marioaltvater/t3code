@@ -226,8 +226,13 @@
         };
 
         try {
-          // New desktop profiles should open with this fork's appearance.
-          if (window.desktopBridge && window.localStorage.getItem("t3code:theme") === null) {
+          // Appearance preferences can be saved independently of the theme ID.
+          if (
+            window.desktopBridge &&
+            window.localStorage.getItem("t3code:theme") === null &&
+            window.localStorage.getItem(THEME_APPEARANCE_MODE_STORAGE_KEY) === null &&
+            window.localStorage.getItem(THEME_FOLLOW_SYSTEM_STORAGE_KEY) === null
+          ) {
             window.localStorage.setItem("t3code:theme", "codex");
             window.localStorage.setItem(THEME_APPEARANCE_MODE_STORAGE_KEY, "dark");
             window.localStorage.setItem(THEME_FOLLOW_SYSTEM_STORAGE_KEY, "false");
