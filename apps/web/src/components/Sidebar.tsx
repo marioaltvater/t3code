@@ -5293,6 +5293,7 @@ export default function Sidebar() {
                                         data-sidebar-marker={item.marker}
                                         className={cn(
                                           "relative list-none",
+                                          section === "active" && "flex-1",
                                           destination.size === "half" && "mt-auto",
                                           destination.size === "half" ||
                                             (section === "pinned" && pinnedDropTargetsExpanded)
