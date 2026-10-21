@@ -59,7 +59,7 @@ export const K0_COMMANDS = {
   17: "settings.toggle",
   18: "thread.stop",
   19: "modelPicker.toggle",
-  20: "diff.toggleLatestTurn",
+  20: "rightPanel.toggle",
   21: "chat.newLocal",
   22: "chat.newWithoutProject",
   23: "composer.submit",

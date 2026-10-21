@@ -44,9 +44,9 @@ describe("K0 input boundary", () => {
     expect(decodeK0Report(report(25))).toBeNull();
   });
 
-  it("maps black M1 and M5 to Settings toggle and the latest turn diff", () => {
+  it("maps black M1 and M5 to Settings and right-panel visibility toggles", () => {
     expect(decodeK0Report(report(17))?.command).toBe("settings.toggle");
-    expect(decodeK0Report(report(20))?.command).toBe("diff.toggleLatestTurn");
+    expect(decodeK0Report(report(20))?.command).toBe("rightPanel.toggle");
   });
 
   it("settles with Command D6 + fn1 E1 and keeps plain fn1 navigation", () => {
