@@ -529,6 +529,7 @@ import {
 } from "./ChatView.logic";
 import { useLocalStorage } from "~/hooks/useLocalStorage";
 import { useComposerHandleContext } from "../composerHandleContext";
+import { publishControllerEffort, publishControllerSecondary } from "./desktop/controllerUiState";
 import {
   awaitAttachmentUploads,
   getUploadedAttachments,
@@ -1785,6 +1786,29 @@ export default function ChatView(props: ChatViewProps) {
       threadPanelPresentation,
     ),
   );
+  useEffect(() => {
+    publishControllerSecondary({
+      terminalOpen: Boolean(terminalUiState.terminalOpen),
+      browserOpen: previewPanelOpen,
+      pinOpen: activeThreadShell?.pinnedAt != null,
+      infoOpen: threadPanelOpen,
+      diffOpen,
+    });
+    return () =>
+      publishControllerSecondary({
+        terminalOpen: false,
+        browserOpen: false,
+        pinOpen: false,
+        infoOpen: false,
+        diffOpen: false,
+      });
+  }, [
+    activeThreadShell?.pinnedAt,
+    diffOpen,
+    previewPanelOpen,
+    terminalUiState.terminalOpen,
+    threadPanelOpen,
+  ]);
 
   useEffect(() => {
     if (!activeThreadRef || !previewSessionsReady) return;
@@ -8476,6 +8500,7 @@ export default function ChatView(props: ChatViewProps) {
                           ) : null}
                           {!composerMounted ? null : (
                             <ChatComposer
+                              onControllerEffortChange={publishControllerEffort}
                               canOperateThread={canOperateThread}
                               reportedModelSelection={reportedModelSelection}
                               multipleModelSelections={multipleModelSelections}

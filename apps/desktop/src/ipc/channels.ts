@@ -128,6 +128,7 @@ export const COMPLETE_LEGACY_LOCAL_STORAGE_CHANNEL = "desktop:complete-legacy-lo
 
 export const CONTROLLER_EVENT_CHANNEL = "desktop:controller-event";
 export const CONTROLLER_READY_CHANNEL = "desktop:controller-ready";
+export const CONTROLLER_LIGHTING_CHANNEL = "desktop:controller-lighting";
 export const CONTROLLER_ACCEPT_DICTATION_CHANNEL = "desktop:controller-accept-dictation";
 export const CONTROLLER_CANCEL_DICTATION_CHANNEL = "desktop:controller-cancel-dictation";
 export const CONTROLLER_ACKNOWLEDGE_DICTATION_CHANNEL = "desktop:controller-acknowledge-dictation";

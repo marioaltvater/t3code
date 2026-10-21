@@ -1,6 +1,30 @@
 import type { KeybindingCommand } from "@t3tools/contracts";
 
 export const K0_REPORT_SIZE = 32;
+export const K0_LED_COUNT = 26;
+
+export function encodeK0Lighting(colors: ReadonlyArray<number>, sequence: number) {
+  if (
+    colors.length !== K0_LED_COUNT ||
+    colors.some((color) => !Number.isInteger(color) || color < 0 || color > 0xffffff)
+  )
+    throw new Error("K0 lighting requires 26 RGB colors");
+  return Array.from({ length: 4 }, (_, page) => {
+    // hidraw writes require the leading report ID even for unnumbered reports.
+    const report = Buffer.alloc(K0_REPORT_SIZE + 1);
+    report.write("T3L0", 1);
+    report[5] = 1;
+    report[6] = page;
+    report[7] = sequence & 0xff;
+    for (let index = 0; index < 8 && page * 8 + index < colors.length; index++) {
+      const color = colors[page * 8 + index]!;
+      report[9 + index * 3] = color >>> 16;
+      report[10 + index * 3] = (color >>> 8) & 0xff;
+      report[11 + index * 3] = color & 0xff;
+    }
+    return report;
+  });
+}
 
 export const K0_COMMANDS = {
   1: "thread.pinned.1",
@@ -26,8 +50,8 @@ export const K0_COMMANDS = {
   22: "chat.newWithoutProject",
   23: "composer.submit",
   24: "composer.focus",
-  25: "chat.scrollUp",
-  26: "chat.scrollDown",
+  25: "chat.previousTurn",
+  26: "chat.nextTurn",
   27: "thread.previous",
   28: "thread.next",
   30: "threadPanel.toggle",

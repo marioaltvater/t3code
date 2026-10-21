@@ -9,6 +9,7 @@ import {
 import { getProviderOptionDescriptors } from "@t3tools/shared/model";
 import { getProviderModelCapabilities } from "../../providerModels";
 import {
+  getComposerEffortSnapshot,
   getComposerPromptInjectionState,
   getComposerProviderState,
   getComposerReasoningStep,
@@ -69,6 +70,115 @@ const ULTRATHINK_FRAME_CLASSES = {
   composerSurfaceClassName: "shadow-[0_0_0_1px_rgba(255,255,255,0.07)_inset]",
   modelPickerIconClassName: "ultrathink-chroma",
 } as const;
+
+describe("controller reasoning feedback", () => {
+  const options = [
+    { id: "low", label: "Low" },
+    { id: "medium", label: "Medium", isDefault: true },
+    { id: "high", label: "High" },
+  ];
+  const snapshot = (value?: string) =>
+    getComposerEffortSnapshot({
+      provider: PROVIDER,
+      instanceId: ProviderInstanceId.make("codex"),
+      model: MODEL,
+      models: modelWith([
+        booleanDescriptor("fastMode", true),
+        selectDescriptor("reasoningEffort", options),
+      ]),
+      modelOptions: value ? selections(["reasoningEffort", value]) : undefined,
+      planModeEnabled: false,
+    });
+
+  it("uses the selected model descriptor's default and explicit effort", () => {
+    expect(snapshot()).toEqual({
+      effortIndex: 1,
+      effortCount: 3,
+      canLowerEffort: true,
+      canRaiseEffort: true,
+    });
+    expect(snapshot("low")).toEqual({
+      effortIndex: 0,
+      effortCount: 3,
+      canLowerEffort: true,
+      canRaiseEffort: true,
+    });
+    expect(snapshot("high")).toEqual({
+      effortIndex: 2,
+      effortCount: 3,
+      canLowerEffort: true,
+      canRaiseEffort: true,
+    });
+  });
+
+  it("uses the reasoning descriptor after context window and the provider-reported effort", () => {
+    const instanceId = ProviderInstanceId.make("codex");
+    expect(
+      getComposerEffortSnapshot({
+        provider: PROVIDER,
+        instanceId,
+        model: MODEL,
+        models: modelWith([
+          selectDescriptor("contextWindow", [
+            { id: "200k", label: "200k", isDefault: true },
+            { id: "1m", label: "1M" },
+          ]),
+          selectDescriptor("reasoningEffort", options),
+        ]),
+        modelOptions: undefined,
+        reportedModelSelection: {
+          instanceId,
+          model: MODEL,
+          options: selections(["reasoningEffort", "high"]),
+        },
+        prompt: "Fix the bug",
+        planModeEnabled: false,
+      }),
+    ).toEqual({
+      effortIndex: 2,
+      effortCount: 3,
+      canLowerEffort: true,
+      canRaiseEffort: true,
+    });
+  });
+
+  it("wraps in both directions and keeps Ultrathink at its selected level", () => {
+    const ultrathinkOptions = [
+      { id: "medium", label: "Medium", isDefault: true },
+      { id: "high", label: "High" },
+      { id: "ultrathink", label: "Ultrathink" },
+    ];
+    const models = modelWith([selectDescriptor("effort", ultrathinkOptions, ["ultrathink"])]);
+    expect(
+      getComposerEffortSnapshot({
+        provider: ProviderDriverKind.make("claudeAgent"),
+        instanceId: ProviderInstanceId.make("claudeAgent"),
+        model: MODEL,
+        models,
+        modelOptions: selections(["effort", "high"]),
+        prompt: "Ultrathink:\nFix the bug",
+        planModeEnabled: false,
+      }),
+    ).toEqual({
+      effortIndex: 2,
+      effortCount: 3,
+      canLowerEffort: true,
+      canRaiseEffort: true,
+    });
+  });
+
+  it("has no effort indication for models with only boolean options", () => {
+    expect(
+      getComposerEffortSnapshot({
+        provider: PROVIDER,
+        model: MODEL,
+        models: modelWith([booleanDescriptor("fastMode", true)]),
+        modelOptions: undefined,
+        planModeEnabled: false,
+      }),
+    ).toEqual({ effortIndex: null, effortCount: 0, canLowerEffort: false, canRaiseEffort: false });
+  });
+});
 
 describe("getComposerProviderState", () => {
   it("derives a stable prompt injection state for ordinary prompt edits", () => {

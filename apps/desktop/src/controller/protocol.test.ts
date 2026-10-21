@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { decodeK0Report, isK0Interface } from "./protocol.ts";
+import { decodeK0Report, encodeK0Lighting, isK0Interface } from "./protocol.ts";
 
 function report(control: number, phase = 1) {
   const value = Buffer.alloc(32);
@@ -18,8 +18,8 @@ describe("K0 input boundary", () => {
       sequence: 65_535,
     });
     expect(decodeK0Report(report(11, 0))).toMatchObject({ control: 11, phase: 0, command: null });
-    expect(decodeK0Report(report(25, 2))?.command).toBe("chat.scrollUp");
-    expect(decodeK0Report(report(26, 2))?.command).toBe("chat.scrollDown");
+    expect(decodeK0Report(report(25, 2))?.command).toBe("chat.previousTurn");
+    expect(decodeK0Report(report(26, 2))?.command).toBe("chat.nextTurn");
   });
 
   it("rejects malformed reports before dispatch", () => {
@@ -52,4 +52,21 @@ describe("K0 input boundary", () => {
     );
     expect(isK0Interface(identity, new Uint8Array([5, 1, 9, 6]))).toBe(false);
   });
+});
+
+it("encodes an atomic 26 LED transaction with hidraw's zero report ID and blank padding", () => {
+  const colors = Array.from({ length: 26 }, (_, index) => 0x123400 + index);
+  const pages = encodeK0Lighting(colors, 257);
+  expect(pages).toHaveLength(4);
+  for (const [page, report] of pages.entries()) {
+    expect([...report.subarray(0, 9)]).toEqual([0, 84, 51, 76, 48, 1, page, 1, 0]);
+    expect(report.length).toBe(33);
+  }
+  expect([...pages[0]!.subarray(9, 12)]).toEqual([0x12, 0x34, 0]);
+  expect([...pages[3]!.subarray(9, 15)]).toEqual([0x12, 0x34, 24, 0x12, 0x34, 25]);
+  expect(pages[3]!.subarray(15).every((byte) => byte === 0)).toBe(true);
+  expect(() => encodeK0Lighting(colors.slice(1), 0)).toThrow();
+  for (const invalid of [-1, 0x1000000, 0.5, NaN]) {
+    expect(() => encodeK0Lighting([invalid, ...colors.slice(1)], 0)).toThrow();
+  }
 });

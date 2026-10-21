@@ -6,13 +6,15 @@ also lists the command IDs and defaults available in your version.
 The Linux desktop app supports the dedicated K0 T3 Controller firmware while
 running in the background. Its hardware layout is fixed; the command IDs below
 can also be assigned keyboard shortcuts in **Settings → Keybindings**.
-The microphone button holds a dictation capture for the current thread or draft.
+Pressing the microphone brings T3 forward, focuses the composer, and holds a
+dictation capture for the current thread or draft.
 Releasing it returns the transcript to that composer without sending it. A
 controller capture already in progress is not restored after a reload.
 The `thread.pinned.1` through `thread.pinned.6` commands open pinned threads by
 slot; `thread.jump.1` through `thread.jump.9` keep their regular thread-list
-meaning. `composer.focus`, `composer.submit`, `chat.scrollUp`, and
-`chat.scrollDown` can also be assigned as keybindings.
+meaning. Each dial tick jumps to the previous or next user message and stops at
+the ends of the conversation. `chat.previousTurn`, `chat.nextTurn`,
+`composer.focus`, and `composer.submit` can also be assigned as keybindings.
 
 ## Composer controls
 

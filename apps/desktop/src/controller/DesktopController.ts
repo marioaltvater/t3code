@@ -1,4 +1,4 @@
-import type { DesktopControllerEvent } from "@t3tools/contracts";
+import { DesktopControllerLighting, type DesktopControllerEvent } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
@@ -12,6 +12,7 @@ import { startLinuxK0Controller } from "./LinuxK0Controller.ts";
 
 const { logWarning } = makeComponentLogger("k0-controller");
 const decodeReady = Schema.decodeUnknownEffect(Schema.Boolean);
+const decodeLighting = Schema.decodeUnknownEffect(DesktopControllerLighting);
 const decodeCaptureId = Schema.decodeUnknownEffect(Schema.String.check(Schema.isMaxLength(64)));
 
 export const initializeDesktopController = Effect.fn("desktop.controller.initialize")(function* () {
@@ -38,6 +39,12 @@ export const initializeDesktopController = Effect.fn("desktop.controller.initial
       main.value.webContents.isLoadingMainFrame()
     )
       return;
+    if (event.type === "microphone" && event.pressed) {
+      yield* desktopWindow.dispatchMenuAction("composer.focus", {
+        reveal: true,
+        dropWhenLoading: true,
+      });
+    }
     main.value.webContents.send(Channels.CONTROLLER_EVENT_CHANNEL, event);
   });
   const controller =
@@ -76,6 +83,15 @@ export const initializeDesktopController = Effect.fn("desktop.controller.initial
         contents.removeListener("did-start-loading", reset);
         contents.removeListener("destroyed", reset);
       };
+    }),
+  });
+  yield* ipc.handle({
+    channel: Channels.CONTROLLER_LIGHTING_CHANNEL,
+    handler: Effect.fn("desktop.controller.lighting")(function* (raw, event) {
+      const main = yield* electronWindow.main;
+      if (Option.isNone(main) || main.value.webContents.id !== event?.sender.id) return;
+      const colors = yield* decodeLighting(raw);
+      controller?.setLighting(colors);
     }),
   });
   for (const [channel, operation] of [

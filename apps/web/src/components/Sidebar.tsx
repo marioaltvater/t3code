@@ -105,6 +105,7 @@ import {
 import { useRouter } from "@tanstack/react-router";
 
 import { useRightPanelStore } from "../rightPanelStore";
+import { publishControllerPins } from "./desktop/controllerUiState";
 import {
   isAtomCommandInterrupted,
   settlePromise,
@@ -3028,6 +3029,15 @@ export default function Sidebar() {
     optimisticDrop,
     routeThreadRef,
   });
+  useLayoutEffect(() => {
+    publishControllerPins(
+      pinnedThreads.slice(0, 6).map((thread) => ({
+        environmentId: thread.environmentId,
+        threadId: thread.id,
+      })),
+    );
+    return () => publishControllerPins(null);
+  }, [pinnedThreads]);
 
   const isSearchingThreads = threadSearchQuery.trim().length > 0;
   const threadSearchMatchByKey = new Map(

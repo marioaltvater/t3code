@@ -210,6 +210,7 @@ contextBridge.exposeInMainWorld("desktopBridge", {
   probeRemoteEditors: () => ipcRenderer.invoke(IpcChannels.PROBE_REMOTE_EDITORS_CHANNEL, undefined),
   pasteAsText: () => ipcRenderer.invoke(IpcChannels.PASTE_AS_TEXT_CHANNEL, undefined),
   controller: {
+    setLighting: (colors) => ipcRenderer.invoke(IpcChannels.CONTROLLER_LIGHTING_CHANNEL, colors),
     acknowledgeDictation: (id) =>
       ipcRenderer.invoke(IpcChannels.CONTROLLER_ACKNOWLEDGE_DICTATION_CHANNEL, id),
     setReady: (ready) => ipcRenderer.invoke(IpcChannels.CONTROLLER_READY_CHANNEL, ready),

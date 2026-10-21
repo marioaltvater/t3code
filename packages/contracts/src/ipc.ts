@@ -1124,6 +1124,7 @@ export interface DesktopBridge {
   probeRemoteEditors?: () => Promise<readonly EditorId[]>;
   pasteAsText?: () => Promise<void>;
   controller?: {
+    setLighting?: (colors: ReadonlyArray<number>) => Promise<void>;
     acknowledgeDictation: (captureId: string) => Promise<void>;
     setReady: (ready: boolean) => Promise<void>;
     acceptDictation: (captureId: string) => Promise<void>;

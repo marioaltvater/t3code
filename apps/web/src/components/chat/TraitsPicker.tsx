@@ -350,6 +350,59 @@ export function getReasoningTraitStep(input: {
   return null;
 }
 
+export function getReasoningTraitSnapshot(input: {
+  provider: ProviderDriverKind;
+  instanceId: ProviderInstanceId;
+  model: string;
+  models: ReadonlyArray<ServerProviderModel>;
+  modelOptions: ProviderOptions | undefined;
+  reportedModelSelection: ModelSelection | null | undefined;
+  prompt: string;
+  planModeEnabled: boolean;
+}) {
+  const selected = getSelectedTraits(
+    input.provider,
+    input.models,
+    input.model,
+    input.prompt,
+    input.modelOptions,
+    true,
+    input.planModeEnabled,
+  );
+  const descriptor = selected.selectDescriptors.find((entry) =>
+    REASONING_SELECT_DESCRIPTOR_IDS.has(entry.id),
+  );
+  if (!descriptor || selected.modelIsUnavailable || selected.ultrathinkInBodyText) {
+    return { effortIndex: null, effortCount: 0, canLowerEffort: false, canRaiseEffort: false };
+  }
+  const isPrimary = descriptor.id === selected.primarySelectDescriptor?.id;
+  const value =
+    isPrimary && selected.ultrathinkPromptControlled
+      ? "ultrathink"
+      : getDescriptorStringValue(
+          descriptor,
+          {
+            instanceId: input.instanceId,
+            model: input.model,
+            options: input.modelOptions ?? [],
+          },
+          input.reportedModelSelection,
+        );
+  let effortIndex = descriptor.options.findIndex((option) => option.id === value);
+  if (effortIndex < 0) {
+    effortIndex = descriptor.options.findIndex((option) => option.isDefault);
+  }
+  if (effortIndex < 0) {
+    return { effortIndex: null, effortCount: 0, canLowerEffort: false, canRaiseEffort: false };
+  }
+  return {
+    effortIndex,
+    effortCount: descriptor.options.length,
+    canLowerEffort: getReasoningTraitStep({ ...input, direction: -1 }) !== null,
+    canRaiseEffort: getReasoningTraitStep({ ...input, direction: 1 }) !== null,
+  };
+}
+
 export function shouldRenderTraitsControls(input: {
   provider: ProviderDriverKind;
   models: ReadonlyArray<ServerProviderModel>;

@@ -118,6 +118,8 @@ export const STATIC_KEYBINDING_COMMANDS = [
   "chat.find",
   "chat.scrollUp",
   "chat.scrollDown",
+  "chat.previousTurn",
+  "chat.nextTurn",
   "open-settings",
   "editor.openFavorite",
   "usage.cost",

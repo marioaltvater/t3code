@@ -5,10 +5,17 @@ import * as NodeFS from "node:fs";
 import * as NodeNet from "node:net";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
+import * as NodePerfHooks from "node:perf_hooks";
 import * as NodeUtil from "node:util";
 import type { DesktopControllerEvent } from "@t3tools/contracts";
 import { makeControllerDictation } from "./dictation.ts";
-import { decodeK0Report, isK0Interface, K0_REPORT_SIZE } from "./protocol.ts";
+import {
+  decodeK0Report,
+  encodeK0Lighting,
+  isK0Interface,
+  K0_LED_COUNT,
+  K0_REPORT_SIZE,
+} from "./protocol.ts";
 
 const execFileAsync = NodeUtil.promisify(NodeChildProcess.execFile);
 
@@ -24,6 +31,12 @@ export function startLinuxK0Controller(options: {
   let previousSequence: number | null = null;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let lastWarning = "";
+  let lighting: ReadonlyArray<number> | null = null;
+  let lightingDirty = false;
+  let lightingSequence = 0;
+  let lightingSentAt = 0;
+  let blackoutPending = false;
+  const dark = Array<number>(K0_LED_COUNT).fill(0);
   const warn = (message: string) => {
     if (message !== lastWarning) options.warning(message);
     lastWarning = message;
@@ -57,6 +70,7 @@ export function startLinuxK0Controller(options: {
       }
     }
     device = null;
+    lightingDirty = true;
     previousSequence = null;
     ready = false;
     dictation.setReady(false);
@@ -76,7 +90,7 @@ export function startLinuxK0Controller(options: {
           continue;
         device = NodeFS.openSync(
           NodePath.join("/dev", name),
-          NodeFS.constants.O_RDONLY | NodeFS.constants.O_NONBLOCK,
+          NodeFS.constants.O_RDWR | NodeFS.constants.O_NONBLOCK,
         );
         lastWarning = "";
         return;
@@ -87,6 +101,25 @@ export function startLinuxK0Controller(options: {
           );
         }
       }
+    }
+  };
+
+  const writeLighting = (colors: ReadonlyArray<number>) => {
+    if (device === null) return false;
+    try {
+      for (const report of encodeK0Lighting(colors, lightingSequence++)) {
+        if (NodeFS.writeSync(device, report) !== report.length) {
+          throw new Error("Incomplete K0 lighting report");
+        }
+      }
+      return true;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== "EAGAIN" && code !== "EWOULDBLOCK") {
+        disconnect();
+        warn(`K0 lighting: ${error instanceof Error ? error.message : String(error)}`);
+      }
+      return false;
     }
   };
 
@@ -131,6 +164,17 @@ export function startLinuxK0Controller(options: {
     try {
       if (device === null) discover();
       readReports();
+      if (blackoutPending && writeLighting(dark)) blackoutPending = false;
+      if (
+        ready &&
+        lighting &&
+        (lightingDirty || NodePerfHooks.performance.now() - lightingSentAt >= 1_000)
+      ) {
+        if (writeLighting(lighting)) {
+          lightingDirty = false;
+          lightingSentAt = NodePerfHooks.performance.now();
+        }
+      }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
         warn(`K0 controller discovery: ${error instanceof Error ? error.message : String(error)}`);
@@ -161,10 +205,20 @@ export function startLinuxK0Controller(options: {
 
   return {
     setReady(value: boolean) {
+      if (!value) {
+        blackoutPending = !writeLighting(dark);
+        lighting = null;
+      }
       requestedReady = value;
       ready = false;
       dictation.setReady(false);
       if (value) readReports();
+    },
+    setLighting(colors: ReadonlyArray<number>) {
+      // Copy at the boundary: later renderer mutations cannot change a snapshot.
+      encodeK0Lighting(colors, 0);
+      lighting = [...colors];
+      lightingDirty = true;
     },
     acceptDictation: dictation.accept,
     cancelDictation: dictation.cancel,
@@ -174,6 +228,7 @@ export function startLinuxK0Controller(options: {
       requestedReady = false;
       ready = false;
       clearTimeout(timer);
+      writeLighting(dark);
       disconnect();
       ownership.close();
       await dictation.idle();

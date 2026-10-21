@@ -365,6 +365,8 @@ export function commandLabel(command: KeybindingCommand): string {
   if (command === "composer.focus") return "Composer: Focus Composer";
   if (command === "chat.scrollUp") return "Chat: Scroll Timeline Up";
   if (command === "chat.scrollDown") return "Chat: Scroll Timeline Down";
+  if (command === "chat.previousTurn") return "Chat: Previous User Turn";
+  if (command === "chat.nextTurn") return "Chat: Next User Turn";
   if (command.startsWith("thread.pinned.")) {
     return `Thread: Open Pinned Thread ${command.slice("thread.pinned.".length)}`;
   }

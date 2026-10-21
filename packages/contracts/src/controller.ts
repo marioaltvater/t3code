@@ -1,5 +1,10 @@
 import * as Schema from "effect/Schema";
 
+export const DesktopControllerLighting = Schema.Array(
+  Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 0xffffff })),
+).check(Schema.isMinLength(26), Schema.isMaxLength(26));
+export type DesktopControllerLighting = typeof DesktopControllerLighting.Type;
+
 export const DesktopControllerEvent = Schema.Union([
   Schema.Struct({
     type: Schema.Literal("microphone"),

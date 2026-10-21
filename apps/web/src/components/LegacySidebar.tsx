@@ -24,7 +24,8 @@ import { EnvironmentMachineIcon } from "./EnvironmentMachineIcon";
 import { ProjectFavicon } from "./ProjectFavicon";
 import { useAtomValue } from "@effect/atom-react";
 import { autoAnimate } from "@formkit/auto-animate";
-import React, { useEffect, useEffectEvent, memo, useRef, useState } from "react";
+import React, { useEffect, useEffectEvent, useLayoutEffect, memo, useRef, useState } from "react";
+import { publishControllerPins } from "./desktop/controllerUiState";
 import { cn } from "~/lib/utils";
 import { useShallow } from "zustand/react/shallow";
 import {
@@ -3130,6 +3131,12 @@ function useSortedLegacySidebarProjects(input: {
   };
 }
 
+function resolveLegacyPinnedThreads(threads: readonly SidebarThreadSummary[]) {
+  return sortPinnedThreadsForSidebar(
+    filterSidebarV2VisibleThreads(threads, null).filter((thread) => thread.pinnedAt != null),
+  );
+}
+
 function useLegacySidebarThreads(input: {
   sortedProjects: readonly SidebarProjectSnapshot[];
   physicalToLogicalKey: ReadonlyMap<string, string>;
@@ -3300,6 +3307,18 @@ export default function LegacySidebar() {
     sidebarThreadPreviewCount,
     expandedThreadListsByProject,
   });
+  const controllerPinnedThreads = resolveLegacyPinnedThreads([
+    ...sidebarThreadByKey.values(),
+  ]).slice(0, 6);
+  useLayoutEffect(() => {
+    publishControllerPins(
+      controllerPinnedThreads.map((thread) => ({
+        environmentId: thread.environmentId,
+        threadId: thread.id,
+      })),
+    );
+    return () => publishControllerPins(null);
+  }, [controllerPinnedThreads]);
   const newThreadShortcutLabelOptions = {
     platform,
     context: {
@@ -3446,11 +3465,7 @@ export default function LegacySidebar() {
 
     const pinnedIndex = threadPinnedIndexFromCommand(command ?? "");
     if (pinnedIndex !== null) {
-      const target = sortPinnedThreadsForSidebar(
-        filterSidebarV2VisibleThreads([...sidebarThreadByKey.values()], null).filter(
-          (thread) => thread.pinnedAt != null,
-        ),
-      )[pinnedIndex];
+      const target = resolveLegacyPinnedThreads([...sidebarThreadByKey.values()])[pinnedIndex];
       if (target) {
         event.preventDefault();
         event.stopPropagation();
@@ -3499,11 +3514,7 @@ export default function LegacySidebar() {
           return;
         }
         const pinnedIndex = threadPinnedIndexFromCommand(action);
-        const pinnedThreads = sortPinnedThreadsForSidebar(
-          filterSidebarV2VisibleThreads([...sidebarThreadByKey.values()], null).filter(
-            (thread) => thread.pinnedAt != null,
-          ),
-        );
+        const pinnedThreads = resolveLegacyPinnedThreads([...sidebarThreadByKey.values()]);
         const jumpIndex = threadJumpIndexFromCommand(action);
         const targetKey = jumpIndex === null ? undefined : threadJumpThreadKeys[jumpIndex];
         const target =
