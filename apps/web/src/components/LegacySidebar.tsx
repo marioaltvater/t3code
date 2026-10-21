@@ -3317,8 +3317,8 @@ export default function LegacySidebar() {
         threadId: thread.id,
       })),
     );
-    return () => publishControllerPins(null);
   }, [controllerPinnedThreads]);
+  useLayoutEffect(() => () => publishControllerPins(null), []);
   const newThreadShortcutLabelOptions = {
     platform,
     context: {

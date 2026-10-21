@@ -38,7 +38,8 @@ import {
 import { parseScopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { useAtomValue } from "@effect/atom-react";
 import { primaryServerKeybindingsAtom } from "../../state/server";
-import { resolveChatShortcutCommand } from "../../keybindings";
+import { resolveChatShortcutCommand, type ShortcutMatchContext } from "../../keybindings";
+import { isCommandPaletteOpen } from "../../commandPaletteBus";
 import { environmentThreadDetails } from "../../state/threads";
 import { resolveUserMessagePresentation } from "@t3tools/client-runtime/user-message";
 import { Link } from "@tanstack/react-router";
@@ -523,6 +524,7 @@ interface MessagesTimelineProps {
    * the user drifts near the bottom.
    */
   liveFollowEnabled: boolean;
+  getShortcutContext: (target: EventTarget | null) => ShortcutMatchContext;
   onContentOverflowChange?: (overflows: boolean) => void;
   onToolOutputCollapsedAtEnd?: () => void;
   onManualNavigation: () => void;
@@ -558,6 +560,7 @@ export function MessagesTimeline(props: MessagesTimelineProps) {
 }
 
 const ConversationTimeline = memo(function ConversationTimeline({
+  getShortcutContext,
   citationRequest = null,
   citationHistoryLoading = false,
   onCiteAssistantText,
@@ -1165,15 +1168,11 @@ const ConversationTimeline = memo(function ConversationTimeline({
   }, [listRef, resetTurnNavigation, timelineViewportElement]);
   useEffect(() => {
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented || isCommandPaletteOpen()) return;
+      const context = getShortcutContext(event.target);
+      if (context.modelPickerOpen) return;
       const command = resolveChatShortcutCommand(event, keybindings, [], {
-        context: {
-          isWeb: !window.desktopBridge,
-          isDesktop: Boolean(window.desktopBridge),
-          terminalFocus: false,
-          terminalOpen: false,
-          previewFocus: false,
-          previewOpen: false,
-        },
+        context,
       });
       if (command === "chat.previousTurn" || command === "chat.nextTurn") {
         event.preventDefault();
@@ -1190,7 +1189,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
       window.removeEventListener("keydown", onKeyDown, true);
       unsubscribe?.();
     };
-  }, [keybindings, stepUserTurn]);
+  }, [getShortcutContext, keybindings, stepUserTurn]);
   const handleAnchorReady = (info: { anchorIndex: number | undefined }) => {
     if (anchorMessageId !== null && info.anchorIndex !== undefined) {
       onAnchorReady(anchorMessageId, info.anchorIndex);

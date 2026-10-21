@@ -3036,8 +3036,8 @@ export default function Sidebar() {
         threadId: thread.id,
       })),
     );
-    return () => publishControllerPins(null);
   }, [pinnedThreads]);
+  useLayoutEffect(() => () => publishControllerPins(null), []);
 
   const isSearchingThreads = threadSearchQuery.trim().length > 0;
   const threadSearchMatchByKey = new Map(

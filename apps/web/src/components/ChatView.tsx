@@ -8278,6 +8278,7 @@ export default function ChatView(props: ChatViewProps) {
             </div>
             <div className="relative flex min-h-0 flex-1 flex-col bg-background">
               <MessagesTimeline
+                getShortcutContext={getShortcutContextStable}
                 citationRequest={paintOnlyDisplayedTimeline ? null : citationRequest}
                 citationHistoryLoading={threadDetailLoading}
                 {...(!paintOnlyDisplayedTimeline

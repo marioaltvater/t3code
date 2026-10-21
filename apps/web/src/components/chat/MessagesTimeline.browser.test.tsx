@@ -79,6 +79,16 @@ function baseProps(): Omit<TimelineProps, "timelineEntries"> {
     contentInsetEndAdjustment: 0,
     emptyPlaceholderInset: 0,
     liveFollowEnabled: true,
+    getShortcutContext: () => ({
+      terminalFocus: false,
+      terminalOpen: false,
+      previewFocus: false,
+      previewOpen: false,
+      editableFocus: false,
+      modelPickerOpen: false,
+      isWeb: true,
+      isDesktop: false,
+    }),
     onIsAtEndChange: () => {},
     onManualNavigation: () => {},
   };
