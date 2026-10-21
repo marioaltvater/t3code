@@ -333,10 +333,7 @@ export function getReasoningTraitStep(input: {
     [current, getDescriptorStringValue(descriptor)]
       .map((value) => ordered.findIndex((option) => option.id === value))
       .find((index) => index >= 0) ?? -1;
-  for (const option of [
-    ...ordered.slice(position + 1),
-    ...ordered.slice(0, Math.max(position, 0)),
-  ]) {
+  for (const option of ordered.slice(position + 1)) {
     const change = getTraitSelectChange(selected, descriptor, input.prompt, option.id);
     if (!change) return null;
     if ("modelOptions" in change) {

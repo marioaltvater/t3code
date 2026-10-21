@@ -100,14 +100,14 @@ describe("controller reasoning feedback", () => {
     expect(snapshot("low")).toEqual({
       effortIndex: 0,
       effortCount: 3,
-      canLowerEffort: true,
+      canLowerEffort: false,
       canRaiseEffort: true,
     });
     expect(snapshot("high")).toEqual({
       effortIndex: 2,
       effortCount: 3,
       canLowerEffort: true,
-      canRaiseEffort: true,
+      canRaiseEffort: false,
     });
   });
 
@@ -138,11 +138,11 @@ describe("controller reasoning feedback", () => {
       effortIndex: 2,
       effortCount: 3,
       canLowerEffort: true,
-      canRaiseEffort: true,
+      canRaiseEffort: false,
     });
   });
 
-  it("wraps in both directions and keeps Ultrathink at its selected level", () => {
+  it("stops at the highest level and keeps Ultrathink at its selected level", () => {
     const ultrathinkOptions = [
       { id: "medium", label: "Medium", isDefault: true },
       { id: "high", label: "High" },
@@ -163,7 +163,7 @@ describe("controller reasoning feedback", () => {
       effortIndex: 2,
       effortCount: 3,
       canLowerEffort: true,
-      canRaiseEffort: true,
+      canRaiseEffort: false,
     });
   });
 
@@ -637,7 +637,7 @@ describe("getComposerReasoningStep", () => {
     });
   }
 
-  it("walks the catalog order, wrapping at both ends and keeping the other traits", () => {
+  it("walks the catalog order directionally and keeps the other traits", () => {
     const models = modelWith([
       selectDescriptor("contextWindow", [
         { id: "200k", label: "200k", isDefault: true },
@@ -646,9 +646,7 @@ describe("getComposerReasoningStep", () => {
       selectDescriptor("reasoningEffort", LEVELS),
     ]);
     for (const [from, direction, to] of [
-      ["low", -1, "high"],
       ["low", 1, "medium"],
-      ["high", 1, "low"],
       ["high", -1, "medium"],
     ] as const) {
       expect(
@@ -664,6 +662,15 @@ describe("getComposerReasoningStep", () => {
         modelOptions: selections(["contextWindow", "1m"], ["reasoningEffort", to]),
       });
     }
+  });
+
+  it("does nothing when decreasing the lowest level or increasing the highest", () => {
+    expect(
+      step({ modelOptions: selections(["reasoningEffort", "low"]), direction: -1 }),
+    ).toBeNull();
+    expect(
+      step({ modelOptions: selections(["reasoningEffort", "high"]), direction: 1 }),
+    ).toBeNull();
   });
 
   it("adds and strips the Ultrathink prefix while the caret stays on the same character", () => {
@@ -705,11 +712,7 @@ describe("getComposerReasoningStep", () => {
   it("skips Ultrathink for slash commands and does nothing when the prompt locks it", () => {
     expect(
       step({ ...CLAUDE, prompt: "/review", modelOptions: selections(["effort", "high"]) }),
-    ).toStrictEqual({
-      prompt: "/review",
-      cursor: 0,
-      modelOptions: selections(["effort", "medium"]),
-    });
+    ).toBeNull();
     for (const [prompt, direction] of [
       ["Please ultrathink harder", 1],
       ["Ultrathink:\nPlease ultrathink harder", -1],
@@ -746,7 +749,7 @@ describe("getComposerReasoningStep", () => {
       options: selections(["reasoningEffort", "high"]),
     };
     for (const { label, modelOptions, reportedModelSelection, to } of [
-      { label: "reported", modelOptions: undefined, reportedModelSelection: reported, to: "low" },
+      { label: "reported", modelOptions: undefined, reportedModelSelection: reported, to: null },
       {
         label: "other instance",
         modelOptions: undefined,
@@ -777,7 +780,7 @@ describe("getComposerReasoningStep", () => {
       },
     ]) {
       expect(step({ modelOptions, reportedModelSelection })?.modelOptions, label).toStrictEqual(
-        selections(["reasoningEffort", to]),
+        to === null ? undefined : selections(["reasoningEffort", to]),
       );
     }
   });
