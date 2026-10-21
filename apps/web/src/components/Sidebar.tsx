@@ -1,7 +1,6 @@
 import { type EnvironmentId, type ScopedProjectRef } from "@t3tools/contracts";
 import type { EnvironmentServerConfig } from "@t3tools/client-runtime/connection";
 import { ThreadHoverCard, ThreadHoverCardPopup } from "./ThreadHoverCard";
-import { CollapsibleSectionHeader } from "./ui/collapsible-section-header";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { SidebarDropBox } from "./SidebarDropTargets";
 import { ThreadTerminalStatusButton } from "./ThreadStatusIndicators";
@@ -15,7 +14,7 @@ import { discardComposerDraft } from "../lib/discardComposerDraft";
 import { requestCustomSnooze } from "./CustomSnoozeDialog";
 import {
   PinnedSectionDialogHost,
-  PinnedSectionHeader,
+  SidebarThreadSectionHeader,
   pinnedSectionMenuItems,
   usePinnedSectionActions,
 } from "./SidebarPinnedSections";
@@ -1329,19 +1328,16 @@ const SIDEBAR_DRAG_DISTANCE = 6;
 
 type SidebarSweepAction = "settle" | "unsettle" | "unsnooze";
 
-function SidebarDragBoundary(props: { marker: "pinned-divider"; label: string }) {
+function SidebarDragBoundary(props: { marker: "pinned-divider" }) {
   return (
     <SortableSidebarMarker marker={props.marker} data-testid={`sidebar-${props.marker}`}>
-      <div className="sidebar-drag-boundary-label flex h-8 items-center gap-2 px-2 text-xs font-medium text-sidebar-muted-foreground/60">
-        <span>{props.label}</span>
-      </div>
+      <SidebarThreadSectionHeader shelf="active" />
     </SortableSidebarMarker>
   );
 }
 
 function SidebarSectionHeader(props: {
   marker: "working-header" | "snoozed-header" | "settled-header";
-  label: string;
   count: number;
   className?: string;
   toggle: { expanded: boolean; onToggle: () => void };
@@ -1359,15 +1355,14 @@ function SidebarSectionHeader(props: {
       data-testid={`sidebar-${props.marker}`}
       className={cn("h-8", props.className)}
     >
-      <CollapsibleSectionHeader
-        variant="sidebar"
-        onClick={props.toggle.onToggle}
+      <SidebarThreadSectionHeader
+        shelf={shelf}
+        count={props.count}
+        onToggle={props.toggle.onToggle}
         expanded={props.toggle.expanded}
         tone={snoozed ? "info" : "muted"}
-        data-testid={`sidebar-${shelf}-shelf-toggle`}
-      >
-        {props.label} ({props.count})
-      </CollapsibleSectionHeader>
+        testId={`sidebar-${shelf}-shelf-toggle`}
+      />
     </SortableSidebarMarker>
   );
 }
@@ -2332,6 +2327,20 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   }
 
   const diff = latestRunDiff(thread);
+  const sectionActionSupported =
+    variantAction === "unsnooze" ? props.snoozeSupported : props.settlementSupported;
+  const sectionActionLabel =
+    variantAction === "unsnooze"
+      ? "Wake thread now"
+      : variantAction === "unsettle"
+        ? "Un-settle thread"
+        : "Settle thread";
+  const handleSectionActionClick =
+    variantAction === "unsnooze"
+      ? handleUnsnoozeClick
+      : variantAction === "unsettle"
+        ? handleUnsettleClick
+        : handleSettleClick;
 
   return (
     <li
@@ -2401,7 +2410,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                     snoozeMenuOpen && "pointer-events-none absolute right-0 opacity-0",
                   )}
                 >
-                  {topStatus ? (
+                  {variantAction === "unsnooze" && props.snoozeWakeLabelText ? (
+                    <span className="text-info-foreground">{props.snoozeWakeLabelText}</span>
+                  ) : topStatus ? (
                     isWokeStatus ? (
                       <Tooltip>
                         <TooltipTrigger
@@ -2458,10 +2469,16 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                       </span>
                     )
                   ) : (
-                    <RelativeTimeLabel timestamp={threadTimeTimestamp(thread)} />
+                    <RelativeTimeLabel
+                      timestamp={
+                        variantAction === "unsettle"
+                          ? resolveSettledThreadTimestamp(thread)
+                          : threadTimeTimestamp(thread)
+                      }
+                    />
                   )}
                 </span>
-                {props.settlementSupported || showSnoozeButton || hasUnsentDraft ? (
+                {sectionActionSupported || showSnoozeButton || hasUnsentDraft ? (
                   <span
                     className={cn(
                       // focus-visible, not focus-within: a mouse click leaves
@@ -2498,23 +2515,33 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                         timestampFormat={props.timestampFormat}
                       />
                     ) : null}
-                    {props.settlementSupported ? (
+                    {sectionActionSupported ? (
                       <Tooltip>
                         <TooltipTrigger
                           render={
                             <button
                               type="button"
-                              aria-label="Settle thread"
-                              onClick={handleSettleClick}
+                              aria-label={sectionActionLabel}
+                              onClick={handleSectionActionClick}
                               onPointerDown={handleActionPointerDown}
                               className="-mr-1 inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground hover:text-foreground"
                             />
                           }
                         >
-                          <CheckIcon className="size-3.5" />
-                          Settle
+                          {variantAction === "unsnooze" ? (
+                            <AlarmClockOffIcon className="size-3.5" />
+                          ) : variantAction === "unsettle" ? (
+                            <Undo2Icon className="size-3.5" />
+                          ) : (
+                            <CheckIcon className="size-3.5" />
+                          )}
+                          {variantAction === "unsnooze"
+                            ? "Wake"
+                            : variantAction === "unsettle"
+                              ? "Un-settle"
+                              : "Settle"}
                         </TooltipTrigger>
-                        <TooltipPopup>Settle thread</TooltipPopup>
+                        <TooltipPopup>{sectionActionLabel}</TooltipPopup>
                       </Tooltip>
                     ) : null}
                   </span>
@@ -2787,6 +2814,7 @@ export default function Sidebar() {
     projectGroupByScopeKey,
     projectScopeItems,
   } = useSidebarLookups();
+  const compactSections = useUiStateStore((state) => state.sidebarCompactSections);
   const router = useRouter();
   const { isMobile, setOpenMobile } = useSidebar();
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
@@ -5108,8 +5136,16 @@ export default function Sidebar() {
                             const threadKey = scopedThreadKey(
                               scopeThreadRef(thread.environmentId, thread.id),
                             );
-                            const isCard =
-                              section === "active" || section === "pinned" || section === "working";
+                            const pinnedSection =
+                              section === "pinned"
+                                ? namedPinnedSections.find((entry) =>
+                                    entry.section.threadKeys.includes(threadKey),
+                                  )?.section
+                                : undefined;
+                            const sectionKey = pinnedSection
+                              ? `pinned-section:${pinnedSection.id}`
+                              : section;
+                            const isCard = !compactSections[sectionKey];
                             const rowVariant =
                               isCard && !(mixedDrag && threadKey === dragState.activeKey)
                                 ? "card"
@@ -5310,7 +5346,7 @@ export default function Sidebar() {
                               if (entry)
                                 items.push(
                                   <SortableSidebarMarker key={item.marker} marker={item.marker}>
-                                    <PinnedSectionHeader
+                                    <SidebarThreadSectionHeader
                                       section={entry.section}
                                       count={entry.threads.length}
                                     />
@@ -5326,7 +5362,7 @@ export default function Sidebar() {
                                     marker="pinned-header"
                                     data-testid="sidebar-pinned-header"
                                   >
-                                    <PinnedSectionHeader
+                                    <SidebarThreadSectionHeader
                                       section={null}
                                       count={defaultPinnedThreads.length}
                                       expanded={pinnedShelfExpanded}
@@ -5340,7 +5376,6 @@ export default function Sidebar() {
                                   <SidebarDragBoundary
                                     key="pinned-divider"
                                     marker="pinned-divider"
-                                    label="Active"
                                   />,
                                 );
                                 break;
@@ -5358,7 +5393,6 @@ export default function Sidebar() {
                                     key="working-shelf-header"
                                     marker="working-header"
                                     className="mt-auto"
-                                    label="Working"
                                     count={workingThreads.length}
                                     toggle={{
                                       expanded: workingShelfExpanded,
@@ -5373,7 +5407,6 @@ export default function Sidebar() {
                                     key="snoozed-shelf-header"
                                     marker="snoozed-header"
                                     className={cn(workingThreads.length === 0 && "mt-auto")}
-                                    label="Snoozed"
                                     count={snoozedThreads.length}
                                     toggle={{
                                       expanded: snoozedShelfExpanded,
@@ -5391,7 +5424,6 @@ export default function Sidebar() {
                                       workingThreads.length + snoozedThreads.length === 0 &&
                                         "mt-auto",
                                     )}
-                                    label="Settled"
                                     count={settledThreads.length}
                                     toggle={{
                                       expanded: settledShelfExpanded,

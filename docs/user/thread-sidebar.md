@@ -46,9 +46,12 @@ and worktree while you stay in the new thread composer. This requires a Git proj
 ## Named pinned sections
 
 On web and desktop, choose **New section…** from the **Pinned** section menu to create
-buckets such as “Chief of Staff”. You can create up to 20 sections with names up
+buckets for related threads. You can create up to 20 sections with names up
 to 64 characters. Move a thread using **Move to pinned section** in its menu, or
 start dragging and drop it onto a named destination box. Moving an unpinned thread into a section pins it.
+
+Use **Display → Compact** in any section’s menu for single-line rows, or
+**Display → Default** for full cards. Each section remembers its own choice on this device.
 
 Collapse a section to hide its threads; search still finds them. Use the section
 menu to rename, reorder, or delete it. Deleting a section returns its pinned

@@ -22,7 +22,11 @@ function Layout({ dragging, revision = 0 }: { dragging: boolean; revision?: numb
             <div style={{ height: 32 }}>Pinned (2)</div>
           )}
         </li>
-        <li data-sidebar-marker="source-header" data-sidebar-source style={{ height: 32 }}>
+        <li
+          data-sidebar-marker="source-header"
+          data-sidebar-source={dragging || undefined}
+          style={{ height: 32 }}
+        >
           <div style={{ height: 32 }}>Active</div>
         </li>
         <li data-thread-item="source" style={{ height: 82 }}>
@@ -78,6 +82,8 @@ it("keeps the source title out of destination animations and leaves stationary t
   await screen.rerender(<Layout dragging revision={1} />);
   expect(source.getAnimations({ subtree: true })).toHaveLength(0);
   expect(destination.getAnimations()).toHaveLength(0);
+  await screen.rerender(<Layout dragging={false} />);
+  expect(source.getAnimations({ subtree: true })).toHaveLength(0);
 });
 
 it("reverses an unfinished exit without leaving duplicate destination chrome", async () => {

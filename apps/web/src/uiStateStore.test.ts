@@ -23,6 +23,7 @@ import {
   setSidebarProjectScopeKey,
   setThreadChangedFilesExpanded,
   toggleSidebarPinnedSection,
+  setSidebarSectionCompact,
   type UiState,
 } from "./uiStateStore";
 
@@ -32,6 +33,7 @@ function makeUiState(overrides: Partial<UiState> = {}): UiState {
     projectOrder: [],
     sidebarProjectScopeKey: null,
     sidebarPinnedSections: [],
+    sidebarCompactSections: { snoozed: true, settled: true },
     threadLastVisitedAtById: {},
     threadChangedFilesExpandedById: {},
     defaultAdvertisedEndpointKey: null,
@@ -168,6 +170,33 @@ describe("uiStateStore pure functions", () => {
 });
 
 describe("parsePersistedState", () => {
+  it("keeps compact defaults and ignores malformed or deleted section preferences", () => {
+    expect(parsePersistedState({}).sidebarCompactSections).toEqual({
+      snoozed: true,
+      settled: true,
+    });
+    const parsed = parsePersistedState({
+      sidebarPinnedSections: [
+        { id: "research", name: "Research", threadKeys: [], collapsed: false },
+      ],
+      sidebarCompactSections: {
+        pinned: true,
+        active: true,
+        settled: false,
+        "pinned-section:research": true,
+        "pinned-section:deleted": true,
+        working: "yes",
+      },
+    } as unknown as PersistedUiState);
+    expect(parsed.sidebarCompactSections).toEqual({
+      pinned: true,
+      active: true,
+      snoozed: true,
+      settled: false,
+      "pinned-section:research": true,
+    });
+  });
+
   it("defaults missing and malformed pinned sections to empty", () => {
     expect(parsePersistedState({}).sidebarPinnedSections).toEqual([]);
     expect(
@@ -274,6 +303,7 @@ describe("parsePersistedState", () => {
       defaultAdvertisedEndpointKey: "desktop-core:lan:http",
       sidebarProjectScopeKey: null,
       sidebarPinnedSections: [],
+      sidebarCompactSections: { snoozed: true, settled: true },
       pullRequestMergeMethod: "merge",
       threadChangedFilesExpandedById: {
         "environment:thread-1": {
@@ -421,6 +451,30 @@ describe("named pinned sections", () => {
     expect(deleteSidebarPinnedSection(state, "missing")).toBe(state);
   });
 
+  it("toggles density independently and discards only a deleted section's preference", () => {
+    const state = sectionsState();
+    const compact = setSidebarSectionCompact(state, "pinned-section:work", true);
+    const active = setSidebarSectionCompact(compact, "active", true);
+    const expandedSettled = setSidebarSectionCompact(active, "settled", false);
+    expect(expandedSettled.sidebarCompactSections).toEqual({
+      snoozed: true,
+      settled: false,
+      active: true,
+      "pinned-section:work": true,
+    });
+    expect(
+      setSidebarSectionCompact(compact, "pinned-section:work", false).sidebarCompactSections[
+        "pinned-section:work"
+      ],
+    ).toBe(false);
+    expect(expandedSettled.sidebarPinnedSections).toBe(state.sidebarPinnedSections);
+    expect(deleteSidebarPinnedSection(expandedSettled, "work").sidebarCompactSections).toEqual({
+      snoozed: true,
+      settled: false,
+      active: true,
+    });
+  });
+
   it("toggles collapse and moves sections in both directions without changing membership", () => {
     const state = sectionsState();
     const toggled = toggleSidebarPinnedSection(state, "work");
@@ -503,6 +557,7 @@ describe("uiStateStore persistence", () => {
       defaultAdvertisedEndpointKey: "desktop-core:lan:http",
       sidebarProjectScopeKey: null,
       sidebarPinnedSections: [],
+      sidebarCompactSections: { snoozed: true, settled: true },
       threadChangedFilesExpansionVersion: 2,
       threadChangedFilesExpandedById: {
         "environment:thread-1": {
@@ -529,12 +584,19 @@ describe("uiStateStore persistence", () => {
     );
   });
 
-  it("round-trips section order, names, disconnected membership, and collapse choices", () => {
+  it("round-trips section order, names, disconnected membership, collapse, and compact choices", () => {
     const state = makeUiState({
       sidebarPinnedSections: [
         { id: "b", name: "Later", threadKeys: ["offline:thread"], collapsed: true },
         { id: "a", name: "Today", threadKeys: ["env-a:thread", "env-b:thread"], collapsed: false },
       ],
+      sidebarCompactSections: {
+        pinned: true,
+        active: false,
+        snoozed: true,
+        settled: false,
+        "pinned-section:a": true,
+      },
     });
     persistState(state);
     const persisted = JSON.parse(localStorageStub.getItem(PERSISTED_STATE_KEY) ?? "{}");

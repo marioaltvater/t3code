@@ -39,6 +39,7 @@ export interface PersistedUiState {
   defaultAdvertisedEndpointKey?: string | null;
   sidebarProjectScopeKey?: string | null;
   sidebarPinnedSections?: SidebarPinnedSection[];
+  sidebarCompactSections?: Record<string, boolean>;
   threadChangedFilesExpansionVersion?: number;
   threadChangedFilesExpandedById?: Record<string, Record<string, boolean>>;
   pullRequestMergeMethod?: string;
@@ -66,6 +67,7 @@ export interface UiPullRequestState {
 export interface UiState
   extends UiProjectState, UiThreadState, UiEndpointState, UiPullRequestState {
   sidebarPinnedSections: SidebarPinnedSection[];
+  sidebarCompactSections: Record<string, boolean>;
 }
 
 const initialState: UiState = {
@@ -73,6 +75,7 @@ const initialState: UiState = {
   projectOrder: [],
   sidebarProjectScopeKey: null,
   sidebarPinnedSections: [],
+  sidebarCompactSections: { snoozed: true, settled: true },
   threadLastVisitedAtById: {},
   threadChangedFilesExpandedById: {},
   defaultAdvertisedEndpointKey: null,
@@ -200,6 +203,16 @@ export function parsePersistedState(parsed: PersistedUiState): UiState {
       ? sanitizeStringArray(parsed.projectOrderCwds).map(legacyProjectCwdPreferenceKey)
       : sanitizeStringArray(parsed.projectOrder);
 
+  const sidebarPinnedSections = sanitizeSidebarPinnedSections(parsed.sidebarPinnedSections);
+  const sectionKeys = new Set([
+    "pinned",
+    "active",
+    "working",
+    "snoozed",
+    "settled",
+    ...sidebarPinnedSections.map((section) => `pinned-section:${section.id}`),
+  ]);
+
   return {
     projectExpandedById,
     projectOrder,
@@ -210,7 +223,15 @@ export function parsePersistedState(parsed: PersistedUiState): UiState {
         : {},
     defaultAdvertisedEndpointKey: sanitizeOptionalKey(parsed.defaultAdvertisedEndpointKey),
     sidebarProjectScopeKey: sanitizeOptionalKey(parsed.sidebarProjectScopeKey),
-    sidebarPinnedSections: sanitizeSidebarPinnedSections(parsed.sidebarPinnedSections),
+    sidebarPinnedSections,
+    sidebarCompactSections: {
+      ...initialState.sidebarCompactSections,
+      ...Object.fromEntries(
+        Object.entries(sanitizeBooleanRecord(parsed.sidebarCompactSections)).filter(([key]) =>
+          sectionKeys.has(key),
+        ),
+      ),
+    },
     pullRequestMergeMethod: isPullRequestMergeMethod(parsed.pullRequestMergeMethod)
       ? parsed.pullRequestMergeMethod
       : initialState.pullRequestMergeMethod,
@@ -286,6 +307,7 @@ export function persistState(state: UiState): void {
         defaultAdvertisedEndpointKey: state.defaultAdvertisedEndpointKey,
         sidebarProjectScopeKey: state.sidebarProjectScopeKey,
         sidebarPinnedSections: state.sidebarPinnedSections,
+        sidebarCompactSections: state.sidebarCompactSections,
         threadChangedFilesExpansionVersion: THREAD_CHANGED_FILES_EXPANSION_VERSION,
         threadChangedFilesExpandedById: state.threadChangedFilesExpandedById,
         pullRequestMergeMethod: state.pullRequestMergeMethod,
@@ -444,7 +466,15 @@ export function deleteSidebarPinnedSection(state: UiState, id: string): UiState 
   const sidebarPinnedSections = state.sidebarPinnedSections.filter((section) => section.id !== id);
   return sidebarPinnedSections.length === state.sidebarPinnedSections.length
     ? state
-    : { ...state, sidebarPinnedSections };
+    : {
+        ...state,
+        sidebarPinnedSections,
+        sidebarCompactSections: Object.fromEntries(
+          Object.entries(state.sidebarCompactSections).filter(
+            ([key]) => key !== `pinned-section:${id}`,
+          ),
+        ),
+      };
 }
 
 export function moveThreadsToPinnedSection(
@@ -475,6 +505,20 @@ export function moveThreadsToPinnedSection(
     return { ...section, threadKeys: nextKeys };
   });
   return changed ? { ...state, sidebarPinnedSections } : state;
+}
+
+export function setSidebarSectionCompact(
+  state: UiState,
+  sectionKey: string,
+  compact: boolean,
+): UiState {
+  return {
+    ...state,
+    sidebarCompactSections: {
+      ...state.sidebarCompactSections,
+      [sectionKey]: compact,
+    },
+  };
 }
 
 export function toggleSidebarPinnedSection(state: UiState, id: string): UiState {
@@ -596,6 +640,7 @@ interface UiStateStore extends UiState {
   deleteSidebarPinnedSection: (id: string) => void;
   moveThreadsToPinnedSection: (threadKeys: readonly string[], sectionId: string | null) => void;
   toggleSidebarPinnedSection: (id: string) => void;
+  setSidebarSectionCompact: (sectionKey: string, compact: boolean) => void;
   moveSidebarPinnedSection: (id: string, direction: "up" | "down") => void;
   markThreadVisited: (threadId: string, visitedAt: string) => void;
   markThreadUnread: (threadId: string, latestTurnCompletedAt: string | null | undefined) => void;
@@ -640,6 +685,8 @@ export const useUiStateStore = create<UiStateStore>((set, get) => ({
   moveThreadsToPinnedSection: (threadKeys, sectionId) =>
     set((state) => moveThreadsToPinnedSection(state, threadKeys, sectionId)),
   toggleSidebarPinnedSection: (id) => set((state) => toggleSidebarPinnedSection(state, id)),
+  setSidebarSectionCompact: (sectionKey, compact) =>
+    set((state) => setSidebarSectionCompact(state, sectionKey, compact)),
   moveSidebarPinnedSection: (id, direction) =>
     set((state) => moveSidebarPinnedSection(state, id, direction)),
   markThreadVisited: (threadId, visitedAt) =>

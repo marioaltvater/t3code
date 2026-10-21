@@ -120,20 +120,28 @@ export function usePinnedSectionActions() {
   };
 }
 
-export function PinnedSectionHeader({
-  section,
+export function SidebarThreadSectionHeader({
+  section = null,
+  shelf = "pinned",
+  tone = "muted",
+  testId,
   count,
   expanded,
   onToggle,
 }: {
-  section: SidebarPinnedSection | null;
-  count: number;
+  section?: SidebarPinnedSection | null;
+  shelf?: "pinned" | "active" | "working" | "snoozed" | "settled";
+  tone?: "muted" | "info";
+  testId?: string;
+  count?: number;
   expanded?: boolean;
   onToggle?: () => void;
 }) {
   const toggle = useUiStateStore((state) => state.toggleSidebarPinnedSection);
   const [menuOpen, setMenuOpen] = useState(false);
-  const label = section?.name ?? "Pinned";
+  const label = section?.name ?? shelf[0]!.toUpperCase() + shelf.slice(1);
+  const sectionKey = section ? `pinned-section:${section.id}` : shelf;
+  const compact = useUiStateStore((state) => state.sidebarCompactSections[sectionKey] === true);
   const isExpanded = section ? !section.collapsed : (expanded ?? true);
   const openMenu = async (position: { x: number; y: number }) => {
     if (menuOpen) return;
@@ -145,11 +153,15 @@ export function PinnedSectionHeader({
     const action = await api.contextMenu
       .show(
         [
-          {
-            id: "new",
-            label: "New section…",
-            disabled: state.sidebarPinnedSections.length >= MAX_SIDEBAR_PINNED_SECTIONS,
-          },
+          ...(shelf === "pinned"
+            ? [
+                {
+                  id: "new",
+                  label: "New section…",
+                  disabled: state.sidebarPinnedSections.length >= MAX_SIDEBAR_PINNED_SECTIONS,
+                },
+              ]
+            : []),
           ...(section
             ? [
                 { id: "rename", label: "Rename section…" },
@@ -159,14 +171,25 @@ export function PinnedSectionHeader({
                   label: "Move section down",
                   disabled: index === state.sidebarPinnedSections.length - 1,
                 },
-                { id: "delete", label: "Delete section", destructive: true, separatorBefore: true },
+                { id: "delete", label: "Delete section", destructive: true },
               ]
             : []),
+          {
+            id: "display",
+            label: "Display",
+            separatorBefore: shelf === "pinned",
+            children: [
+              { id: "display:default", label: "Default", checked: !compact },
+              { id: "display:compact", label: "Compact", checked: compact },
+            ],
+          },
         ],
         position,
       )
       .finally(() => setMenuOpen(false));
-    if (action === "new") void requestPinnedSection();
+    if (action === "display:default" || action === "display:compact")
+      useUiStateStore.getState().setSidebarSectionCompact(sectionKey, action === "display:compact");
+    else if (action === "new") void requestPinnedSection();
     else if (action === "rename" && section) void requestPinnedSection(section.id);
     else if ((action === "up" || action === "down") && section)
       useUiStateStore.getState().moveSidebarPinnedSection(section.id, action);
@@ -183,10 +206,19 @@ export function PinnedSectionHeader({
     >
       <CollapsibleSectionHeader
         variant="sidebar"
-        expanded={isExpanded}
-        tone="muted"
+        expanded={section || onToggle ? isExpanded : menuOpen}
+        aria-haspopup={section || onToggle ? undefined : "menu"}
+        tone={tone}
+        data-testid={testId}
         actionOpen={menuOpen}
-        onClick={() => (section ? toggle(section.id) : onToggle?.())}
+        onClick={(event) => {
+          if (section) toggle(section.id);
+          else if (onToggle) onToggle();
+          else {
+            const rect = event.currentTarget.getBoundingClientRect();
+            void openMenu({ x: rect.left, y: rect.bottom });
+          }
+        }}
         action={
           <Button
             variant="ghost"
@@ -203,7 +235,8 @@ export function PinnedSectionHeader({
           </Button>
         }
       >
-        {label} ({count})
+        {label}
+        {count === undefined ? null : ` (${count})`}
       </CollapsibleSectionHeader>
     </div>
   );
