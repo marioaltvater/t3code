@@ -1,5 +1,6 @@
 import type {
   DesktopBridge,
+  DesktopControllerEvent,
   DesktopPreviewOpenLinkEvent,
   DesktopPreviewPointerEvent,
   DesktopPreviewRecordingInputEvent,
@@ -208,6 +209,31 @@ contextBridge.exposeInMainWorld("desktopBridge", {
     ipcRenderer.invoke(IpcChannels.OPEN_SYSTEM_SETTINGS_CHANNEL, pane),
   probeRemoteEditors: () => ipcRenderer.invoke(IpcChannels.PROBE_REMOTE_EDITORS_CHANNEL, undefined),
   pasteAsText: () => ipcRenderer.invoke(IpcChannels.PASTE_AS_TEXT_CHANNEL, undefined),
+  controller: {
+    acknowledgeDictation: (id) =>
+      ipcRenderer.invoke(IpcChannels.CONTROLLER_ACKNOWLEDGE_DICTATION_CHANNEL, id),
+    setReady: (ready) => ipcRenderer.invoke(IpcChannels.CONTROLLER_READY_CHANNEL, ready),
+    acceptDictation: (id) =>
+      ipcRenderer.invoke(IpcChannels.CONTROLLER_ACCEPT_DICTATION_CHANNEL, id),
+    cancelDictation: (id) =>
+      ipcRenderer.invoke(IpcChannels.CONTROLLER_CANCEL_DICTATION_CHANNEL, id),
+    onEvent: (listener) => {
+      const receive = (_event: Electron.IpcRendererEvent, raw: unknown) => {
+        if (typeof raw !== "object" || raw === null) return;
+        const value = raw as Partial<DesktopControllerEvent>;
+        if (typeof value.captureId !== "string") return;
+        if (
+          (value.type === "microphone" && typeof value.pressed === "boolean") ||
+          (value.type === "dictation" && typeof value.text === "string") ||
+          (value.type === "error" && typeof value.message === "string")
+        ) {
+          listener(value as DesktopControllerEvent);
+        }
+      };
+      ipcRenderer.on(IpcChannels.CONTROLLER_EVENT_CHANNEL, receive);
+      return () => ipcRenderer.removeListener(IpcChannels.CONTROLLER_EVENT_CHANNEL, receive);
+    },
+  },
   onMenuAction: (listener) => {
     const wrappedListener = (_event: Electron.IpcRendererEvent, action: unknown) => {
       if (typeof action !== "string") return;

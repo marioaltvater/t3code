@@ -20,6 +20,16 @@ export const THREAD_JUMP_KEYBINDING_COMMANDS = [
 ] as const;
 export type ThreadJumpKeybindingCommand = (typeof THREAD_JUMP_KEYBINDING_COMMANDS)[number];
 
+export const THREAD_PINNED_KEYBINDING_COMMANDS = [
+  "thread.pinned.1",
+  "thread.pinned.2",
+  "thread.pinned.3",
+  "thread.pinned.4",
+  "thread.pinned.5",
+  "thread.pinned.6",
+] as const;
+export type ThreadPinnedKeybindingCommand = (typeof THREAD_PINNED_KEYBINDING_COMMANDS)[number];
+
 export const MODEL_PICKER_JUMP_KEYBINDING_COMMANDS = [
   "modelPicker.jump.1",
   "modelPicker.jump.2",
@@ -45,6 +55,7 @@ const THREAD_KEYBINDING_COMMANDS = [
   "thread.pin",
   "thread.undo",
   ...THREAD_JUMP_KEYBINDING_COMMANDS,
+  ...THREAD_PINNED_KEYBINDING_COMMANDS,
 ] as const;
 export type ThreadKeybindingCommand = (typeof THREAD_KEYBINDING_COMMANDS)[number];
 
@@ -90,6 +101,8 @@ export const STATIC_KEYBINDING_COMMANDS = [
   "composer.sendAlternate",
   "composer.sendBackground",
   "composer.sendAndNewThread",
+  "composer.submit",
+  "composer.focus",
   "composer.host",
   "composer.cycleHost",
   "composer.effort",
@@ -103,6 +116,9 @@ export const STATIC_KEYBINDING_COMMANDS = [
   "chat.newLocal",
   "chat.newWithoutProject",
   "chat.find",
+  "chat.scrollUp",
+  "chat.scrollDown",
+  "open-settings",
   "editor.openFavorite",
   "usage.cost",
   "usage.tokens",

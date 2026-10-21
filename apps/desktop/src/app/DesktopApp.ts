@@ -1,3 +1,4 @@
+import { initializeDesktopController } from "../controller/DesktopController.ts";
 import * as Cause from "effect/Cause";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -185,6 +186,7 @@ const bootstrap = Effect.gen(function* () {
   );
 
   yield* snapShot.initialize;
+  yield* initializeDesktopController();
 
   if (!settings.localEnvironmentEnabled) {
     yield* logBootstrapInfo("bootstrap skipping local environment (disabled in settings)");

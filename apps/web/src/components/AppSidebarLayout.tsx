@@ -1,4 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
+import { effectiveSnoozed } from "@t3tools/client-runtime/state/thread-settled";
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import * as Schema from "effect/Schema";
 import {
   useEffect,
@@ -15,6 +17,7 @@ import {
   isRichTextBoldShortcut,
   resolveShortcutCommand,
   shortcutLabelForCommand,
+  threadPinnedIndexFromCommand,
 } from "../keybindings";
 import { isEditableFocused } from "../lib/editableFocus";
 import { isPreviewFocused } from "../lib/previewFocus";
@@ -23,7 +26,8 @@ import { isModelPickerOpen } from "../modelPickerVisibility";
 import { selectActiveRightPanel, useRightPanelStore } from "../rightPanelStore";
 import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
 import { cn, isMacPlatform } from "../lib/utils";
-import { primaryServerKeybindingsAtom } from "../state/server";
+import { appAtomRegistry } from "../rpc/atomRegistry";
+import { environmentServerConfigsAtom, primaryServerKeybindingsAtom } from "../state/server";
 import { useLegacySidebarEnabled } from "../hooks/useSettings";
 import {
   PanelAnimationSuppressionProvider,
@@ -36,7 +40,19 @@ import ThreadSidebar from "./Sidebar";
 import { SettingsSidebarNav } from "./settings/SettingsSidebarNav";
 import { SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { MainAppLocationTracker } from "./sidebar/mainAppLocation";
-import { useProjects } from "../state/entities";
+import { readThreadShells, useProjects } from "../state/entities";
+import { useHandleNewThread } from "../hooks/useHandleNewThread";
+import { useScratchProject } from "../hooks/useScratchProject";
+import { useStableCallback } from "../hooks/useStableCallback";
+import { usePrimaryEnvironmentId } from "../state/environments";
+import { startNewThreadFromContext } from "../lib/chatThreadActions";
+import { buildThreadRouteParams } from "../threadRoutes";
+import {
+  filterSidebarV2VisibleThreads,
+  resolveSidebarThreadSection,
+  sortPinnedThreadsForSidebar,
+} from "./Sidebar.logic";
+import { stackedThreadToast, toastManager } from "./ui/toast";
 import {
   clampThreadSidebarWidth,
   resolveInitialThreadSidebarWidth,
@@ -222,6 +238,15 @@ function NavigationHistoryShortcuts() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [keybindings, routeThreadRef]);
 
+  useEffect(
+    () =>
+      window.desktopBridge?.onMenuAction((action) => {
+        if (action === "navigation.back") window.history.back();
+        else if (action === "navigation.forward") window.history.forward();
+      }),
+    [],
+  );
+
   return null;
 }
 
@@ -233,8 +258,68 @@ function ProjectProjectionRetention() {
   return null;
 }
 
+// Settings replaces both the chat route and its thread sidebar. Keep these
+// navigation controls available there without a second subscriber in chat.
+function SettingsControllerNavigation() {
+  const navigate = useNavigate();
+  const { defaultProjectRef, handleNewThread } = useHandleNewThread();
+  const primaryEnvironmentId = usePrimaryEnvironmentId();
+  const { scratchEnvironmentId, startScratchThread } = useScratchProject();
+  const onAction = useStableCallback((action: string) => {
+    const operation = async () => {
+      if (action === "chat.newLocal") {
+        await startNewThreadFromContext({
+          activeDraftThread: null,
+          activeThread: undefined,
+          defaultProjectRef,
+          handleNewThread,
+        });
+      } else if (action === "chat.newWithoutProject") {
+        const environmentId = scratchEnvironmentId(primaryEnvironmentId);
+        if (environmentId !== null) await startScratchThread(environmentId);
+      } else {
+        const index = threadPinnedIndexFromCommand(action);
+        if (index === null) return;
+        const configs = appAtomRegistry.get(environmentServerConfigsAtom);
+        const now = new Date().toISOString();
+        const pinned = sortPinnedThreadsForSidebar(
+          filterSidebarV2VisibleThreads(readThreadShells(), null).filter((thread) => {
+            const capabilities = configs.get(thread.environmentId)?.environment.capabilities;
+            return (
+              resolveSidebarThreadSection({
+                snoozed: capabilities?.threadSnooze === true && effectiveSnoozed(thread, { now }),
+                settled:
+                  capabilities?.threadSettlement === true && thread.settledOverride === "settled",
+                pinned: thread.pinnedAt != null,
+              }) === "pinned"
+            );
+          }),
+        );
+        const thread = pinned[index];
+        if (thread)
+          await navigate({
+            to: "/$environmentId/$threadId",
+            params: buildThreadRouteParams(scopeThreadRef(thread.environmentId, thread.id)),
+          });
+      }
+    };
+    void operation().catch((error: unknown) => {
+      toastManager.add(
+        stackedThreadToast({
+          type: "error",
+          title: "Controller navigation failed",
+          description: error instanceof Error ? error.message : "Try again.",
+        }),
+      );
+    });
+  });
+  useEffect(() => window.desktopBridge?.onMenuAction(onAction), [onAction]);
+  return null;
+}
+
 export function AppSidebarLayout({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
+  const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const legacySidebarEnabled = useLegacySidebarEnabled();
   const { active: panelAnimationsActive, durationMs: panelAnimationDurationMs } =
     usePanelAnimationSettings();
@@ -275,12 +360,17 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
   } as CSSProperties;
 
   useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.repeat) return;
+      if (resolveShortcutCommand(event, keybindings) !== "open-settings") return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (!/^\/settings(\/|$)/.test(pathname)) void navigate({ to: "/settings" });
+    };
     const onMenuAction = window.desktopBridge?.onMenuAction;
-    if (typeof onMenuAction !== "function") {
-      return;
-    }
+    window.addEventListener("keydown", onKeyDown);
 
-    const unsubscribe = onMenuAction((action) => {
+    const unsubscribe = onMenuAction?.((action) => {
       if (action === "open-settings") {
         const isSettingsRoute = /^\/settings(\/|$)/.test(pathname);
         if (!isSettingsRoute) {
@@ -290,9 +380,10 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
     });
 
     return () => {
+      window.removeEventListener("keydown", onKeyDown);
       unsubscribe?.();
     };
-  }, [navigate, pathname]);
+  }, [keybindings, navigate, pathname]);
 
   return (
     <PanelAnimationSuppressionProvider value={panelAnimationsSuppressed}>
@@ -335,6 +426,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
         {children}
         <SidebarControl />
         <NavigationHistoryShortcuts />
+        {isOnSettings ? <SettingsControllerNavigation /> : null}
         <MainAppLocationTracker />
       </SidebarProvider>
     </PanelAnimationSuppressionProvider>

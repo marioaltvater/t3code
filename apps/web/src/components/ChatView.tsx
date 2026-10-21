@@ -5778,7 +5778,7 @@ export default function ChatView(props: ChatViewProps) {
       if (!event.repeat) composerRef.current?.openControl(command);
     }) satisfies ChatShortcutHandler;
   useChatShortcuts({
-    enabled: activeThreadId !== null,
+    enabled: activeThreadId !== null || routeKind === "draft",
     keybindings,
     scriptKeybindings,
     getShortcutContext: getShortcutContextStable,
@@ -5789,6 +5789,20 @@ export default function ChatView(props: ChatViewProps) {
       focusComposerStable();
     },
     commands: {
+      "composer.focus": ({ event }) => {
+        if (!event.repeat) focusComposerStable();
+      },
+      "composer.submit": ({ event }) => {
+        if (!event.repeat) composerRef.current?.submit();
+      },
+      "chat.scrollUp": () => {
+        const timeline = getTimelineScrollableNode();
+        if (timeline) timeline.scrollBy({ top: -timeline.clientHeight * 0.8 });
+      },
+      "chat.scrollDown": () => {
+        const timeline = getTimelineScrollableNode();
+        if (timeline) timeline.scrollBy({ top: timeline.clientHeight * 0.8 });
+      },
       "thread.copyReference": ({ event }) => {
         if (!event.repeat) copyActiveThreadReferenceStable();
       },
@@ -5905,12 +5919,45 @@ export default function ChatView(props: ChatViewProps) {
   });
 
   // A focused desktop browser page forwards these chords as menu actions.
-  useEffect(() => {
-    return window.desktopBridge?.onMenuAction((action) => {
-      if (action === "rightPanel.toggle") toggleRightPanelStable();
-      else if (action === "rightPanel.toggleMaximized") toggleRightPanelMaximizedStable();
-    });
-  }, [toggleRightPanelStable, toggleRightPanelMaximizedStable]);
+  const onDesktopMenuAction = useStableCallback((action: string) => {
+    if (action === "preview.toggle") togglePreviewPanelStable();
+    else if (action === "rightPanel.toggle") toggleRightPanelStable();
+    else if (action === "rightPanel.toggleMaximized") toggleRightPanelMaximizedStable();
+    else if (action === "threadPanel.toggle") toggleThreadPanelStable();
+    else if (action === "terminal.toggle") {
+      if (!terminalUiState.terminalOpen && !canReadTerminal && !canOperateTerminal) return;
+      toggleTerminalVisibilityStable();
+    } else if (action === "diff.toggle") onToggleDiffStable();
+    else if (action === "modelPicker.toggle") composerRef.current?.toggleModelPicker();
+    else if (action === "composer.increaseEffort") composerRef.current?.stepReasoningEffort(1);
+    else if (action === "composer.decreaseEffort") composerRef.current?.stepReasoningEffort(-1);
+    else if (action === "composer.focus") focusComposerStable();
+    else if (action === "composer.submit") {
+      composerRef.current?.submit();
+    } else if (action === "chat.scrollUp" || action === "chat.scrollDown") {
+      const timeline = getTimelineScrollableNode();
+      if (timeline)
+        timeline.scrollBy({
+          top: (action === "chat.scrollUp" ? -1 : 1) * timeline.clientHeight * 0.8,
+        });
+    } else if (action === "thread.stop") {
+      if (canInterruptRunningThread) void onInterruptStable();
+    } else if (action === "thread.pin") {
+      if (
+        readEnvironmentScope(environmentId, AuthOrchestrationOperateScope) &&
+        isServerThread &&
+        activeThreadRef &&
+        supportsPinning
+      ) {
+        void (
+          activeThreadPinned ? confirmAndUnpinThread(activeThreadRef) : pinThread(activeThreadRef)
+        ).then(
+          toastPinFailure(activeThreadPinned ? "Failed to unpin thread" : "Failed to pin thread"),
+        );
+      }
+    }
+  });
+  useEffect(() => window.desktopBridge?.onMenuAction(onDesktopMenuAction), [onDesktopMenuAction]);
 
   // Paste-to-focus: the resting composer blurs on a click into the timeline,
   // so a paste that follows has no editable target and would be dropped.

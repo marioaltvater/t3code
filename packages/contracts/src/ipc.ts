@@ -1,4 +1,5 @@
 import * as Schema from "effect/Schema";
+import type { DesktopControllerEvent } from "./controller.ts";
 import type { PreviewCaptureFailureEncoded } from "./previewCapture.ts";
 
 import { SnapShotSource } from "./chatAttachment.ts";
@@ -1122,6 +1123,13 @@ export interface DesktopBridge {
    */
   probeRemoteEditors?: () => Promise<readonly EditorId[]>;
   pasteAsText?: () => Promise<void>;
+  controller?: {
+    acknowledgeDictation: (captureId: string) => Promise<void>;
+    setReady: (ready: boolean) => Promise<void>;
+    acceptDictation: (captureId: string) => Promise<void>;
+    cancelDictation: (captureId: string) => Promise<void>;
+    onEvent: (listener: (event: DesktopControllerEvent) => void) => () => void;
+  };
   onMenuAction: (listener: (action: string) => void) => () => void;
   onSnapShotEvent?: (listener: (event: DesktopSnapShotEvent) => void) => () => void;
   onQuitShortcut?: (listener: (event: QuitShortcutHintEvent) => void) => () => void;

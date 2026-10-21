@@ -44,6 +44,19 @@ it.effect("accepts dynamic script run commands", () =>
   }),
 );
 
+it.effect("accepts pinned thread controller commands from keybindings JSON", () =>
+  Effect.gen(function* () {
+    const parsed = yield* decode(KeybindingsConfig, [
+      { key: "f13", command: "thread.pinned.1" },
+      { key: "f14", command: "thread.pinned.6" },
+    ]);
+    assert.deepEqual(
+      parsed.map((binding) => binding.command),
+      ["thread.pinned.1", "thread.pinned.6"],
+    );
+  }),
+);
+
 it.effect("parses keybindings array payload", () =>
   Effect.gen(function* () {
     const parsed = yield* decode(KeybindingsConfig, [

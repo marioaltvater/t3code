@@ -104,7 +104,7 @@ export class DesktopWindow extends Context.Service<
     readonly prepareCaptureReveal: Effect.Effect<void>;
     readonly dispatchMenuAction: (
       action: string,
-      options?: { readonly reveal?: boolean },
+      options?: { readonly reveal?: boolean; readonly dropWhenLoading?: boolean },
     ) => Effect.Effect<void, DesktopWindowError>;
     readonly dispatchSnapShotEvent: (
       event: DesktopSnapShotEvent,
@@ -948,7 +948,10 @@ export const make = Effect.gen(function* () {
   const dispatchRendererEvent = Effect.fn("desktop.window.dispatchRendererEvent")(function* (
     channel: string,
     payload: unknown,
-    { reveal = true }: { readonly reveal?: boolean } = {},
+    {
+      reveal = true,
+      dropWhenLoading = false,
+    }: { readonly reveal?: boolean; readonly dropWhenLoading?: boolean } = {},
   ) {
     if (yield* Ref.get(desktopState.quitting)) return;
     const existingWindow = yield* reveal ? focusedMainWindow : electronWindow.main;
@@ -965,6 +968,7 @@ export const make = Effect.gen(function* () {
       ? send.pipe(Effect.andThen(electronWindow.reveal(targetWindow).pipe(Effect.ignoreCause)))
       : send;
     if (targetWindow.webContents.isLoadingMainFrame()) {
+      if (dropWhenLoading) return;
       targetWindow.webContents.once("did-finish-load", () => void runPromise(dispatch));
       return;
     }

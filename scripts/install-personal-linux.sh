@@ -35,7 +35,7 @@ cat > "$applications_dir/t3-code-personal.desktop" <<DESKTOP
 Type=Application
 Name=T3 Code Personal
 Comment=Personal T3 Code fork with the Codex interface
-Exec="$app_path" %U
+Exec=env T3CODE_K0_CONTROLLER=1 "$app_path" %U
 Icon=$icon_dir/t3-code-personal.png
 Terminal=false
 Categories=Development;

@@ -361,6 +361,14 @@ export function buildKeybindingCommandOptions(
 }
 
 export function commandLabel(command: KeybindingCommand): string {
+  if (command === "composer.submit") return "Composer: Submit Prompt";
+  if (command === "composer.focus") return "Composer: Focus Composer";
+  if (command === "chat.scrollUp") return "Chat: Scroll Timeline Up";
+  if (command === "chat.scrollDown") return "Chat: Scroll Timeline Down";
+  if (command.startsWith("thread.pinned.")) {
+    return `Thread: Open Pinned Thread ${command.slice("thread.pinned.".length)}`;
+  }
+  if (command === "open-settings") return "Open Settings";
   if (command === "composer.sendAlternate") return "Composer: Opposite Queue or Steer Action";
   if (command === "composer.sendBackground") return "Composer: Start in Background";
   if (command === "composer.sendAndNewThread") return "Composer: Send and Start New Thread";

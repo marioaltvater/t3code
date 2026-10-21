@@ -116,6 +116,7 @@ import {
   shouldShowThreadJumpHintsForModifiers,
   threadJumpCommandForIndex,
   threadJumpIndexFromCommand,
+  threadPinnedIndexFromCommand,
   threadTraversalDirectionFromCommand,
 } from "../keybindings";
 import { isModelPickerOpen } from "../modelPickerVisibility";
@@ -197,6 +198,7 @@ import {
   orderItemsByPreferredIds,
   shouldClearThreadSelectionOnMouseDown,
   sortProjectsForSidebar,
+  sortPinnedThreadsForSidebar,
   useSidebarRowSubscriptionLease,
   useThreadJumpHintVisibility,
   ThreadStatusPill,
@@ -3442,6 +3444,21 @@ export default function LegacySidebar() {
       return;
     }
 
+    const pinnedIndex = threadPinnedIndexFromCommand(command ?? "");
+    if (pinnedIndex !== null) {
+      const target = sortPinnedThreadsForSidebar(
+        filterSidebarV2VisibleThreads([...sidebarThreadByKey.values()], null).filter(
+          (thread) => thread.pinnedAt != null,
+        ),
+      )[pinnedIndex];
+      if (target) {
+        event.preventDefault();
+        event.stopPropagation();
+        navigateToThread(scopeThreadRef(target.environmentId, target.id));
+      }
+      return;
+    }
+
     const jumpIndex = threadJumpIndexFromCommand(command ?? "");
     if (jumpIndex === null) {
       return;
@@ -3467,6 +3484,44 @@ export default function LegacySidebar() {
       window.removeEventListener("keydown", handleWindowKeyDown);
     };
   }, []);
+  useEffect(
+    () =>
+      window.desktopBridge?.onMenuAction((action) => {
+        const direction = threadTraversalDirectionFromCommand(action);
+        if (direction !== null) {
+          const targetKey = resolveAdjacentThreadId({
+            threadIds: orderedSidebarThreadKeys,
+            currentThreadId: routeThreadKey,
+            direction,
+          });
+          const target = targetKey ? sidebarThreadByKey.get(targetKey) : undefined;
+          if (target) navigateToThread(scopeThreadRef(target.environmentId, target.id));
+          return;
+        }
+        const pinnedIndex = threadPinnedIndexFromCommand(action);
+        const pinnedThreads = sortPinnedThreadsForSidebar(
+          filterSidebarV2VisibleThreads([...sidebarThreadByKey.values()], null).filter(
+            (thread) => thread.pinnedAt != null,
+          ),
+        );
+        const jumpIndex = threadJumpIndexFromCommand(action);
+        const targetKey = jumpIndex === null ? undefined : threadJumpThreadKeys[jumpIndex];
+        const target =
+          pinnedIndex !== null
+            ? pinnedThreads[pinnedIndex]
+            : targetKey
+              ? sidebarThreadByKey.get(targetKey)
+              : undefined;
+        if (target) navigateToThread(scopeThreadRef(target.environmentId, target.id));
+      }),
+    [
+      navigateToThread,
+      orderedSidebarThreadKeys,
+      routeThreadKey,
+      sidebarThreadByKey,
+      threadJumpThreadKeys,
+    ],
+  );
 
   useEffect(() => {
     const onMouseDown = (event: globalThis.MouseEvent) => {

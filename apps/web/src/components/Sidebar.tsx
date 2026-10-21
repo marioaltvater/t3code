@@ -118,6 +118,7 @@ import {
   shouldShowThreadJumpHintsForModifiers,
   threadJumpCommandForIndex,
   threadJumpIndexFromCommand,
+  threadPinnedIndexFromCommand,
   threadTraversalDirectionFromCommand,
 } from "../keybindings";
 import { useShortcutModifierState } from "../shortcutModifierState";
@@ -4499,16 +4500,50 @@ export default function Sidebar() {
         );
         return;
       }
+      const pinnedIndex = threadPinnedIndexFromCommand(command ?? "");
+      if (pinnedIndex !== null) {
+        const target = pinnedThreads[pinnedIndex];
+        if (target) navigateToThread(scopeThreadRef(target.environmentId, target.id));
+        return;
+      }
       const jumpIndex = threadJumpIndexFromCommand(command ?? "");
       if (jumpIndex === null) return;
       navigateToThreadKey(orderedThreadKeys[jumpIndex] ?? null);
     };
     window.addEventListener("keydown", onWindowKeyDown);
-    return () => window.removeEventListener("keydown", onWindowKeyDown);
+    const unsubscribe = window.desktopBridge?.onMenuAction((action) => {
+      const direction = threadTraversalDirectionFromCommand(action);
+      if (direction !== null) {
+        const targetKey = resolveAdjacentThreadId({
+          threadIds: orderedThreadKeys,
+          currentThreadId: routeRowThreadKey,
+          direction,
+        });
+        const target = targetKey ? threadByKey.get(targetKey) : undefined;
+        if (target) navigateToThread(scopeThreadRef(target.environmentId, target.id));
+        return;
+      }
+      const pinnedIndex = threadPinnedIndexFromCommand(action);
+      if (pinnedIndex !== null) {
+        // Controller slots address pinned threads only. A vacant slot is a no-op.
+        const target = pinnedThreads[pinnedIndex];
+        if (target) navigateToThread(scopeThreadRef(target.environmentId, target.id));
+        return;
+      }
+      const jumpIndex = threadJumpIndexFromCommand(action);
+      const targetKey = jumpIndex === null ? null : (orderedThreadKeys[jumpIndex] ?? null);
+      const target = targetKey ? threadByKey.get(targetKey) : undefined;
+      if (target) navigateToThread(scopeThreadRef(target.environmentId, target.id));
+    });
+    return () => {
+      window.removeEventListener("keydown", onWindowKeyDown);
+      unsubscribe?.();
+    };
   }, [
     keybindings,
     navigateToThread,
     orderedThreadKeys,
+    pinnedThreads,
     routeRowThreadKey,
     routeTerminalOpen,
     threadByKey,

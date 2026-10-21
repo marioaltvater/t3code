@@ -1435,6 +1435,7 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
 });
 
 export interface ChatComposerHandle {
+  submit: () => void;
   focusAtEnd: () => void;
   focusAt: (cursor: number) => void;
   restoreAfterTimelineReachedEnd: () => void;
@@ -6111,6 +6112,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   useImperativeHandle(
     composerRef,
     () => ({
+      submit: () => submitComposerStable(),
       focusAtEnd: () => {
         composerEditorRef.current?.focusAtEnd();
       },
@@ -6359,6 +6361,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       composerPreviewAnnotations,
       composerReviewComments,
       focusComposer,
+      submitComposerStable,
       environmentId,
       primaryEnvironmentId,
       isConnecting,
