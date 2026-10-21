@@ -8,6 +8,7 @@ import { useThreadUndoNotice } from "./showThreadUndoNotice";
 
 const commands = vi.hoisted(() => ({
   pin: vi.fn(),
+  reorderPin: vi.fn(),
   unpin: vi.fn(),
   archive: vi.fn(),
   unarchive: vi.fn(),
@@ -23,7 +24,7 @@ const router = vi.hoisted(() => ({
 vi.mock("../state/use-atom-query-runner", () => ({ useAtomQueryRunner: () => vi.fn() }));
 vi.mock("../state/session", async (original) => ({
   ...(await original<typeof import("../state/session")>()),
-  readEnvironmentScope: () => true,
+  readEnvironmentScope: (environmentId: string) => !pinnedShells.denied.has(environmentId),
 }));
 vi.mock("react", async (original) => ({
   ...(await original<typeof import("react")>()),
@@ -40,26 +41,69 @@ vi.mock("../uiStateStore", () => ({ useUiStateStore: () => vi.fn() }));
 vi.mock("../lib/archivedThreadsState", () => ({ refreshArchivedThreadsForEnvironment: vi.fn() }));
 const threadShell = vi.hoisted(() => ({
   title: "Thread",
-  pinOrderKey: "a0",
+  pinOrderKey: "a0" as string | null,
   pinnedAt: null as string | null,
   snoozedUntil: null as string | null,
   projectId: "project",
   environmentId: "undo-env",
+  archivedAt: null,
   session: null,
+}));
+const pinnedShells = vi.hoisted(() => ({
+  denied: new Set<string>(),
+  legacy: new Set<string>(),
+  current: [] as {
+    id: string;
+    environmentId: string;
+    archivedAt: string | null;
+    createdAt: string;
+    pinnedAt: string | null;
+    pinOrderKey: string | null;
+  }[],
 }));
 vi.mock("../state/entities", async (original) => ({
   ...(await original<typeof import("../state/entities")>()),
   readEnvironmentSupportsPinning: () => true,
-  readEnvironmentSupportsPinReorder: () => true,
+  readEnvironmentSupportsPinReorder: (environmentId: string) =>
+    !pinnedShells.legacy.has(environmentId),
   readEnvironmentSupportsSettlement: () => true,
   readEnvironmentSupportsSnooze: () => true,
   readThreadShell: () => threadShell,
+  readThreadShells: () => pinnedShells.current,
 }));
 vi.mock("../state/use-atom-command", () => ({
   useAtomCommand: (command: unknown) => {
     switch (command) {
       case threadEnvironment.pin:
         return commands.pin;
+      case threadEnvironment.reorderPin:
+        return commands.reorderPin;
+      case threadEnvironment.unpin:
+        return commands.unpin;
+      case threadEnvironment.archive:
+        return commands.archive;
+      case threadEnvironment.unarchive:
+        return commands.unarchive;
+      case threadEnvironment.settle:
+        return commands.settle;
+      case threadEnvironment.unsettle:
+        return commands.unsettle;
+      case threadEnvironment.snooze:
+        return commands.snooze;
+      case threadEnvironment.unsnooze:
+        return commands.unsnooze;
+      default:
+        return vi.fn();
+    }
+  },
+}));
+vi.mock("../state/use-orchestration-command", () => ({
+  useOrchestrationCommand: (command: unknown) => {
+    switch (command) {
+      case threadEnvironment.pin:
+        return commands.pin;
+      case threadEnvironment.reorderPin:
+        return commands.reorderPin;
       case threadEnvironment.unpin:
         return commands.unpin;
       case threadEnvironment.archive:
@@ -97,8 +141,12 @@ beforeEach(() => {
   }
   router.navigate.mockClear();
   router.state.matches[0]!.params = {};
+  threadShell.pinOrderKey = "a0";
   threadShell.pinnedAt = null;
   threadShell.snoozedUntil = null;
+  pinnedShells.current = [];
+  pinnedShells.denied.clear();
+  pinnedShells.legacy.clear();
 });
 afterEach(() => {
   vi.runAllTimers();
@@ -107,6 +155,233 @@ afterEach(() => {
 });
 
 describe("unpin Undo", () => {
+  it("appends a fresh pin after the last keyed pin", async () => {
+    pinnedShells.current = [
+      {
+        id: "first",
+        environmentId: "undo-env",
+        archivedAt: null,
+        createdAt: "2026-01-01",
+        pinnedAt: "2026-01-01",
+        pinOrderKey: "g",
+      },
+      {
+        id: "last",
+        environmentId: "undo-env",
+        archivedAt: null,
+        createdAt: "2026-01-02",
+        pinnedAt: "2026-01-01",
+        pinOrderKey: "m",
+      },
+    ];
+
+    await useThreadActions().pinThread(target);
+
+    expect(commands.pin).toHaveBeenCalledWith({
+      environmentId: target.environmentId,
+      input: { threadId: target.threadId, orderKey: expect.any(String) },
+    });
+    expect(commands.pin.mock.calls[0]![0].input.orderKey! > "m").toBe(true);
+  });
+
+  it("reorders legacy pins before pinning and aborts when a reorder fails", async () => {
+    pinnedShells.current = [
+      {
+        id: "legacy",
+        environmentId: "undo-env",
+        archivedAt: null,
+        createdAt: "2026-01-01",
+        pinnedAt: "2026-01-01",
+        pinOrderKey: null,
+      },
+    ];
+    commands.reorderPin.mockResolvedValueOnce({ _tag: "Failure", cause: {} });
+
+    const result = await useThreadActions().pinThread(target);
+
+    expect(result._tag).toBe("Failure");
+    expect(commands.reorderPin).toHaveBeenCalledTimes(1);
+    expect(commands.pin).not.toHaveBeenCalled();
+  });
+
+  it("appends after keyed pins in other environments without writing to them", async () => {
+    pinnedShells.current = [
+      {
+        id: "other",
+        environmentId: "remote",
+        archivedAt: null,
+        createdAt: "2026-01-01",
+        pinnedAt: "now",
+        pinOrderKey: "z",
+      },
+    ];
+    pinnedShells.denied.add("remote");
+    await useThreadActions().pinThread(target);
+    expect(commands.pin.mock.calls[0]![0].input.orderKey > "z").toBe(true);
+    expect(commands.reorderPin).not.toHaveBeenCalled();
+  });
+
+  it("normalizes same-id legacy pins in their owning environments", async () => {
+    pinnedShells.current = [
+      {
+        id: "same",
+        environmentId: "remote",
+        archivedAt: null,
+        createdAt: "2026-01-02",
+        pinnedAt: "now",
+        pinOrderKey: null,
+      },
+      {
+        id: "same",
+        environmentId: "undo-env",
+        archivedAt: null,
+        createdAt: "2026-01-01",
+        pinnedAt: "now",
+        pinOrderKey: null,
+      },
+    ];
+    await useThreadActions().pinThread(target);
+    expect(commands.reorderPin.mock.calls.map(([request]) => request.environmentId)).toEqual([
+      "remote",
+      "undo-env",
+    ]);
+    expect(
+      commands.pin.mock.calls[0]![0].input.orderKey >
+        commands.reorderPin.mock.calls[1]![0].input.orderKey,
+    ).toBe(true);
+  });
+
+  it.each(["permission", "capability"])(
+    "preflights every legacy destination before writes: %s",
+    async (reason) => {
+      pinnedShells.current = [
+        {
+          id: "local",
+          environmentId: "undo-env",
+          archivedAt: null,
+          createdAt: "2026-01-02",
+          pinnedAt: "now",
+          pinOrderKey: null,
+        },
+        {
+          id: "remote",
+          environmentId: "remote",
+          archivedAt: null,
+          createdAt: "2026-01-01",
+          pinnedAt: "now",
+          pinOrderKey: null,
+        },
+      ];
+      (reason === "permission" ? pinnedShells.denied : pinnedShells.legacy).add("remote");
+      expect((await useThreadActions().pinThread(target))._tag).toBe("Failure");
+      expect(commands.reorderPin).not.toHaveBeenCalled();
+      expect(commands.pin).not.toHaveBeenCalled();
+    },
+  );
+
+  it("does not normalize remote pins when the new pin is forbidden", async () => {
+    pinnedShells.denied.add("undo-env");
+    pinnedShells.current = [
+      {
+        id: "remote",
+        environmentId: "remote",
+        archivedAt: null,
+        createdAt: "2026-01-01",
+        pinnedAt: "now",
+        pinOrderKey: null,
+      },
+    ];
+    expect((await useThreadActions().pinThread(target))._tag).toBe("Failure");
+    expect(commands.reorderPin).not.toHaveBeenCalled();
+    expect(commands.pin).not.toHaveBeenCalled();
+  });
+
+  it("requires a server update to append on an old destination with existing pins", async () => {
+    pinnedShells.legacy.add("undo-env");
+    pinnedShells.current = [
+      {
+        id: "remote",
+        environmentId: "remote",
+        archivedAt: null,
+        createdAt: "2026-01-01",
+        pinnedAt: "now",
+        pinOrderKey: "m",
+      },
+    ];
+    expect((await useThreadActions().pinThread(target))._tag).toBe("Failure");
+    expect(commands.pin).not.toHaveBeenCalled();
+  });
+
+  it("ignores archived keyless pins when appending", async () => {
+    pinnedShells.current = [
+      {
+        id: "archived",
+        environmentId: "remote",
+        archivedAt: "2026-01-02",
+        createdAt: "2026-01-01",
+        pinnedAt: "now",
+        pinOrderKey: null,
+      },
+    ];
+    pinnedShells.denied.add("remote");
+    expect((await useThreadActions().pinThread(target))._tag).toBe("Success");
+    expect(commands.reorderPin).not.toHaveBeenCalled();
+    expect(commands.pin).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([false, true])(
+    "restores a keyless unpin without append planning (old server: %s)",
+    async (old) => {
+      if (old) pinnedShells.legacy.add("undo-env");
+      threadShell.pinnedAt = "2026-01-01";
+      threadShell.pinOrderKey = null;
+      pinnedShells.current = [
+        {
+          id: "remaining",
+          environmentId: "undo-env",
+          archivedAt: null,
+          createdAt: "2026-01-02",
+          pinnedAt: "now",
+          pinOrderKey: null,
+        },
+      ];
+      const actions = useThreadActions();
+      await actions.unpinThread(target);
+      await currentUndo()();
+      expect(commands.pin).toHaveBeenCalledWith({
+        environmentId: target.environmentId,
+        input: { threadId: target.threadId },
+      });
+      expect(commands.reorderPin).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([false, true])(
+    "restores a keyless settled pin without append planning (old server: %s)",
+    async (old) => {
+      if (old) pinnedShells.legacy.add("undo-env");
+      threadShell.pinnedAt = "2026-01-01";
+      threadShell.pinOrderKey = null;
+      pinnedShells.current = [
+        {
+          id: "remaining",
+          environmentId: "undo-env",
+          archivedAt: null,
+          createdAt: "2026-01-02",
+          pinnedAt: "now",
+          pinOrderKey: null,
+        },
+      ];
+      await useThreadActions().settleThread(target);
+      await currentUndo()();
+      expect(commands.pin).toHaveBeenCalledWith({
+        environmentId: target.environmentId,
+        input: { threadId: target.threadId },
+      });
+      expect(commands.reorderPin).not.toHaveBeenCalled();
+    },
+  );
+
   it("ignores an old notice across hook instances and still restores the latest unpin", async () => {
     const sidebar = useThreadActions();
     const header = useThreadActions();
