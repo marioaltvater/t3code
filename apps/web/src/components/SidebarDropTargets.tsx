@@ -10,7 +10,7 @@ export type SidebarDropDestination = {
 };
 
 const sidebarSectionBoxClassName =
-  "absolute inset-0 flex min-h-0 flex-col items-center justify-center rounded-lg border border-dashed border-sidebar-foreground/20 bg-sidebar-foreground/3 px-3 text-sm leading-5 font-medium text-sidebar-foreground/80";
+  "absolute inset-0 flex min-h-0 flex-col items-center justify-center rounded-lg border border-dashed border-sidebar-foreground/20 px-3 text-sm leading-5 font-medium text-sidebar-foreground/80";
 
 export function SidebarDropBox({ destination }: { destination: SidebarDropDestination }) {
   const { setNodeRef, isOver } = useDroppable({
