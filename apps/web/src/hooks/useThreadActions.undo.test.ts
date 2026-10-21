@@ -52,6 +52,7 @@ const threadShell = vi.hoisted(() => ({
 const pinnedShells = vi.hoisted(() => ({
   denied: new Set<string>(),
   legacy: new Set<string>(),
+  noSnooze: new Set<string>(),
   current: [] as {
     id: string;
     environmentId: string;
@@ -59,6 +60,10 @@ const pinnedShells = vi.hoisted(() => ({
     createdAt: string;
     pinnedAt: string | null;
     pinOrderKey: string | null;
+    snoozedUntil?: string | null;
+    hasPendingApprovals?: boolean;
+    settledOverride?: "settled" | null;
+    lineage?: { relationshipToParent: "subagent" | null };
   }[],
 }));
 vi.mock("../state/entities", async (original) => ({
@@ -67,9 +72,18 @@ vi.mock("../state/entities", async (original) => ({
   readEnvironmentSupportsPinReorder: (environmentId: string) =>
     !pinnedShells.legacy.has(environmentId),
   readEnvironmentSupportsSettlement: () => true,
-  readEnvironmentSupportsSnooze: () => true,
+  readEnvironmentSupportsSnooze: (environmentId: string) =>
+    !pinnedShells.noSnooze.has(environmentId),
   readThreadShell: () => threadShell,
-  readThreadShells: () => pinnedShells.current,
+  readThreadShells: () =>
+    pinnedShells.current.map((shell) => ({
+      lineage: { relationshipToParent: null },
+      snoozedUntil: null,
+      hasPendingApprovals: false,
+      hasPendingUserInput: false,
+      settledOverride: null,
+      ...shell,
+    })),
 }));
 vi.mock("../state/use-atom-command", () => ({
   useAtomCommand: (command: unknown) => {
@@ -147,6 +161,7 @@ beforeEach(() => {
   pinnedShells.current = [];
   pinnedShells.denied.clear();
   pinnedShells.legacy.clear();
+  pinnedShells.noSnooze.clear();
 });
 afterEach(() => {
   vi.runAllTimers();
@@ -379,6 +394,51 @@ describe("unpin Undo", () => {
         input: { threadId: target.threadId },
       });
       expect(commands.reorderPin).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["snoozed", "settled", "subagent"])("ignores a hidden %s keyless pin", async (hidden) => {
+    pinnedShells.current = [
+      {
+        id: "hidden",
+        environmentId: "remote",
+        archivedAt: null,
+        createdAt: "2026-01-01",
+        pinnedAt: "now",
+        pinOrderKey: null,
+        ...(hidden === "snoozed" ? { snoozedUntil: "2099-01-01" } : {}),
+        ...(hidden === "settled" ? { settledOverride: "settled" as const } : {}),
+        ...(hidden === "subagent"
+          ? { lineage: { relationshipToParent: "subagent" as const } }
+          : {}),
+      },
+    ];
+    pinnedShells.denied.add("remote");
+    pinnedShells.legacy.add("remote");
+    expect((await useThreadActions().pinThread(target))._tag).toBe("Success");
+    expect(commands.reorderPin).not.toHaveBeenCalled();
+    expect(commands.pin).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["unsupported", "woken", "expired"])(
+    "includes a visible pin with %s snooze state",
+    async (state) => {
+      pinnedShells.current = [
+        {
+          id: "visible",
+          environmentId: "remote",
+          archivedAt: null,
+          createdAt: "2026-01-01",
+          pinnedAt: "now",
+          pinOrderKey: null,
+          snoozedUntil: state === "expired" ? "2020-01-01" : "2099-01-01",
+          hasPendingApprovals: state === "woken",
+        },
+      ];
+      if (state === "unsupported") pinnedShells.noSnooze.add("remote");
+      pinnedShells.legacy.add("remote");
+      expect((await useThreadActions().pinThread(target))._tag).toBe("Failure");
+      expect(commands.pin).not.toHaveBeenCalled();
     },
   );
 

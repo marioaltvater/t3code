@@ -364,9 +364,23 @@ export function useThreadListActions(): {
     }
     selectionHaptic();
     const canReorder = environmentSupportsPinReorder(thread.environmentId);
-    const pins = appAtomRegistry
-      .get(environmentThreadShells.threadShellsAtom)
-      .filter((shell) => shell.archivedAt === null && shell.pinnedAt != null);
+    const configs = appAtomRegistry.get(environmentServerConfigsAtom);
+    const pins = getThreadListV2OrderedSection({
+      threads: appAtomRegistry.get(environmentThreadShells.threadShellsAtom),
+      section: "pinned",
+      now: new Date().toISOString(),
+      queuedThreadKeys: appAtomRegistry.get(queuedThreadKeysAtom),
+      settlementEnvironmentIds: new Set(
+        [...configs].flatMap(([id, config]) =>
+          config.environment.capabilities.threadSettlement === true ? [id] : [],
+        ),
+      ),
+      snoozeEnvironmentIds: new Set(
+        [...configs].flatMap(([id, config]) =>
+          config.environment.capabilities.threadSnooze === true ? [id] : [],
+        ),
+      ),
+    });
     if (!canReorder && pins.length > 0) {
       Dialog.alert(
         "Could not pin thread",

@@ -5,7 +5,11 @@ import {
   scopedThreadKey,
 } from "@t3tools/client-runtime/environment";
 import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
-import { canSnooze, threadWokeAt } from "@t3tools/client-runtime/state/thread-settled";
+import {
+  canSnooze,
+  effectiveSnoozed,
+  threadWokeAt,
+} from "@t3tools/client-runtime/state/thread-settled";
 import { threadRuntimeCanArchive } from "@t3tools/client-runtime/state/models";
 import {
   AuthOrchestrationOperateScope,
@@ -641,8 +645,16 @@ export function useThreadActions() {
     const canReorder = readEnvironmentSupportsPinReorder(target.environmentId);
     let orderKey = canReorder ? (opts.orderKey ?? undefined) : undefined;
     if (opts.orderKey === undefined) {
+      const now = new Date().toISOString();
       const pins = readThreadShells().filter(
-        (shell) => shell.archivedAt === null && shell.pinnedAt != null,
+        (shell) =>
+          shell.pinnedAt != null &&
+          shell.archivedAt === null &&
+          shell.lineage.relationshipToParent !== "subagent" &&
+          (!readEnvironmentSupportsSettlement(shell.environmentId) ||
+            shell.settledOverride !== "settled") &&
+          (!readEnvironmentSupportsSnooze(shell.environmentId) ||
+            !effectiveSnoozed(shell, { now })),
       );
       if (!canReorder && pins.length > 0) {
         return AsyncResult.failure(

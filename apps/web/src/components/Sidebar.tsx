@@ -3487,10 +3487,6 @@ export default function Sidebar() {
   }
   const attemptPin = (threadRef: ScopedThreadRef) => {
     void (async () => {
-      // Fresh pins take the top of the arranged run: pinThread computes a
-      // key before the smallest key across ALL pinned shells — including
-      // snoozed pins hidden from this list, whose keys are still part of
-      // the run — so the new pin can't land beneath a hidden head.
       const result = await pinThread(threadRef);
       if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
         const error = squashAtomCommandFailure(result);

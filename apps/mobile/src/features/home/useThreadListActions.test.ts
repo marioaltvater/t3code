@@ -29,6 +29,7 @@ const state = vi.hoisted(() => ({
   afterRequest: undefined as (() => void) | undefined,
   failAction: null as string | null,
   legacyEnvironments: new Set<string>(),
+  noSnooze: new Set<string>(),
 }));
 
 vi.mock("react", () => ({
@@ -79,7 +80,7 @@ vi.mock("../../state/atom-registry", () => ({
                     environment: {
                       capabilities: {
                         threadSettlement: true,
-                        threadSnooze: true,
+                        threadSnooze: !state.noSnooze.has(environmentId),
                         threadPinning: true,
                         threadPinReorder: !state.legacyEnvironments.has(environmentId),
                         threadTitleRegeneration: true,
@@ -186,6 +187,7 @@ beforeEach(() => {
   state.afterRequest = undefined;
   state.failAction = null;
   state.legacyEnvironments.clear();
+  state.noSnooze.clear();
 });
 
 afterEach(() => vi.unstubAllEnvs());
@@ -350,6 +352,49 @@ describe("thread list operation permissions", () => {
     expect(await useThreadListActions().pinThread(makeThread())).toBe(true);
     expect(state.requests.map(({ action }) => action)).toEqual(["pin"]);
   });
+
+  it.each(["snoozed", "settled", "subagent"])("ignores a hidden %s keyless pin", async (hidden) => {
+    state.legacyEnvironments.add(otherEnvironmentId);
+    state.shells = [
+      makeThread({
+        environmentId: otherEnvironmentId,
+        pinnedAt: "now",
+        pinOrderKey: null,
+        ...(hidden === "snoozed" ? { snoozedUntil: "2099-01-01" } : {}),
+        ...(hidden === "settled" ? { settledOverride: "settled" as const } : {}),
+        ...(hidden === "subagent"
+          ? {
+              lineage: {
+                rootThreadId: ThreadId.make("root"),
+                parentThreadId: ThreadId.make("parent"),
+                relationshipToParent: "subagent" as const,
+              },
+            }
+          : {}),
+      }),
+    ];
+    expect(await useThreadListActions().pinThread(makeThread())).toBe(true);
+    expect(state.requests.map(({ action }) => action)).toEqual(["pin"]);
+  });
+
+  it.each(["unsupported", "woken", "expired"])(
+    "includes a visible pin with %s snooze state",
+    async (status) => {
+      state.legacyEnvironments.add(otherEnvironmentId);
+      if (status === "unsupported") state.noSnooze.add(otherEnvironmentId);
+      state.shells = [
+        makeThread({
+          environmentId: otherEnvironmentId,
+          pinnedAt: "now",
+          pinOrderKey: null,
+          snoozedUntil: status === "expired" ? "2020-01-01" : "2099-01-01",
+          hasPendingApprovals: status === "woken",
+        }),
+      ];
+      expect(await useThreadListActions().pinThread(makeThread())).toBe(false);
+      expect(state.requests).toEqual([]);
+    },
+  );
 
   it.each(mutationCases)(
     "%s rejects a retained callback after its environment loses permission",
