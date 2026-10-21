@@ -2,9 +2,13 @@ import { useEffect, useState } from "react";
 import { useHandleNewThread } from "../../hooks/useHandleNewThread";
 import { useEnvironments } from "../../state/environments";
 import { useThreadShells } from "../../state/entities";
-import { effectiveSnoozed } from "@t3tools/client-runtime/state/thread-settled";
+import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { useUiStateStore } from "../../uiStateStore";
+import { effectiveSnoozed, threadWokeAt } from "@t3tools/client-runtime/state/thread-settled";
 import {
   filterSidebarV2VisibleThreads,
+  hasUnseenCompletion,
+  resolveThreadLastVisitedAt,
   resolveSidebarThreadSection,
   sortPinnedThreadsForSidebar,
 } from "../Sidebar.logic";
@@ -18,6 +22,7 @@ import { useControllerUiSnapshot } from "./controllerUiState";
 
 export function ControllerLightingCoordinator() {
   const threads = useThreadShells();
+  const localVisits = useUiStateStore((state) => state.threadLastVisitedAtById);
   const { presentationById } = useEnvironments();
   const { routeThreadRef } = useHandleNewThread();
   const ui = useControllerUiSnapshot();
@@ -52,11 +57,24 @@ export function ControllerLightingCoordinator() {
       (candidate) => candidate.environmentId === ref.environmentId && candidate.id === ref.threadId,
     );
     if (!thread) return [];
+    const lastVisitedAt = resolveThreadLastVisitedAt(
+      thread.lastVisitedAt,
+      localVisits[scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id))],
+    );
+    const wokeAt = threadWokeAt(thread, { now });
+    const isWoke =
+      wokeAt !== null &&
+      Number.isFinite(Date.parse(wokeAt)) &&
+      (lastVisitedAt === undefined ||
+        !Number.isFinite(Date.parse(lastVisitedAt)) ||
+        Date.parse(lastVisitedAt) < Date.parse(wokeAt)) &&
+      thread.settledOverride !== "settled";
     return [
       {
         state: resolveControllerThreadLightState(
           thread,
           presentationById.get(thread.environmentId)?.connection.phase === "connected",
+          { isUnread: hasUnseenCompletion({ ...thread, lastVisitedAt }), isWoke },
         ),
         selected:
           routeThreadRef?.environmentId === thread.environmentId &&

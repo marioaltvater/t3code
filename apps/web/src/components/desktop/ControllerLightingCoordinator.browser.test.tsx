@@ -22,8 +22,9 @@ vi.mock("../../state/entities", async () => {
           archivedAt: null,
           lineage: { relationshipToParent: null },
           pinnedAt: "2026-10-21T00:00:00Z",
-          runtime: status === "completed" ? null : { status },
-          latestRun: null,
+          runtime: status === "completed" || status === "seen" ? null : { status },
+          latestRun: { completedAt: "2026-10-21T01:00:00Z" },
+          lastVisitedAt: status === "seen" ? "2026-10-21T02:00:00Z" : "2026-10-21T00:00:00Z",
         },
       ];
     },
@@ -69,10 +70,13 @@ it("changes working pin brightness and stops sending animation frames after idle
   expect(bright).toBeGreaterThan(dim!);
 
   await setStatus("completed");
+  expect(setLighting.mock.calls.at(-1)![0][0]).toBe(0x00cc66);
   const idleCount = setLighting.mock.calls.length;
   await act(() => vi.advanceTimersByTime(2_000));
   expect(setLighting).toHaveBeenCalledTimes(idleCount);
 
+  await setStatus("seen");
+  expect(setLighting.mock.calls.at(-1)![0][0]).toBe(0xffffff);
   await setStatus("running");
   await screen.unmount();
   const unmountedCount = setLighting.mock.calls.length;
@@ -84,7 +88,7 @@ it("does not start a pulse timer in a web client without the controller bridge",
   setup();
   fixture.status = "completed";
   using _bridge = stubGlobal("desktopBridge", undefined);
-  await using screen = await render(<ControllerLightingCoordinator />);
+  await using _screen = await render(<ControllerLightingCoordinator />);
   using interval = vi.spyOn(window, "setInterval");
   await setStatus("running");
   expect(interval).not.toHaveBeenCalled();

@@ -92,7 +92,12 @@ export function decodeK0Report(report: Uint8Array) {
     control,
     phase,
     sequence: report[8]! | (report[9]! << 8),
-    command: control === 11 ? null : K0_COMMANDS[control as keyof typeof K0_COMMANDS],
+    command:
+      control === 11
+        ? null
+        : control === 27 && report[7] === 1
+          ? "thread.settle"
+          : K0_COMMANDS[control as keyof typeof K0_COMMANDS],
   };
 }
 

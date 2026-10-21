@@ -5993,6 +5993,17 @@ export default function ChatView(props: ChatViewProps) {
         });
     } else if (action === "thread.stop") {
       if (canInterruptRunningThread) void onInterruptStable();
+    } else if (action === "thread.settle") {
+      if (
+        !readEnvironmentScope(environmentId, AuthOrchestrationOperateScope) ||
+        !isServerThread ||
+        !activeThreadRef ||
+        !supportsSettlement ||
+        activeThreadSettled
+      )
+        return;
+      if (settleAndAdvance(activeThreadRef)) return;
+      void settleThread(activeThreadRef).then(toastPinFailure("Failed to settle thread"));
     } else if (action === "thread.pin") {
       if (
         readEnvironmentScope(environmentId, AuthOrchestrationOperateScope) &&

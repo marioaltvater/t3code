@@ -49,6 +49,16 @@ describe("K0 input boundary", () => {
     expect(decodeK0Report(report(20))?.command).toBe("diff.toggleLatestTurn");
   });
 
+  it("settles with Command D6 + fn1 E1 and keeps plain fn1 navigation", () => {
+    expect(decodeK0Report(report(27))?.command).toBe("thread.previous");
+    const modified = report(27);
+    modified[7] = 1;
+    expect(decodeK0Report(modified)?.command).toBe("thread.settle");
+    const otherControl = report(28);
+    otherControl[7] = 1;
+    expect(decodeK0Report(otherControl)?.command).toBe("thread.next");
+  });
+
   it("selects the T3 vendor collection rather than Codex or the maintenance keyboard", () => {
     const descriptor = Buffer.from(
       "0660ff0961a1010962150026ff009520750881020963150026ff00952075089102c0",

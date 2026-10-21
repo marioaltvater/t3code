@@ -1,5 +1,5 @@
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
-import { resolveSidebarThreadStatus } from "../Sidebar.logic";
+import { resolveSidebarThreadStatus, resolveSidebarV2TopStatus } from "../Sidebar.logic";
 
 export const CONTROLLER_LED_COUNT = 26;
 export const CONTROLLER_PINNED_LED_INDICES = [0, 1, 2, 5, 6, 7] as const;
@@ -10,6 +10,7 @@ export const CONTROLLER_LIGHT = {
   dark: 0x000000,
   idle: 0xffffff,
   working: 0x0169cc,
+  done: 0x00cc66,
   selected: 0x55aaff,
   attention: 0xff6d00,
   disconnected: 0xffb000,
@@ -21,6 +22,7 @@ export const CONTROLLER_LIGHT = {
 export type ControllerThreadLightState =
   | "idle"
   | "working"
+  | "done"
   | "attention"
   | "error"
   | "disconnected";
@@ -49,6 +51,7 @@ export function resolveControllerThreadLightState(
     readonly blockedOnThreadWait?: boolean;
   },
   connected: boolean,
+  presentation: { readonly isUnread?: boolean; readonly isWoke?: boolean } = {},
 ): ControllerThreadLightState {
   if (!connected) return "disconnected";
   const status = resolveSidebarThreadStatus({
@@ -65,11 +68,18 @@ export function resolveControllerThreadLightState(
   if (status === "failed") return "error";
   if (status === "limited") return "attention";
   if (status === "working" || status === "waiting") return "working";
-  return "idle";
+  const topStatus = resolveSidebarV2TopStatus({
+    status,
+    isUnread: presentation.isUnread === true,
+    isWoke: presentation.isWoke === true,
+  });
+  if (topStatus === "woke") return "attention";
+  return topStatus === "done" ? "done" : "idle";
 }
 
 const STATE_COLOR: Record<ControllerThreadLightState, number> = {
   idle: CONTROLLER_LIGHT.idle,
+  done: CONTROLLER_LIGHT.done,
   working: CONTROLLER_LIGHT.working,
   attention: CONTROLLER_LIGHT.attention,
   disconnected: CONTROLLER_LIGHT.disconnected,
@@ -78,6 +88,7 @@ const STATE_COLOR: Record<ControllerThreadLightState, number> = {
 
 const SELECTED_STATE_COLOR: Record<ControllerThreadLightState, number> = {
   idle: 0xffffff,
+  done: 0x55ffaa,
   working: 0x55aaff,
   attention: 0xffa040,
   disconnected: 0xffd060,

@@ -141,3 +141,37 @@ it("wakes Settings lighting at the next snooze expiry and caps long timers", () 
     2_147_483_647,
   );
 });
+
+it("keeps Done green steady and gives active and wake states priority", () => {
+  const unread = { isUnread: true };
+  const completed = { runtime: null, latestRun: null } as never;
+  expect(resolveControllerThreadLightState(completed, true, unread)).toBe("done");
+  expect(resolveControllerThreadLightState(completed, true, { isUnread: false })).toBe("idle");
+  expect(resolveControllerThreadLightState(completed, false, unread)).toBe("disconnected");
+  expect(resolveControllerThreadLightState(completed, true, { ...unread, isWoke: true })).toBe(
+    "attention",
+  );
+  for (const [status, expected] of [
+    ["running", "working"],
+    ["failed", "error"],
+  ] as const) {
+    expect(resolveControllerThreadLightState({ runtime: { status } } as never, true, unread)).toBe(
+      expected,
+    );
+  }
+  expect(
+    resolveControllerThreadLightState(
+      { runtime: null, hasPendingApprovals: true } as never,
+      true,
+      unread,
+    ),
+  ).toBe("attention");
+  const pins = [
+    { state: "done" as const, selected: false },
+    { state: "done" as const, selected: true },
+  ];
+  const dim = createControllerLightingFrame({ pins, workingPulseIntensity: 0.28 });
+  expect(dim).toEqual(createControllerLightingFrame({ pins, workingPulseIntensity: 1 }));
+  expect(dim[0]).toBe(CONTROLLER_LIGHT.done);
+  expect(dim[1]).toBe(0x55ffaa);
+});
