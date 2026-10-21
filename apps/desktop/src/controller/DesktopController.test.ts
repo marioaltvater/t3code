@@ -24,7 +24,7 @@ vi.mock("./LinuxK0Controller.ts", () => ({
 }));
 
 it.effect(
-  "reveals and focuses T3 only for microphone-down, before delivering the recording event",
+  "starts without a launcher flag and reveals T3 only for microphone-down before delivery",
   () =>
     Effect.gen(function* () {
       const calls: unknown[] = [];
@@ -39,11 +39,12 @@ it.effect(
           },
         },
       } as unknown as Electron.BrowserWindow;
-      vi.stubEnv("T3CODE_K0_CONTROLLER", "1");
+      vi.stubEnv("T3CODE_K0_CONTROLLER", undefined);
       try {
         yield* Effect.scoped(
           Effect.gen(function* () {
             yield* initializeDesktopController();
+            expect(receiver.options).not.toBeNull();
             const options = receiver.options!;
             options.event({ type: "microphone", captureId: "test", pressed: true });
             yield* Effect.promise(() => pending.promise);
@@ -90,4 +91,31 @@ it.effect(
         receiver.options = null;
       }
     }),
+);
+
+it.effect("does not claim the controller when explicitly disabled or outside Linux", () =>
+  Effect.gen(function* () {
+    for (const [platform, flag] of [
+      ["linux", "0"],
+      ["darwin", undefined],
+    ] as const) {
+      receiver.options = null;
+      vi.stubEnv("T3CODE_K0_CONTROLLER", flag);
+      try {
+        yield* Effect.scoped(initializeDesktopController()).pipe(
+          Effect.provideService(DesktopEnvironment, {
+            platform,
+          } as DesktopEnvironment["Service"]),
+          Effect.provideService(ElectronWindow, {} as ElectronWindow["Service"]),
+          Effect.provideService(DesktopIpc, {
+            handle: () => Effect.void,
+          } as unknown as DesktopIpc["Service"]),
+          Effect.provideService(DesktopWindow, {} as DesktopWindow["Service"]),
+        );
+        expect(receiver.options).toBeNull();
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    }
+  }),
 );

@@ -48,7 +48,7 @@ export const initializeDesktopController = Effect.fn("desktop.controller.initial
     main.value.webContents.send(Channels.CONTROLLER_EVENT_CHANNEL, event);
   });
   const controller =
-    environment.platform === "linux" && process.env.T3CODE_K0_CONTROLLER === "1"
+    environment.platform === "linux" && process.env.T3CODE_K0_CONTROLLER !== "0"
       ? startLinuxK0Controller({
           command: (command) =>
             run(
