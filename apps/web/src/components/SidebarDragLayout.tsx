@@ -10,7 +10,9 @@ export function SidebarDragLayout({
   listRef: { readonly current: HTMLUListElement | null };
 }) {
   const { measureDroppableContainers } = useDndContext();
-  const previous = useRef(new Map<string, { top: number; height: number; box?: HTMLElement }>());
+  const previous = useRef(
+    new Map<string, { top: number; height: number; box?: HTMLElement; source?: boolean }>(),
+  );
   const wasDragging = useRef(false);
   const animations = useRef<
     Map<
@@ -47,7 +49,10 @@ export function SidebarDragLayout({
       exit?.remove();
     }
     animations.current.clear();
-    const next = new Map<string, { top: number; height: number; box?: HTMLElement }>();
+    const next = new Map<
+      string,
+      { top: number; height: number; box?: HTMLElement; source?: boolean }
+    >();
     for (const child of list.children) {
       if (!(child instanceof HTMLElement)) continue;
       const key = child.dataset.threadItem ?? child.dataset.sidebarMarker;
@@ -56,12 +61,28 @@ export function SidebarDragLayout({
       const position = {
         top: child.offsetTop,
         height: child.offsetHeight,
+        source: child.hasAttribute("data-sidebar-source"),
         ...(box ? { box } : {}),
       };
       next.set(key, position);
-      // Source cards keep their size and use the sorter's own peer motion.
-      if ((!layout.dragging && !leaving) || reducedMotion || child.dataset.threadItem) continue;
       const before = previous.current.get(key);
+      // The source header follows its cards; a separate transform makes its
+      // text shimmer while the cards use the sorter's own peer motion.
+      if (
+        (!layout.dragging && !leaving) ||
+        reducedMotion ||
+        child.dataset.threadItem ||
+        position.source ||
+        before?.source
+      )
+        continue;
+      if (
+        before &&
+        before.top === position.top &&
+        before.height === position.height &&
+        Boolean(before.box) === Boolean(box)
+      )
+        continue;
       const visual = child.querySelector<HTMLElement>('[role="button"]') ?? child.firstElementChild;
       if (!(visual instanceof HTMLElement) || position.height === 0) continue;
       const offset = before ? before.top - position.top : 0;
