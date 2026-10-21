@@ -17,14 +17,14 @@ function report(control: number, phase = 1) {
 }
 
 describe("K0 input boundary", () => {
-  it("decodes pinned slots, microphone release, and signed dial directions independently", () => {
+  it("decodes pinned slots, microphone release, and physical dial directions independently", () => {
     expect(decodeK0Report(report(6))).toMatchObject({
       command: "thread.pinned.6",
       sequence: 65_535,
     });
     expect(decodeK0Report(report(11, 0))).toMatchObject({ control: 11, phase: 0, command: null });
-    expect(decodeK0Report(report(25, 2))?.command).toBe("chat.previousTurn");
-    expect(decodeK0Report(report(26, 2))?.command).toBe("chat.nextTurn");
+    expect(decodeK0Report(report(25, 2))?.command).toBe("chat.nextTurn");
+    expect(decodeK0Report(report(26, 2))?.command).toBe("chat.previousTurn");
   });
 
   it("rejects malformed reports before dispatch", () => {

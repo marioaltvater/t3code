@@ -20,10 +20,10 @@ describe("controller lighting projection", () => {
     });
     expect(frame).toHaveLength(26);
     expect(CONTROLLER_PINNED_LED_INDICES.map((index) => frame[index])).toEqual([
-      CONTROLLER_LIGHT.working,
-      CONTROLLER_LIGHT.idle,
-      CONTROLLER_LIGHT.attention,
-      CONTROLLER_LIGHT.error,
+      0x001325,
+      0x2e2e2e,
+      0x2e1400,
+      0x2e0009,
       CONTROLLER_LIGHT.dark,
       CONTROLLER_LIGHT.dark,
     ]);
@@ -56,8 +56,8 @@ describe("controller lighting projection", () => {
     expect(dim).toBe(0.28);
     expect(bright).toBe(1);
     expect(dimFrame[0]).toBeLessThan(brightFrame[0]!);
-    expect(dimFrame[1]).toBe(CONTROLLER_LIGHT.idle);
-    expect(brightFrame[0]).toBe(CONTROLLER_LIGHT.working);
+    expect(dimFrame[1]).toBe(0x2e2e2e);
+    expect(brightFrame[0]).toBe(0x001325);
   });
 
   it("distinguishes disconnected, approval, failure, and active threads", () => {
@@ -108,7 +108,7 @@ describe("controller lighting projection", () => {
     expect(frame.slice(10, 13)).toEqual([
       CONTROLLER_LIGHT.idle,
       CONTROLLER_LIGHT.working,
-      CONTROLLER_LIGHT.idle,
+      CONTROLLER_LIGHT.pinned,
     ]);
     expect(frame[13]).toBe(CONTROLLER_LIGHT.ambient);
     expect(frame[14]).toBe(CONTROLLER_LIGHT.idle);
@@ -172,6 +172,41 @@ it("keeps Done green steady and gives active and wake states priority", () => {
   ];
   const dim = createControllerLightingFrame({ pins, workingPulseIntensity: 0.28 });
   expect(dim).toEqual(createControllerLightingFrame({ pins, workingPulseIntensity: 1 }));
-  expect(dim[0]).toBe(CONTROLLER_LIGHT.done);
+  expect(dim[0]).toBe(0x002512);
   expect(dim[1]).toBe(0x55ffaa);
+});
+
+it("makes the selected idle slot brighter and moves the highlight with selection", () => {
+  const before = createControllerLightingFrame({
+    pins: [
+      { state: "idle", selected: true },
+      { state: "idle", selected: false },
+    ],
+  });
+  const after = createControllerLightingFrame({
+    pins: [
+      { state: "idle", selected: false },
+      { state: "idle", selected: true },
+    ],
+  });
+  expect(before.slice(0, 2)).toEqual([0xffffff, 0x2e2e2e]);
+  expect(after.slice(0, 2)).toEqual([0x2e2e2e, 0xffffff]);
+});
+
+it("keeps a selected pin brighter across status colors and the full working pulse", () => {
+  const brightness = (rgb: number) =>
+    ((rgb >> 16) & 255) * 0.2126 + ((rgb >> 8) & 255) * 0.7152 + (rgb & 255) * 0.0722;
+  for (const state of ["idle", "done", "working", "attention", "error", "disconnected"] as const) {
+    const frame = (selected: boolean, workingPulseIntensity: number) =>
+      createControllerLightingFrame({ pins: [{ state, selected }], workingPulseIntensity })[0]!;
+    expect(brightness(frame(true, 0.28))).toBeGreaterThan(brightness(frame(false, 1)) * 2);
+  }
+});
+
+it("keeps the D3 pin indicator dim blue when pinned and off otherwise", () => {
+  expect(createControllerLightingFrame({ pins: [], secondary: { pinOpen: true } })[12]).toBe(
+    0x00152c,
+  );
+  expect(createControllerLightingFrame({ pins: [], secondary: { pinOpen: false } })[12]).toBe(0);
+  expect(createControllerLightingFrame({ pins: [] })[12]).toBe(0);
 });

@@ -2,18 +2,25 @@ import { expect, it, vi } from "vite-plus/test";
 import { act, fakeTimers, render, stubGlobal } from "../../../test/render";
 import { ControllerLightingCoordinator } from "./ControllerLightingCoordinator";
 
-const fixture = vi.hoisted(() => ({ status: "running", listeners: new Set<() => void>() }));
+const fixture = vi.hoisted(() => ({
+  status: "running",
+  selected: false,
+  pinned: false,
+  version: 0,
+  listeners: new Set<() => void>(),
+}));
 vi.mock("../../state/entities", async () => {
   const { useSyncExternalStore } = await import("react");
   return {
     useThreadShells: () => {
-      const status = useSyncExternalStore(
+      useSyncExternalStore(
         (listener) => {
           fixture.listeners.add(listener);
           return () => fixture.listeners.delete(listener);
         },
-        () => fixture.status,
+        () => fixture.version,
       );
+      const status = fixture.status;
       return [
         {
           id: "working-pin",
@@ -36,23 +43,31 @@ vi.mock("../../state/environments", () => ({
   }),
 }));
 vi.mock("../../hooks/useHandleNewThread", () => ({
-  useHandleNewThread: () => ({ routeThreadRef: null }),
+  useHandleNewThread: () => ({
+    routeThreadRef: fixture.selected
+      ? { environmentId: "test-environment", threadId: "working-pin" }
+      : null,
+  }),
 }));
 vi.mock("./controllerUiState", () => ({
   useControllerUiSnapshot: () => ({
     pinnedThreads: [{ environmentId: "test-environment", threadId: "working-pin" }],
-    secondary: {},
+    secondary: { pinOpen: fixture.pinned },
   }),
 }));
 
 function setup() {
   fixture.status = "running";
+  fixture.selected = false;
+  fixture.pinned = false;
+  fixture.version = 0;
   fixture.listeners.clear();
 }
 
 function setStatus(status: string) {
   return act(() => {
     fixture.status = status;
+    fixture.version++;
     for (const listener of fixture.listeners) listener();
   });
 }
@@ -70,13 +85,13 @@ it("changes working pin brightness and stops sending animation frames after idle
   expect(bright).toBeGreaterThan(dim!);
 
   await setStatus("completed");
-  expect(setLighting.mock.calls.at(-1)![0][0]).toBe(0x00cc66);
+  expect(setLighting.mock.calls.at(-1)![0][0]).toBe(0x002512);
   const idleCount = setLighting.mock.calls.length;
   await act(() => vi.advanceTimersByTime(2_000));
   expect(setLighting).toHaveBeenCalledTimes(idleCount);
 
   await setStatus("seen");
-  expect(setLighting.mock.calls.at(-1)![0][0]).toBe(0xffffff);
+  expect(setLighting.mock.calls.at(-1)![0][0]).toBe(0x2e2e2e);
   await setStatus("running");
   await screen.unmount();
   const unmountedCount = setLighting.mock.calls.length;
@@ -92,4 +107,24 @@ it("does not start a pulse timer in a web client without the controller bridge",
   using interval = vi.spyOn(window, "setInterval");
   await setStatus("running");
   expect(interval).not.toHaveBeenCalled();
+});
+
+it("sends brighter selected idle colors and a separate dim blue pin indicator", async () => {
+  setup();
+  fixture.status = "seen";
+  const setLighting = vi.fn(async (_colors: number[]) => {});
+  using _bridge = stubGlobal("desktopBridge", { controller: { setLighting } });
+  await using _screen = await render(<ControllerLightingCoordinator />);
+  expect(setLighting.mock.calls.at(-1)![0][0]).toBe(0x2e2e2e);
+  expect(setLighting.mock.calls.at(-1)![0][12]).toBe(0);
+  fixture.selected = true;
+  fixture.pinned = true;
+  await setStatus("seen");
+  expect(setLighting.mock.calls.at(-1)![0][0]).toBe(0xffffff);
+  expect(setLighting.mock.calls.at(-1)![0][12]).toBe(0x00152c);
+  fixture.selected = false;
+  fixture.pinned = false;
+  await setStatus("seen");
+  expect(setLighting.mock.calls.at(-1)![0][0]).toBe(0x2e2e2e);
+  expect(setLighting.mock.calls.at(-1)![0][12]).toBe(0);
 });

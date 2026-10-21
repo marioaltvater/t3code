@@ -64,8 +64,9 @@ export const K0_COMMANDS = {
   22: "chat.newWithoutProject",
   23: "composer.submit",
   24: "composer.focus",
-  25: "chat.previousTurn",
-  26: "chat.nextTurn",
+  // The flashed encoder map emits 25 clockwise and 26 counterclockwise.
+  25: "chat.nextTurn",
+  26: "chat.previousTurn",
   27: "thread.previous",
   28: "thread.next",
   30: "threadPanel.toggle",

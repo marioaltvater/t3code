@@ -5,6 +5,7 @@ export const CONTROLLER_LED_COUNT = 26;
 export const CONTROLLER_PINNED_LED_INDICES = [0, 1, 2, 5, 6, 7] as const;
 export const CONTROLLER_AMBIENT_LED_INDICES = [3, 8, 4, 9, 14, 18, 22, 24, 13, 25] as const;
 const WORKING_PULSE_PERIOD_MS = 2_000;
+const UNSELECTED_PIN_INTENSITY = 0.18;
 
 export const CONTROLLER_LIGHT = {
   dark: 0x000000,
@@ -12,6 +13,7 @@ export const CONTROLLER_LIGHT = {
   working: 0x0169cc,
   done: 0x00cc66,
   selected: 0x55aaff,
+  pinned: 0x00152c,
   attention: 0xff6d00,
   disconnected: 0xffb000,
   error: 0xff0033,
@@ -119,8 +121,9 @@ export function createControllerLightingFrame(input: {
     const led = CONTROLLER_PINNED_LED_INDICES[slot];
     if (led !== undefined) {
       const color = pin.selected ? SELECTED_STATE_COLOR[pin.state] : STATE_COLOR[pin.state];
-      colors[led] =
-        pin.state === "working" ? scaleRgb(color, input.workingPulseIntensity ?? 1) : color;
+      const selectionIntensity = pin.selected ? 1 : UNSELECTED_PIN_INTENSITY;
+      const pulseIntensity = pin.state === "working" ? (input.workingPulseIntensity ?? 1) : 1;
+      colors[led] = scaleRgb(color, selectionIntensity * pulseIntensity);
     }
     if (pin.selected) {
       for (const index of CONTROLLER_AMBIENT_LED_INDICES)
@@ -131,7 +134,7 @@ export function createControllerLightingFrame(input: {
   if (secondary) {
     colors[10] = secondary.terminalOpen ? CONTROLLER_LIGHT.idle : CONTROLLER_LIGHT.dark;
     colors[11] = secondary.browserOpen ? CONTROLLER_LIGHT.working : CONTROLLER_LIGHT.dark;
-    colors[12] = secondary.pinOpen ? CONTROLLER_LIGHT.idle : CONTROLLER_LIGHT.dark;
+    colors[12] = secondary.pinOpen ? CONTROLLER_LIGHT.pinned : CONTROLLER_LIGHT.dark;
     colors[14] = secondary.infoOpen ? CONTROLLER_LIGHT.idle : CONTROLLER_LIGHT.dark;
     colors[22] = secondary.diffOpen ? CONTROLLER_LIGHT.working : CONTROLLER_LIGHT.dark;
     const count = secondary.effortCount ?? 0;
