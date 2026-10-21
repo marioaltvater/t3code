@@ -19,7 +19,7 @@ describe("provider auth return destinations", () => {
     "t3code-personal://app/auth/callback",
     "t3code-personal://user@ app/welcome",
     "t3code-personal://app/welcome/../evil",
-    "t3code://app/welcome",
+    "t3code-unknown://app/welcome",
     "https://attacker.example/welcome",
     "file:///welcome",
     "javascript:alert(1)",

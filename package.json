@@ -53,7 +53,7 @@
     "fork:dev": "node scripts/dev-runner.ts dev --home-dir .t3",
     "fork:check": "node scripts/fork-check.mjs",
     "fork:desktop:setup": "pnpm fork:setup --filter @t3tools/desktop...",
-    "fork:desktop:build": "node scripts/build-desktop-artifact.ts --platform linux --target AppImage --arch x64 --build-version 0.1.0-personal.1 --output-dir release/personal",
+    "fork:desktop:build": "node scripts/build-desktop-artifact.ts --platform linux --target AppImage --arch x64 --build-version 0.1.1-personal.1 --output-dir release/personal",
     "fork:desktop:install": "bash scripts/install-personal-linux.sh"
   },
   "devDependencies": {

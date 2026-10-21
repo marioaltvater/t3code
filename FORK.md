@@ -52,7 +52,7 @@ backup of the previous AppImage. No system package installation is needed.
 
 The fork uses `~/.t3-personal` for its own data and a separate Chromium profile.
 It registers `t3code-personal://` links and does not replace the official app's
-launcher or profile. Fresh desktop profiles open in Codex dark; existing saved
+launcher or profile. Fresh profiles open in Codex dark; existing saved
 appearance preferences remain respected. Automatic upstream updates are disabled;
 rebuild and run the install command after updating the fork. Your existing
 provider CLI logins remain usable, while conversations and app settings start
@@ -111,14 +111,16 @@ git remote set-url --push upstream DISABLED
 git config remote.pushDefault origin
 ```
 
-Start with a clean working tree, then merge on an update branch:
+Save any uncommitted work and create a backup branch before updating. Merge the
+latest stable release tag on an update branch; keep nightly updates deliberate:
 
 ```sh
-git fetch upstream main
-git switch -c update/upstream
-git merge upstream/main
+git fetch upstream tag v0.1.1
+git branch backup/pre-v0.1.1
+git switch -c update/stable-v0.1.1
+git merge v0.1.1
 pnpm fork:setup
-pnpm fork:check origin/main
+pnpm fork:check v0.1.1
 pnpm fork:dev
 ```
 
@@ -132,9 +134,13 @@ After checking the UI and the update branch, advance main:
 
 ```sh
 git switch main
-git merge --ff-only update/upstream
+git merge --ff-only update/stable-v0.1.1
 git push origin main
 ```
+
+Before rebuilding, update the personal build version in `package.json` to match
+the release (for example, `0.1.1-personal.1`). Test the rebuilt app with isolated
+state before installing it. Installation keeps the previous AppImage as a backup.
 
 Keep updates as ordinary merges, with personal changes in small commits. Do not
 force-push shared main or overwrite this fork with GitHub's discard-changes sync.

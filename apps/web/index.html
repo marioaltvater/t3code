@@ -228,7 +228,6 @@
         try {
           // Appearance preferences can be saved independently of the theme ID.
           if (
-            window.desktopBridge &&
             window.localStorage.getItem("t3code:theme") === null &&
             window.localStorage.getItem(THEME_APPEARANCE_MODE_STORAGE_KEY) === null &&
             window.localStorage.getItem(THEME_FOLLOW_SYSTEM_STORAGE_KEY) === null

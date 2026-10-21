@@ -4,7 +4,13 @@ import { observeResize } from "~/lib/observeResize";
 
 import { truncateProjectName } from "./DraftProjectName.logic";
 
-export function DraftProjectName({ value }: { value: string }) {
+export function DraftProjectName({
+  value,
+  singleLine = false,
+}: {
+  value: string;
+  singleLine?: boolean;
+}) {
   const containerRef = useRef<HTMLSpanElement>(null);
   const measurementRef = useRef<HTMLSpanElement>(null);
   const [displayName, setDisplayName] = useState(value);
@@ -38,7 +44,7 @@ export function DraftProjectName({ value }: { value: string }) {
   return (
     <span
       ref={containerRef}
-      className="inline-grid min-w-0 max-w-full overflow-hidden align-baseline whitespace-nowrap"
+      className={`inline-grid min-w-0 max-w-full overflow-hidden align-baseline whitespace-nowrap ${singleLine ? "text-left" : ""}`}
     >
       {/* Keep the full name's intrinsic width so fitting the visible text cannot shrink its budget. */}
       <span
