@@ -3,6 +3,20 @@ import type { KeybindingCommand } from "@t3tools/contracts";
 export const K0_REPORT_SIZE = 32;
 export const K0_LED_COUNT = 26;
 
+export function decodeK0LightingAck(report: Uint8Array) {
+  if (
+    report.length !== K0_REPORT_SIZE ||
+    report[0] !== 0x54 ||
+    report[1] !== 0x33 ||
+    report[2] !== 0x41 ||
+    report[3] !== 0x30 ||
+    report[4] !== 1 ||
+    report.subarray(6).some((byte) => byte !== 0)
+  )
+    return null;
+  return report[5]!;
+}
+
 export function encodeK0Lighting(colors: ReadonlyArray<number>, sequence: number) {
   if (
     colors.length !== K0_LED_COUNT ||

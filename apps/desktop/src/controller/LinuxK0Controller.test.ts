@@ -57,8 +57,9 @@ function setup() {
   device.writeBusy = false;
   vi.useFakeTimers();
   const command = vi.fn();
-  const controller = startLinuxK0Controller({ command, event: vi.fn(), warning: vi.fn() });
-  return { controller, command };
+  const warning = vi.fn();
+  const controller = startLinuxK0Controller({ command, event: vi.fn(), warning });
+  return { controller, command, warning };
 }
 
 function submit(sequence: number) {
@@ -81,6 +82,33 @@ it("discards a submit queued between the last unavailable poll and ready IPC", a
     device.reports.push(submit(2));
     await vi.advanceTimersByTimeAsync(12);
     expect(command).toHaveBeenCalledExactlyOnceWith("composer.submit");
+  } finally {
+    await controller.close();
+    vi.useRealTimers();
+  }
+});
+
+it("detects firmware that accepts USB writes but never acknowledges lighting", async () => {
+  const { controller, command, warning } = setup();
+  try {
+    controller.setReady(true);
+    controller.setLighting(Array<number>(26).fill(0x102030));
+    await vi.advanceTimersByTimeAsync(4_992);
+    expect(device.writes.length).toBeGreaterThan(0);
+    expect(warning).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1_008);
+    expect(warning).toHaveBeenCalledExactlyOnceWith(
+      "K0 has not acknowledged its LED state. Check that the T3 lighting firmware is installed.",
+    );
+    const ack = Buffer.alloc(32);
+    ack.write("T3A0");
+    ack[4] = 1;
+    ack[5] = device.writes.at(-1)![7]!;
+    device.reports.push(ack);
+    await vi.advanceTimersByTimeAsync(12);
+    expect(command).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(4_008);
+    expect(warning).toHaveBeenCalledTimes(1);
   } finally {
     await controller.close();
     vi.useRealTimers();

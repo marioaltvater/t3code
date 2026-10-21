@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
-import { decodeK0Report, encodeK0Lighting, isK0Interface } from "./protocol.ts";
+import {
+  decodeK0Report,
+  decodeK0LightingAck,
+  encodeK0Lighting,
+  isK0Interface,
+} from "./protocol.ts";
 
 function report(control: number, phase = 1) {
   const value = Buffer.alloc(32);
@@ -52,6 +57,26 @@ describe("K0 input boundary", () => {
     );
     expect(isK0Interface(identity, new Uint8Array([5, 1, 9, 6]))).toBe(false);
   });
+});
+
+it("accepts only complete, versioned lighting acknowledgements", () => {
+  const ack = Buffer.alloc(32);
+  ack.write("T3A0");
+  ack[4] = 1;
+  ack[5] = 255;
+  expect(decodeK0LightingAck(ack)).toBe(255);
+  expect(decodeK0Report(ack)).toBeNull();
+  expect(decodeK0LightingAck(ack.subarray(1))).toBeNull();
+  for (const [index, value] of [
+    [0, 0],
+    [4, 2],
+    [6, 1],
+    [31, 1],
+  ]) {
+    const invalid = Buffer.from(ack);
+    invalid[index!] = value!;
+    expect(decodeK0LightingAck(invalid)).toBeNull();
+  }
 });
 
 it("encodes an atomic 26 LED transaction with hidraw's zero report ID and blank padding", () => {

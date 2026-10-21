@@ -11,6 +11,7 @@ import type { DesktopControllerEvent } from "@t3tools/contracts";
 import { makeControllerDictation } from "./dictation.ts";
 import {
   decodeK0Report,
+  decodeK0LightingAck,
   encodeK0Lighting,
   isK0Interface,
   K0_LED_COUNT,
@@ -36,6 +37,9 @@ export function startLinuxK0Controller(options: {
   let lightingSequence = 0;
   let lightingSentAt = 0;
   let blackoutPending = false;
+  let lightingSentSequence: number | null = null;
+  let lightingVerifiedAt: number | null = null;
+  let lightingStartedAt: number | null = null;
   const dark = Array<number>(K0_LED_COUNT).fill(0);
   const warn = (message: string) => {
     if (message !== lastWarning) options.warning(message);
@@ -72,6 +76,9 @@ export function startLinuxK0Controller(options: {
     device = null;
     lightingDirty = true;
     previousSequence = null;
+    lightingSentSequence = null;
+    lightingVerifiedAt = null;
+    lightingStartedAt = null;
     ready = false;
     dictation.setReady(false);
   };
@@ -112,6 +119,8 @@ export function startLinuxK0Controller(options: {
           throw new Error("Incomplete K0 lighting report");
         }
       }
+      lightingSentSequence = (lightingSequence - 1) & 0xff;
+      lightingStartedAt ??= NodePerfHooks.performance.now();
       return true;
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
@@ -132,6 +141,13 @@ export function startLinuxK0Controller(options: {
         if (length === 0) {
           disconnect();
           return;
+        }
+        const ack = decodeK0LightingAck(report.subarray(0, length));
+        if (ack !== null) {
+          if (ack === lightingSentSequence) {
+            lightingVerifiedAt = NodePerfHooks.performance.now();
+          }
+          continue;
         }
         const event = decodeK0Report(report.subarray(0, length));
         if (!event || event.sequence === previousSequence) continue;
@@ -175,6 +191,15 @@ export function startLinuxK0Controller(options: {
           lightingSentAt = NodePerfHooks.performance.now();
         }
       }
+      if (
+        ready &&
+        lighting &&
+        lightingStartedAt !== null &&
+        NodePerfHooks.performance.now() - (lightingVerifiedAt ?? lightingStartedAt) > 5_000
+      )
+        warn(
+          "K0 has not acknowledged its LED state. Check that the T3 lighting firmware is installed.",
+        );
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
         warn(`K0 controller discovery: ${error instanceof Error ? error.message : String(error)}`);
@@ -208,6 +233,8 @@ export function startLinuxK0Controller(options: {
       if (!value) {
         blackoutPending = !writeLighting(dark);
         lighting = null;
+        lightingStartedAt = null;
+        lightingVerifiedAt = null;
       }
       requestedReady = value;
       ready = false;

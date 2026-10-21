@@ -77,10 +77,19 @@ export const initializeDesktopController = Effect.fn("desktop.controller.initial
       if (!ready) return;
       const contents = main.value.webContents;
       const reset = () => controller?.setReady(false);
-      contents.once("did-start-loading", reset);
+      // Hash routes and subframes emit loading events without replacing React's subscribers.
+      const navigationStarted = (
+        _event: unknown,
+        _url: string,
+        isInPlace: boolean,
+        isMainFrame: boolean,
+      ) => {
+        if (isMainFrame && !isInPlace) reset();
+      };
+      contents.on("did-start-navigation", navigationStarted);
       contents.once("destroyed", reset);
       clearWindowListeners = () => {
-        contents.removeListener("did-start-loading", reset);
+        contents.removeListener("did-start-navigation", navigationStarted);
         contents.removeListener("destroyed", reset);
       };
     }),
