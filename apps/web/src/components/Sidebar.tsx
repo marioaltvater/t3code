@@ -1179,7 +1179,7 @@ function SnoozeMenuButton(props: {
 type SortableThreadRowBag = Pick<
   ReturnType<typeof useSortable>,
   "listeners" | "setNodeRef" | "transform" | "transition" | "isDragging"
-> & { floating?: boolean; dragging?: boolean };
+> & { floating?: boolean; dragging?: boolean; slotHeight?: number | undefined };
 
 // Keep marker registration stable across sidebar updates.
 const SIDEBAR_SORTABLE_DRAG_DISABLED = { draggable: true } as const;
@@ -1237,6 +1237,7 @@ function DraggableThreadRow(
     contextDrag: boolean;
     floatingDuringDrag: boolean;
     sidebarDragging: boolean;
+    dragSlotHeight: number | undefined;
   },
 ) {
   const {
@@ -1245,6 +1246,7 @@ function DraggableThreadRow(
     contextDrag,
     floatingDuringDrag,
     sidebarDragging,
+    dragSlotHeight,
     ...rowProps
   } = props;
   const canOperateThread = useEnvironmentScope(
@@ -1279,6 +1281,7 @@ function DraggableThreadRow(
     isDragging: isDragging && !contextDrag,
     floating: floatingDuringDrag && isDragging && !contextDrag,
     dragging: sidebarDragging,
+    slotHeight: dragSlotHeight,
   };
   // Keyed by variant so a card/slim switch remounts the row.
   return <SidebarThreadRow key={rowProps.variant} {...rowProps} sortable={bag} />;
@@ -2012,6 +2015,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         style: {
           transform: CSS.Translate.toString(sortable.transform),
           transition: sortable.transition,
+          // Compacting the held card must not resize neighboring destinations.
+          minHeight: sortable.isDragging ? sortable.slotHeight : undefined,
           // A zero-height boundary also makes dnd-kit scale the source to
           // zero. Only projected peers use scaleY as a visibility sentinel.
           visibility:
@@ -2178,7 +2183,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         {...(fileDropHandlers ?? {})}
         className={cn(
           "list-none [content-visibility:auto] [contain-intrinsic-size:auto_36px]",
-          sortable?.isDragging && "relative z-40 rounded-md bg-sidebar",
+          sortable?.isDragging && "relative z-40 rounded-md",
           sortable?.floating && "absolute top-0 left-0 w-full",
         )}
       >
@@ -2337,7 +2342,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
       {...(fileDropHandlers ?? {})}
       className={cn(
         "list-none py-0.5 [content-visibility:auto] [contain-intrinsic-size:auto_78px]",
-        sortable?.isDragging && "relative z-40 rounded-md bg-sidebar",
+        sortable?.isDragging && "relative z-40 rounded-md",
       )}
     >
       <Tooltip disabled={snoozeMenuOpen || sortable?.dragging}>
@@ -2913,6 +2918,7 @@ export default function Sidebar() {
   const [dragState, setDragState] = useState<{
     readonly activeKey: string;
     readonly activeSection: SidebarSection;
+    readonly sourceRowHeight: number | undefined;
     readonly pinnedSectionId: string | null;
     readonly dropBounds: { top: number; left: number; width: number; height: number };
     readonly destinationsExpanded: boolean;
@@ -3402,7 +3408,8 @@ export default function Sidebar() {
       "[data-thread-item][data-thread-dragging]",
     );
     if (!anchor || !node || !dragState) return args.transform;
-    const rect = node.getBoundingClientRect();
+    const card = node.querySelector<HTMLElement>('[role="button"]') ?? node;
+    const rect = card.getBoundingClientRect();
     const translation = new DOMMatrixReadOnly(getComputedStyle(node).transform);
     const bounds = dragState.dropBounds;
     // Section containers and compact siblings move the source's layout slot.
@@ -3642,10 +3649,13 @@ export default function Sidebar() {
     );
     const pointerY = (event.activatorEvent as PointerEvent).clientY;
     const sourceRect = sourceNode?.getBoundingClientRect();
+    const cardRect =
+      sourceNode?.querySelector<HTMLElement>('[role="button"]')?.getBoundingClientRect() ??
+      sourceRect;
     dragAnchorRef.current = {
       grabFraction:
-        sourceRect && sourceRect.height > 0
-          ? Math.max(0, Math.min(1, (pointerY - sourceRect.top) / sourceRect.height))
+        cardRect && cardRect.height > 0
+          ? Math.max(0, Math.min(1, (pointerY - cardRect.top) / cardRect.height))
           : 0,
     };
     dragPointerYRef.current = pointerY;
@@ -3676,6 +3686,7 @@ export default function Sidebar() {
     setDragState({
       activeKey,
       activeSection,
+      sourceRowHeight: sourceRect?.height,
       pinnedSectionId,
       destinationsExpanded: false,
       pinnedDestinationsExpanded: false,
@@ -5110,6 +5121,11 @@ export default function Sidebar() {
                                 contextDrag={isContextDrag}
                                 floatingDuringDrag={mixedDrag && !sourceIsList}
                                 sidebarDragging={dragState !== null}
+                                dragSlotHeight={
+                                  organizingDrag && threadKey === dragState.activeKey
+                                    ? dragState.sourceRowHeight
+                                    : undefined
+                                }
                                 draggableDisabled={
                                   renamingThreadKey === threadKey ||
                                   !draggableThreadKeys.has(threadKey) ||
