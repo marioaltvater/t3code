@@ -10,7 +10,7 @@ import { withThreadDismissal } from "./thread-dismissal";
 import * as Dialog from "../../components/ui/Dialog";
 import { scopedThreadKey } from "../../lib/scopedEntities";
 import { refreshArchivedThreadsForEnvironment } from "../archive/useArchivedThreadSnapshots";
-import { pinOrderKeyBetween } from "@t3tools/client-runtime/state/thread-sort";
+import { planPinnedAppendOrder } from "@t3tools/client-runtime/state/thread-sort";
 import { appAtomRegistry } from "../../state/atom-registry";
 import { environmentServerConfigsAtom } from "../../state/server";
 import { readEnvironmentScope } from "../../state/session";
@@ -237,6 +237,9 @@ export function useThreadListActions(): {
   const snoozeMutation = useAtomCommand(threadEnvironment.snooze, { reportFailure: false });
   const unsnoozeMutation = useAtomCommand(threadEnvironment.unsnooze, { reportFailure: false });
   const pinMutation = useAtomCommand(threadEnvironment.pin, { reportFailure: false });
+  const reorderPinnedMutation = useAtomCommand(threadEnvironment.reorderPin, {
+    reportFailure: false,
+  });
   const unpinMutation = useAtomCommand(threadEnvironment.unpin, { reportFailure: false });
   const setAutoSettleMutation = useAtomCommand(threadEnvironment.setAutoSettle, {
     reportFailure: false,
@@ -360,18 +363,64 @@ export function useThreadListActions(): {
       return false;
     }
     selectionHaptic();
-    // Same placement as web: a fresh pin takes the top of the arranged
-    // run. Servers that predate reordering get the bare pin (keyless).
-    let orderKey: string | undefined;
-    if (environmentSupportsPinReorder(thread.environmentId)) {
-      const shells = appAtomRegistry.get(environmentThreadShells.threadShellsAtom);
-      let firstKey: string | null = null;
-      for (const shell of shells) {
-        if (shell.pinnedAt == null || shell.pinOrderKey == null) continue;
-        if (firstKey === null || shell.pinOrderKey < firstKey) firstKey = shell.pinOrderKey;
-      }
-      orderKey = pinOrderKeyBetween(null, firstKey) ?? undefined;
+    const canReorder = environmentSupportsPinReorder(thread.environmentId);
+    const configs = appAtomRegistry.get(environmentServerConfigsAtom);
+    const pins = getThreadListV2OrderedSection({
+      threads: appAtomRegistry.get(environmentThreadShells.threadShellsAtom),
+      section: "pinned",
+      now: new Date().toISOString(),
+      queuedThreadKeys: appAtomRegistry.get(queuedThreadKeysAtom),
+      settlementEnvironmentIds: new Set(
+        [...configs].flatMap(([id, config]) =>
+          config.environment.capabilities.threadSettlement === true ? [id] : [],
+        ),
+      ),
+      snoozeEnvironmentIds: new Set(
+        [...configs].flatMap(([id, config]) =>
+          config.environment.capabilities.threadSnooze === true ? [id] : [],
+        ),
+      ),
+    });
+    if (!canReorder && pins.length > 0) {
+      Dialog.alert(
+        "Could not pin thread",
+        "Update this environment's server to append below existing pinned threads.",
+      );
+      return false;
     }
+    const append = planPinnedAppendOrder(pins);
+    if (append === null) {
+      Dialog.alert("Could not pin thread", "Could not order pinned threads.");
+      return false;
+    }
+    // Check every destination before normalizing any part of the merged legacy tail.
+    for (const { thread: legacy } of append.legacyKeys) {
+      if (!environmentSupportsPinReorder(legacy.environmentId)) {
+        Dialog.alert(
+          "Could not pin thread",
+          "Update the servers owning existing pinned threads to append a new pin.",
+        );
+        return false;
+      }
+      if (!checkThreadOperationPermission(legacy, "Could not pin thread")) return false;
+    }
+    for (const { thread: legacy, orderKey } of append.legacyKeys) {
+      const result = await reorderPinnedMutation({
+        environmentId: legacy.environmentId,
+        input: { threadId: legacy.id, orderKey },
+      });
+      if (result._tag === "Failure") {
+        const error = Cause.squash(result.cause);
+        Dialog.alert(
+          "Could not pin thread",
+          error instanceof Error && error.message.trim().length > 0
+            ? error.message
+            : "Could not order pinned threads.",
+        );
+        return false;
+      }
+    }
+    const orderKey = canReorder ? append.orderKey : undefined;
     const result = await pinMutation({
       environmentId: thread.environmentId,
       input: { threadId: thread.id, ...(orderKey !== undefined ? { orderKey } : {}) },
@@ -508,9 +557,6 @@ export function useThreadListActions(): {
   };
 
   // Plan against the complete section so filtering does not change a move.
-  const reorderPinnedMutation = useAtomCommand(threadEnvironment.reorderPin, {
-    reportFailure: false,
-  });
   const reorderActiveMutation = useAtomCommand(threadEnvironment.reorderActive, {
     reportFailure: false,
   });

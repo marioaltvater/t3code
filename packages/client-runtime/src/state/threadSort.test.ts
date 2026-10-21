@@ -6,6 +6,7 @@ import {
   generateSpreadPinOrderKeys,
   getLatestThreadForProject,
   pinOrderKeyBetween,
+  planPinnedAppendOrder,
   planPinnedMove,
   planPinnedReorder,
   resolveSettledThreadTimestamp,
@@ -25,6 +26,23 @@ describe("activeThreadAnchorTimestampMs", () => {
         unsettledAt: "2026-08-01T00:00:00.000Z",
       }),
     ).toBe(Date.parse("2026-08-01T00:00:00.000Z"));
+  });
+});
+
+describe("planPinnedAppendOrder", () => {
+  it("assigns legacy pins after keyed order and leaves the next key after the tail", () => {
+    const plan = planPinnedAppendOrder([
+      { id: "keyed-last", createdAt: "2026-01-01", pinnedAt: "now", pinOrderKey: "m" },
+      { id: "legacy-old", createdAt: "2025-01-01", pinnedAt: "now", pinOrderKey: null },
+      { id: "keyed-first", createdAt: "2026-01-02", pinnedAt: "now", pinOrderKey: "g" },
+      { id: "legacy-new", createdAt: "2026-01-01", pinnedAt: "now", pinOrderKey: null },
+    ]);
+
+    expect(plan).not.toBeNull();
+    expect(plan!.legacyKeys.map(({ thread }) => thread.id)).toEqual(["legacy-new", "legacy-old"]);
+    expect(plan!.legacyKeys[0]!.orderKey > "m").toBe(true);
+    expect(plan!.legacyKeys[1]!.orderKey > plan!.legacyKeys[0]!.orderKey).toBe(true);
+    expect(plan!.orderKey > plan!.legacyKeys[1]!.orderKey).toBe(true);
   });
 });
 

@@ -2,6 +2,9 @@ import type { ContextMenuItem } from "@t3tools/contracts";
 import type { SnoozePreset } from "@t3tools/client-runtime/state/thread-settled";
 
 export type ThreadActionMenuId =
+  | "pinned-section"
+  | "pinned-section:new"
+  | `pinned-section:move:${string}`
   | "new-thread-on-branch"
   | "filter-by-project"
   | "project-settings"
@@ -90,6 +93,7 @@ export interface ThreadActionMenuState {
 
 /** Local navigation, read markers, and copying remain available to read-only clients. */
 export function threadActionRequiresOperate(action: ThreadActionMenuId): boolean {
+  if (action.startsWith("pinned-section")) return false;
   return ![
     "new-thread-on-branch",
     "project-settings",

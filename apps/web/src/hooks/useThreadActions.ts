@@ -5,7 +5,11 @@ import {
   scopedThreadKey,
 } from "@t3tools/client-runtime/environment";
 import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
-import { canSnooze, threadWokeAt } from "@t3tools/client-runtime/state/thread-settled";
+import {
+  canSnooze,
+  effectiveSnoozed,
+  threadWokeAt,
+} from "@t3tools/client-runtime/state/thread-settled";
 import { threadRuntimeCanArchive } from "@t3tools/client-runtime/state/models";
 import {
   AuthOrchestrationOperateScope,
@@ -22,7 +26,8 @@ import * as Schema from "effect/Schema";
 import { AsyncResult } from "effect/reactivity";
 import { useRouter } from "@tanstack/react-router";
 
-import { getFallbackThreadIdAfterDelete, pinOrderKeyBetween } from "../components/Sidebar.logic";
+import { getFallbackThreadIdAfterDelete } from "../components/Sidebar.logic";
+import { planPinnedAppendOrder } from "@t3tools/client-runtime/state/thread-sort";
 import { useComposerDraftStore } from "../composerDraftStore";
 import { environmentSession, readEnvironmentScope } from "../state/session";
 import { appAtomRegistry } from "../rpc/atomRegistry";
@@ -106,15 +111,6 @@ export class ThreadSnoozeBlockedError extends Schema.TaggedError<ThreadSnoozeBlo
   override get message(): string {
     return "This thread is waiting on you. Respond to the pending request before snoozing it.";
   }
-}
-
-function topOfPinnedRunOrderKey(): string | undefined {
-  let firstKey: string | null = null;
-  for (const shell of readThreadShells()) {
-    if (shell.pinnedAt == null || shell.pinOrderKey == null) continue;
-    if (firstKey === null || shell.pinOrderKey < firstKey) firstKey = shell.pinOrderKey;
-  }
-  return pinOrderKeyBetween(null, firstKey) ?? undefined;
 }
 
 export class ThreadAutoSettleOptOutUnsupportedError extends Schema.TaggedError<ThreadAutoSettleOptOutUnsupportedError>()(
@@ -633,7 +629,7 @@ export function useThreadActions() {
     });
   };
 
-  const pinThread = async (target: ScopedThreadRef, opts: { orderKey?: string } = {}) => {
+  const pinThread = async (target: ScopedThreadRef, opts: { orderKey?: string | null } = {}) => {
     if (!readEnvironmentSupportsPinning(target.environmentId)) {
       return AsyncResult.failure(
         Cause.fail(
@@ -644,11 +640,57 @@ export function useThreadActions() {
         ),
       );
     }
-    // orderKey rides only to servers that decode it; pre-reorder servers get the bare pin they
-    // understand and the thread stays keyless.
-    const orderKey = readEnvironmentSupportsPinReorder(target.environmentId)
-      ? (opts.orderKey ?? topOfPinnedRunOrderKey())
-      : undefined;
+    const denied = threadOperationFailure(target);
+    if (denied) return denied;
+    const canReorder = readEnvironmentSupportsPinReorder(target.environmentId);
+    let orderKey = canReorder ? (opts.orderKey ?? undefined) : undefined;
+    if (opts.orderKey === undefined) {
+      const now = new Date().toISOString();
+      const pins = readThreadShells().filter(
+        (shell) =>
+          shell.pinnedAt != null &&
+          shell.archivedAt === null &&
+          shell.lineage.relationshipToParent !== "subagent" &&
+          (!readEnvironmentSupportsSettlement(shell.environmentId) ||
+            shell.settledOverride !== "settled") &&
+          (!readEnvironmentSupportsSnooze(shell.environmentId) ||
+            !effectiveSnoozed(shell, { now })),
+      );
+      if (!canReorder && pins.length > 0) {
+        return AsyncResult.failure(
+          Cause.fail(
+            new Error("Update this environment's server to append below existing pinned threads."),
+          ),
+        );
+      }
+      const append = planPinnedAppendOrder(pins);
+      if (append === null) {
+        return AsyncResult.failure(Cause.fail(new Error("Could not order pinned threads.")));
+      }
+      // Check every destination before normalizing any part of the merged legacy tail.
+      for (const { thread } of append.legacyKeys) {
+        if (!readEnvironmentSupportsPinReorder(thread.environmentId)) {
+          return AsyncResult.failure(
+            Cause.fail(
+              new Error("Update the servers owning existing pinned threads to append a new pin."),
+            ),
+          );
+        }
+        const denied = threadOperationFailure({
+          environmentId: thread.environmentId,
+          threadId: thread.id,
+        });
+        if (denied) return denied;
+      }
+      for (const { thread, orderKey } of append.legacyKeys) {
+        const result = await reorderPinnedThreadMutation({
+          environmentId: thread.environmentId,
+          input: { threadId: thread.id, orderKey },
+        });
+        if (result._tag === "Failure") return result;
+      }
+      if (canReorder) orderKey = append.orderKey;
+    }
     ThreadUndo.invalidate("pin", scopedThreadKey(target));
     return pinThreadMutation({
       environmentId: target.environmentId,
@@ -671,7 +713,7 @@ export function useThreadActions() {
       );
     }
     const thread = readThreadShell(target);
-    const orderKey = thread?.pinOrderKey ?? undefined;
+    const orderKey = thread?.pinOrderKey ?? null;
     const action = ThreadUndo.begin("pin", scopedThreadKey(target));
     const result = await unpinThreadMutation({
       environmentId: target.environmentId,
@@ -681,7 +723,7 @@ export function useThreadActions() {
       showThreadUndoNotice({
         action: "Unpinned",
         claim: action,
-        undo: () => pinThread(target, orderKey === undefined ? {} : { orderKey }),
+        undo: () => pinThread(target, { orderKey }),
         failureTitle: "Failed to undo unpin",
       });
     } else {
@@ -733,10 +775,7 @@ export function useThreadActions() {
         const unsettled = await unsettleThread(target);
         if (unsettled._tag !== "Success") return unsettled;
         if (wasPinned) {
-          const pinned = await pinThread(
-            target,
-            pinOrderKey == null ? {} : { orderKey: pinOrderKey },
-          );
+          const pinned = await pinThread(target, { orderKey: pinOrderKey });
           if (pinned._tag !== "Success") return pinned;
         }
         if (snoozedUntil !== null) {

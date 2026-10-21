@@ -1,4 +1,9 @@
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
+import {
+  pinnedSectionMenuItems,
+  usePinnedSectionActions,
+} from "../components/SidebarPinnedSections";
+import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { requestCustomSnooze } from "../components/CustomSnoozeDialog";
 import {
   type AtomCommandResult,
@@ -64,6 +69,7 @@ export function useThreadActionMenu(input: {
 }) {
   const { threadRef, projectCwd, onStartRename } = input;
   const router = useRouter();
+  const handlePinnedSectionAction = usePinnedSectionActions();
   const projects = useProjects();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
@@ -142,9 +148,15 @@ export function useThreadActionMenu(input: {
         supports,
         snoozePresets,
       });
-      const clicked = await settlePromise(() => api.contextMenu.show(items, position));
+      const clicked = await settlePromise(() =>
+        api.contextMenu.show(
+          [...items, ...pinnedSectionMenuItems([scopedThreadKey(threadRef)])],
+          position,
+        ),
+      );
       if (clicked._tag === "Failure" || clicked.value === null) return;
       const action: ThreadActionMenuId = clicked.value;
+      if (await handlePinnedSectionAction(action, [threadRef])) return;
       if (
         threadActionRequiresOperate(action) &&
         !readEnvironmentScope(threadRef.environmentId, AuthOrchestrationOperateScope)

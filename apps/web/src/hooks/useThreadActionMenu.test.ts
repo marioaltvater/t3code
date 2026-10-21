@@ -35,6 +35,10 @@ function recordEffect(action: string) {
 }
 
 vi.mock("../components/CustomSnoozeDialog", () => ({ requestCustomSnooze: vi.fn() }));
+vi.mock("../components/SidebarPinnedSections", () => ({
+  pinnedSectionMenuItems: () => [],
+  usePinnedSectionActions: () => async () => false,
+}));
 vi.mock("react", () => ({
   useCallback: (callback: unknown) => callback,
   useMemo: (factory: () => unknown) => factory(),
