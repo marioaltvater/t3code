@@ -59,9 +59,23 @@ export function SidebarDragLayout({
         ...(box ? { box } : {}),
       };
       next.set(key, position);
-      // Source cards keep their size and use the sorter's own peer motion.
-      if ((!layout.dragging && !leaving) || reducedMotion || child.dataset.threadItem) continue;
+      // The source header follows its cards; a separate transform makes its
+      // text shimmer while the cards use the sorter's own peer motion.
+      if (
+        (!layout.dragging && !leaving) ||
+        reducedMotion ||
+        child.dataset.threadItem ||
+        child.hasAttribute("data-sidebar-source")
+      )
+        continue;
       const before = previous.current.get(key);
+      if (
+        before &&
+        before.top === position.top &&
+        before.height === position.height &&
+        Boolean(before.box) === Boolean(box)
+      )
+        continue;
       const visual = child.querySelector<HTMLElement>('[role="button"]') ?? child.firstElementChild;
       if (!(visual instanceof HTMLElement) || position.height === 0) continue;
       const offset = before ? before.top - position.top : 0;

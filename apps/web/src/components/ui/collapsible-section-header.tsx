@@ -16,6 +16,7 @@ export function CollapsibleSectionHeader({
   variant = "default",
   accessory,
   action,
+  actionOpen = false,
   ...buttonProps
 }: Omit<ComponentProps<"button">, "className" | "style" | "aria-expanded"> & {
   expanded: boolean;
@@ -23,6 +24,7 @@ export function CollapsibleSectionHeader({
   variant?: "default" | "panel" | "sidebar";
   accessory?: ReactNode;
   action?: ReactNode;
+  actionOpen?: boolean;
 }) {
   const button = (
     <button
@@ -54,8 +56,11 @@ export function CollapsibleSectionHeader({
       <div
         className={cn(
           "shrink-0",
+          variant === "sidebar" && "w-8 sm:w-7",
           variant === "sidebar" &&
-            "pointer-events-none w-0 opacity-0 transition-[width,opacity] duration-150 group-focus-within/section-header:pointer-events-auto group-focus-within/section-header:w-8 group-focus-within/section-header:opacity-100 group-hover/section-header:pointer-events-auto group-hover/section-header:w-8 group-hover/section-header:opacity-100 motion-reduce:transition-none sm:group-focus-within/section-header:w-7 sm:group-hover/section-header:w-7",
+            (actionOpen
+              ? "opacity-100"
+              : "pointer-events-none opacity-0 group-focus-within/section-header:pointer-events-auto group-focus-within/section-header:opacity-100 group-hover/section-header:pointer-events-auto group-hover/section-header:opacity-100"),
         )}
       >
         {action}

@@ -132,33 +132,40 @@ export function PinnedSectionHeader({
   onToggle?: () => void;
 }) {
   const toggle = useUiStateStore((state) => state.toggleSidebarPinnedSection);
+  const [menuOpen, setMenuOpen] = useState(false);
   const label = section?.name ?? "Pinned";
   const isExpanded = section ? !section.collapsed : (expanded ?? true);
   const openMenu = async (position: { x: number; y: number }) => {
+    if (menuOpen) return;
+    const api = readLocalApi();
+    if (!api) return;
+    setMenuOpen(true);
     const state = useUiStateStore.getState();
     const index = state.sidebarPinnedSections.findIndex((entry) => entry.id === section?.id);
-    const action = await readLocalApi()?.contextMenu.show(
-      [
-        {
-          id: "new",
-          label: "New section…",
-          disabled: state.sidebarPinnedSections.length >= MAX_SIDEBAR_PINNED_SECTIONS,
-        },
-        ...(section
-          ? [
-              { id: "rename", label: "Rename section…" },
-              { id: "up", label: "Move section up", disabled: index === 0 },
-              {
-                id: "down",
-                label: "Move section down",
-                disabled: index === state.sidebarPinnedSections.length - 1,
-              },
-              { id: "delete", label: "Delete section", destructive: true, separatorBefore: true },
-            ]
-          : []),
-      ],
-      position,
-    );
+    const action = await api.contextMenu
+      .show(
+        [
+          {
+            id: "new",
+            label: "New section…",
+            disabled: state.sidebarPinnedSections.length >= MAX_SIDEBAR_PINNED_SECTIONS,
+          },
+          ...(section
+            ? [
+                { id: "rename", label: "Rename section…" },
+                { id: "up", label: "Move section up", disabled: index === 0 },
+                {
+                  id: "down",
+                  label: "Move section down",
+                  disabled: index === state.sidebarPinnedSections.length - 1,
+                },
+                { id: "delete", label: "Delete section", destructive: true, separatorBefore: true },
+              ]
+            : []),
+        ],
+        position,
+      )
+      .finally(() => setMenuOpen(false));
     if (action === "new") void requestPinnedSection();
     else if (action === "rename" && section) void requestPinnedSection(section.id);
     else if ((action === "up" || action === "down") && section)
@@ -178,12 +185,15 @@ export function PinnedSectionHeader({
         variant="sidebar"
         expanded={isExpanded}
         tone="muted"
+        actionOpen={menuOpen}
         onClick={() => (section ? toggle(section.id) : onToggle?.())}
         action={
           <Button
             variant="ghost"
             size="icon-sm"
             aria-label={`Manage ${label}`}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
             onClick={(event) => {
               const rect = event.currentTarget.getBoundingClientRect();
               void openMenu({ x: rect.left, y: rect.bottom });

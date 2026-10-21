@@ -4,11 +4,11 @@ import { expect, it } from "vite-plus/test";
 import { render } from "../../test/render";
 import { SidebarDragLayout } from "./SidebarDragLayout";
 
-function Layout({ dragging }: { dragging: boolean }) {
+function Layout({ dragging, revision = 0 }: { dragging: boolean; revision?: number }) {
   const listRef = useRef<HTMLUListElement>(null);
   return (
     <DndContext>
-      <SidebarDragLayout layout={{ key: String(dragging), dragging }} listRef={listRef} />
+      <SidebarDragLayout layout={{ key: `${dragging}:${revision}`, dragging }} listRef={listRef} />
       <ul ref={listRef} style={{ position: "relative", padding: 0, margin: 0 }}>
         <li data-sidebar-marker="pinned-header" style={{ height: dragging ? 96 : 32 }}>
           {dragging ? (
@@ -21,6 +21,9 @@ function Layout({ dragging }: { dragging: boolean }) {
           ) : (
             <div style={{ height: 32 }}>Pinned (2)</div>
           )}
+        </li>
+        <li data-sidebar-marker="source-header" data-sidebar-source style={{ height: 32 }}>
+          <div style={{ height: 32 }}>Active</div>
         </li>
         <li data-thread-item="source" style={{ height: 82 }}>
           Source
@@ -59,6 +62,22 @@ it("collapses and fades outgoing destinations before removing them", async () =>
   expect(
     screen.container.querySelector('[data-thread-item="source"]')!.getAnimations(),
   ).toHaveLength(0);
+});
+
+it("keeps the source title out of destination animations and leaves stationary targets alone", async () => {
+  await using screen = await render(<Layout dragging={false} />);
+  await screen.rerender(<Layout dragging />);
+  const source = screen.container.querySelector<HTMLElement>(
+    '[data-sidebar-marker="source-header"]',
+  )!;
+  const destination = screen.container.querySelector<HTMLElement>(
+    '[data-testid="sidebar-destination:pinned"]',
+  )!;
+  expect(source.getAnimations({ subtree: true })).toHaveLength(0);
+  for (const animation of destination.getAnimations()) animation.finish();
+  await screen.rerender(<Layout dragging revision={1} />);
+  expect(source.getAnimations({ subtree: true })).toHaveLength(0);
+  expect(destination.getAnimations()).toHaveLength(0);
 });
 
 it("reverses an unfinished exit without leaving duplicate destination chrome", async () => {

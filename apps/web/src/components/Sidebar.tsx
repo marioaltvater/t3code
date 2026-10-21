@@ -5284,6 +5284,7 @@ export default function Sidebar() {
                                   <li
                                     key={item.marker}
                                     data-sidebar-marker={item.marker}
+                                    data-sidebar-source
                                     className={cn("list-none", section === "settled" && "mt-auto")}
                                   >
                                     <div className="flex h-8 min-w-0 items-center px-2 text-sm leading-5 font-medium text-sidebar-foreground">
