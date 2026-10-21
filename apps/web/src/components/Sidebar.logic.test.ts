@@ -19,6 +19,7 @@ import {
   getFallbackThreadIdAfterDelete,
   getProjectSortTimestamp,
   getSidebarForkParentThreadId,
+  getSidebarPinnedDestinationThreads,
   getSidebarThreadIdsToPrewarm,
   hasUnseenCompletion,
   isContextMenuPointerDown,
@@ -47,7 +48,9 @@ import {
   shouldRecedeSidebarThread,
   sortLogicalProjectsForSidebar,
   sortInboxThreadsByReturn,
-  resolveSidebarDropTarget,
+  resolveSidebarDestinationTarget,
+  resolveSidebarSourceTarget,
+  sidebarDestinationId,
   planSidebarThreadDrop,
   sortPinnedThreadsForSidebar,
   sortProjectsForSidebar,
@@ -55,10 +58,6 @@ import {
   sortSidebarV2ProjectGroups,
   shouldNavigateAfterThreadPark,
   THREAD_JUMP_HINT_SHOW_DELAY_MS,
-  type SidebarListItem,
-  type SidebarListMarker,
-  type SidebarSection,
-  resolveSidebarDropVerb,
 } from "./Sidebar.logic";
 import { threadSearchMatchKey } from "@t3tools/client-runtime/state/thread-search";
 import { EnvironmentId, ProjectId, ProviderInstanceId, RunId, ThreadId } from "@t3tools/contracts";
@@ -2316,42 +2315,17 @@ describe("Working shelf (beta)", () => {
   });
 
   describe("dragging", () => {
-    const marker = (name: SidebarListMarker): SidebarListItem => ({ kind: "marker", marker: name });
-    const row = (key: string, section: SidebarSection): SidebarListItem => ({
-      kind: "thread",
-      key,
-      section,
-    });
-    const items: readonly SidebarListItem[] = [
-      marker("pinned-header"),
-      row("p1", "pinned"),
-      marker("pinned-divider"),
-      row("a1", "active"),
-      row("a2", "active"),
-      marker("working-header"),
-      row("w1", "working"),
-      marker("settled-header"),
-      row("s1", "settled"),
-    ];
-
-    it("never drops into the Working shelf, and keeps it out of the inbox order", () => {
-      expect(resolveSidebarDropTarget(items, "a1", "w1")).toBeNull();
-      expect(resolveSidebarDropTarget(items, "p1", "a2")).toEqual({
-        section: "active",
-        pinnedOrder: [],
-        activeOrder: ["a1", "a2", "p1"],
-      });
-      expect(resolveSidebarDropVerb("active", "working")).toBeNull();
-    });
-
-    it.each([
-      ["pinned", "p1"],
-      ["active", "a2"],
-      ["settled", "s1"],
-    ] as const)(
+    it.each(["pinned", "active", "settled"] as const)(
       "does not move a Working thread into %s when its reference drag ends in the sidebar",
-      (section, overKey) => {
-        const target = resolveSidebarDropTarget(items, "w1", overKey);
+      (section) => {
+        const target = resolveSidebarDestinationTarget({
+          activeKey: "w1",
+          overId: sidebarDestinationId(section),
+          pinnedOrder: ["p1"],
+          activeOrder: ["a1", "a2"],
+          pinnedSectionIds: [],
+          pinnedSectionIdByThreadKey: new Map(),
+        });
         expect(target?.section).toBe(section);
         expect(
           planSidebarThreadDrop({
@@ -2447,5 +2421,299 @@ describe("Working shelf (beta)", () => {
         unsnooze: false,
       });
     });
+  });
+});
+
+it("reorders a named pin bucket without writing unrelated read-only pins", () => {
+  const target = resolveSidebarSourceTarget({
+    activeKey: "C",
+    overId: "B",
+    section: "pinned",
+    pinnedSectionId: "chief",
+    sourceKeys: new Set(["B", "C"]),
+    pinnedOrder: ["A", "B", "C", "D"],
+    activeOrder: [],
+    pinnedSectionIdByThreadKey: new Map([
+      ["B", "chief"],
+      ["C", "chief"],
+    ]),
+  })!;
+  expect(target.pinnedOrder).toEqual(["C", "B"]);
+  const plan = planSidebarThreadDrop({
+    activeKey: "C",
+    activeSection: "pinned",
+    target,
+    pinnedOrder: ["B", "C"],
+    pinnedKeysById: new Map([
+      ["A", "a"],
+      ["B", "b"],
+      ["C", "c"],
+      ["D", "d"],
+    ]),
+    reorderableKeys: new Set(["B", "C"]),
+    activeOrder: [],
+    activeKeysById: new Map(),
+  });
+  expect(plan.kind).toBe("reorder-pinned");
+  if (plan.kind === "reorder-pinned") expect(plan.assignments.map(({ id }) => id)).toEqual(["C"]);
+});
+
+describe("sidebar destination boxes", () => {
+  const input = {
+    activeKey: "env-a:moving",
+    pinnedOrder: ["env-a:default", "env-a:hidden", "env-b:hidden"],
+    activeOrder: ["env-a:moving", "env-b:active"],
+    pinnedSectionIds: ["chief:staff", "empty"],
+    pinnedSectionIdByThreadKey: new Map([
+      ["env-a:hidden", "chief:staff"],
+      ["env-b:hidden", "chief:staff"],
+    ]),
+  };
+
+  it("appends after all canonical members, including collapsed and filtered threads", () => {
+    expect(
+      resolveSidebarDestinationTarget({
+        ...input,
+        overId: sidebarDestinationId("pinned", "chief:staff"),
+      }),
+    ).toMatchObject({
+      section: "pinned",
+      pinnedSectionId: "chief:staff",
+      pinnedOrder: ["env-a:hidden", "env-b:hidden", "env-a:moving"],
+    });
+  });
+
+  it.each(["z", null])(
+    "appends beyond project-filtered destination members with key %s",
+    (hiddenKey) => {
+      const environmentId = EnvironmentId.make("destination-environment");
+      const projectId = ProjectId.make("visible-project");
+      const pin = (
+        id: string,
+        pinOrderKey: string | null,
+        overrides: ThreadFixtureOverrides = {},
+      ) =>
+        makeThreadFixture({
+          id: ThreadId.make(id),
+          environmentId,
+          projectId,
+          pinnedAt: "2026-10-21T00:00:00.000Z",
+          pinOrderKey,
+          ...overrides,
+        });
+      const visible = pin("visible", "m");
+      const hidden = pin("hidden", hiddenKey, { projectId: ProjectId.make("hidden-project") });
+      const moving = makeThreadFixture({ id: ThreadId.make("moving"), environmentId, projectId });
+      const all = [
+        visible,
+        hidden,
+        moving,
+        pin("archived", "zz", { archivedAt: "2026-10-21T00:00:00.000Z" }),
+        pin("settled", "zz", { settledOverride: "settled" }),
+        pin("snoozed", "zz", { snoozedUntil: "2026-10-23T00:00:00.000Z" }),
+        pin("subagent", "zz", {
+          lineage: {
+            rootThreadId: visible.id,
+            parentThreadId: visible.id,
+            relationshipToParent: "subagent",
+          },
+        }),
+      ];
+      const key = (thread: typeof visible) => `${thread.environmentId}:${thread.id}`;
+      expect(
+        filterSidebarV2VisibleThreads(all, new Set([`${environmentId}:${projectId}`])).some(
+          (thread) => thread.id === hidden.id,
+        ),
+      ).toBe(false);
+      const canonical = getSidebarPinnedDestinationThreads(
+        all,
+        new Map([
+          [
+            environmentId,
+            { environment: { capabilities: { threadSnooze: true, threadSettlement: true } } },
+          ],
+        ]),
+        "2026-10-22T00:00:00.000Z",
+      );
+      expect(canonical.map((thread) => thread.id)).toEqual([visible.id, hidden.id]);
+      const target = resolveSidebarDestinationTarget({
+        activeKey: key(moving),
+        overId: sidebarDestinationId("pinned", "chief"),
+        pinnedOrder: canonical.map(key),
+        activeOrder: [key(moving)],
+        pinnedSectionIds: ["chief"],
+        pinnedSectionIdByThreadKey: new Map(canonical.map((thread) => [key(thread), "chief"])),
+      })!;
+      const plan = planSidebarThreadDrop({
+        activeKey: key(moving),
+        activeSection: "active",
+        target,
+        pinnedOrder: canonical.map(key),
+        pinnedKeysById: new Map(canonical.map((thread) => [key(thread), thread.pinOrderKey])),
+        reorderableKeys: new Set(all.map(key)),
+        activeOrder: [key(moving)],
+        activeKeysById: new Map(),
+      });
+      expect(plan.kind).toBe("pin");
+      if (plan.kind !== "pin") throw new Error("Expected pin plan");
+      const updated = new Map(canonical.map((thread) => [key(thread), thread.pinOrderKey]));
+      for (const assignment of plan.extraAssignments)
+        updated.set(assignment.id, assignment.orderKey);
+      expect(plan.orderKey! > updated.get(key(hidden))!).toBe(true);
+    },
+  );
+
+  it.each(["active", "pinned"] as const)(
+    "blocks a %s thread from appending ahead of an unorderable legacy pin",
+    (activeSection) => {
+      const target = resolveSidebarDestinationTarget({
+        ...input,
+        overId: sidebarDestinationId("pinned", "chief:staff"),
+      })!;
+      const base = {
+        activeKey: input.activeKey,
+        activeSection,
+        target,
+        pinnedOrder: input.pinnedOrder.filter((key) => input.pinnedSectionIdByThreadKey.has(key)),
+        pinnedKeysById: new Map([
+          ["env-a:hidden", "m"],
+          ["env-b:hidden", null],
+        ]),
+        reorderableKeys: new Set([input.activeKey, "env-a:hidden"]),
+        activeOrder: input.activeOrder,
+        activeKeysById: new Map(),
+      };
+      expect(planSidebarThreadDrop(base)).toEqual({ kind: "blocked" });
+      expect(
+        planSidebarThreadDrop({
+          ...base,
+          reorderableKeys: new Set([...base.reorderableKeys, "env-b:hidden"]),
+        }).kind,
+      ).toBe(activeSection === "pinned" ? "reorder-pinned" : "pin");
+    },
+  );
+
+  it("keeps a thread's position when dropped onto its existing bucket", () => {
+    expect(
+      resolveSidebarDestinationTarget({
+        ...input,
+        activeKey: "env-a:hidden",
+        overId: sidebarDestinationId("pinned", "chief:staff"),
+      })?.pinnedOrder,
+    ).toEqual(["env-a:hidden", "env-b:hidden"]);
+  });
+
+  it("accepts empty named buckets and separates the default bucket", () => {
+    expect(
+      resolveSidebarDestinationTarget({
+        ...input,
+        overId: sidebarDestinationId("pinned", "empty"),
+      })?.pinnedOrder,
+    ).toEqual(["env-a:moving"]);
+    expect(
+      resolveSidebarDestinationTarget({
+        ...input,
+        overId: sidebarDestinationId("pinned"),
+      })?.pinnedOrder,
+    ).toEqual(["env-a:default", "env-a:moving"]);
+  });
+
+  it("keeps Active order and supports a Settled destination without losing pins", () => {
+    expect(
+      resolveSidebarDestinationTarget({
+        ...input,
+        overId: sidebarDestinationId("active"),
+      })?.activeOrder,
+    ).toEqual(input.activeOrder);
+    expect(
+      resolveSidebarDestinationTarget({
+        ...input,
+        overId: sidebarDestinationId("settled"),
+      }),
+    ).toEqual({
+      section: "settled",
+      pinnedOrder: input.pinnedOrder,
+      activeOrder: input.activeOrder,
+    });
+  });
+
+  it.each(["sidebar-destination:section:missing", "env-a:hidden", "sidebar-marker:settled-header"])(
+    "rejects stale sections and ordinary rows: %s",
+    (overId) => {
+      expect(resolveSidebarDestinationTarget({ ...input, overId })).toBeNull();
+    },
+  );
+});
+
+describe("compact source section reordering", () => {
+  const input = {
+    activeKey: "env-a:b",
+    overId: "env-b:c",
+    section: "pinned" as const,
+    pinnedSectionId: "chief",
+    sourceKeys: new Set(["env-a:b", "env-b:c"]),
+    pinnedOrder: ["other", "env-a:b", "hidden", "env-b:c", "other-last"],
+    activeOrder: ["active-a", "active-hidden", "active-b"],
+    pinnedSectionIdByThreadKey: new Map([
+      ["env-a:b", "chief"],
+      ["hidden", "chief"],
+      ["env-b:c", "chief"],
+    ]),
+  };
+
+  it("reorders downward in the source bucket while retaining hidden members", () => {
+    expect(resolveSidebarSourceTarget(input)).toEqual({
+      section: "pinned",
+      pinnedSectionId: "chief",
+      pinnedOrder: ["hidden", "env-b:c", "env-a:b"],
+      activeOrder: input.activeOrder,
+    });
+  });
+
+  it("reorders upward without including unrelated buckets", () => {
+    expect(
+      resolveSidebarSourceTarget({ ...input, activeKey: "env-b:c", overId: "env-a:b" })
+        ?.pinnedOrder,
+    ).toEqual(["env-b:c", "env-a:b", "hidden"]);
+  });
+
+  it("reorders default Pinned independently from named buckets", () => {
+    expect(
+      resolveSidebarSourceTarget({
+        ...input,
+        activeKey: "other-last",
+        overId: "other",
+        pinnedSectionId: null,
+        sourceKeys: new Set(["other", "other-last"]),
+      })?.pinnedOrder,
+    ).toEqual(["other-last", "other"]);
+  });
+
+  it("reorders Active while preserving canonical hidden rows and all pins", () => {
+    expect(
+      resolveSidebarSourceTarget({
+        ...input,
+        activeKey: "active-a",
+        overId: "active-b",
+        section: "active",
+        pinnedSectionId: null,
+        sourceKeys: new Set(["active-a", "active-b"]),
+      }),
+    ).toEqual({
+      section: "active",
+      pinnedOrder: input.pinnedOrder,
+      activeOrder: ["active-hidden", "active-b", "active-a"],
+    });
+  });
+
+  it.each(["other", "hidden", "stale"])(
+    "rejects rows outside the rendered source: %s",
+    (overId) => {
+      expect(resolveSidebarSourceTarget({ ...input, overId })).toBeNull();
+    },
+  );
+
+  it("keeps chronological shelves outside manual reordering", () => {
+    expect(resolveSidebarSourceTarget({ ...input, section: "settled" })).toBeNull();
   });
 });

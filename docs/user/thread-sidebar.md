@@ -43,6 +43,21 @@ in a new thread's model picker to add or remove them. A regular click returns to
 single model. Choose a base branch and send. Each selection starts a separate thread
 and worktree while you stay in the new thread composer. This requires a Git project.
 
+## Named pinned sections
+
+On web and desktop, choose **New section…** from the **Pinned** section menu to create
+buckets such as “Chief of Staff”. You can create up to 20 sections with names up
+to 64 characters. Move a thread using **Move to pinned section** in its menu, or
+start dragging and drop it onto a named destination box. Moving an unpinned thread into a section pins it.
+
+Collapse a section to hide its threads; search still finds them. Use the section
+menu to rename, reorder, or delete it. Deleting a section returns its pinned
+threads to **Pinned** without deleting the threads. Unpinning, settling, and
+snoozing keep their existing behavior; a thread remembers its section if pinned
+again. Section names and membership are saved in this browser or desktop
+profile and do not sync between devices. The legacy sidebar and native mobile
+app continue to show the standard pinned list.
+
 ## Pin and reorder threads
 
 Pin a thread from its menu to keep it above your active work.
@@ -64,25 +79,14 @@ scroll position instead of following the thread to its new place in the list.
 
 Pinning does not prevent automatic settlement. Settling a thread removes its pin.
 
-On web and desktop, drag a thread between sections to change its state. Drag a thread up into
-the pinned section to pin it at the spot you drop it; drag a pinned thread down into the active
-list to unpin it. Dragging a thread onto the **Settled** header settles it, and dragging a settled
-thread into the active list un-settles it. A snoozed thread can be dragged out of the snoozed
-shelf, which wakes it, but threads cannot be dragged into the shelf because snoozing needs a wake
-time. Dragging a pinned thread out of the pinned section does not ask for unpin confirmation.
-Pinned and active boundary labels appear only while dragging, without moving the rows. The
-other rows slide aside to show where the thread will land. When you cross into another section,
-the dragged thread shows the action the drop performs, with its icon: **Pin**, **Unpin**,
-**Settle**, **Un-settle**, or **Wake**. Its status and hover actions hide during the drag. A pinned
-thread keeps its pin only while it stays in the pinned section; once it leaves, the badge takes
-over. Reordering within the same section shows no badge. When there are no pins, drag to the top
-edge to pin a thread. Section labels stay readable for the whole drag, and the section the
-thread is over takes the accent color. Section labels also
-identify empty sections and a collapsed settled shelf.
+On web and desktop, drag within a pinned section or the active list to reorder
+threads. To move between sections, drop onto the destination box: **Pinned** or
+a named section pins the thread, **Active** unpins or un-settles it, and
+**Settled** settles it. Dragging a snoozed thread into another section wakes it;
+snoozing still requires a wake time through the thread menu. Dragging out of a
+pinned section does not ask for unpin confirmation.
 
-Drag within the pinned or active section to change its order. Other rows slide aside to show the
-spot where the thread will land. Drops into either section keep the position you choose. On
-mobile, open a thread's menu and choose **Arrange threads**. Drag a handle within or between
+On mobile, open a thread's menu and choose **Arrange threads**. Drag a handle within or between
 **Pinned** and **Active** to reorder, pin, or unpin. Drop onto the **Settled** divider to
 settle a thread. The dragged card shows the action before you release it. Expand **Snoozed**
 or **Settled** to drag a parked thread back into either live section. Each drop saves; close the sheet to return to the thread list.
