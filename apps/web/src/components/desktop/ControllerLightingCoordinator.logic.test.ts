@@ -3,6 +3,7 @@ import {
   CONTROLLER_LIGHT,
   CONTROLLER_PINNED_LED_INDICES,
   createControllerLightingFrame,
+  controllerWorkingPulseIntensity,
   controllerSnoozeWakeDelay,
   resolveControllerThreadLightState,
 } from "./ControllerLightingCoordinator.logic";
@@ -32,6 +33,31 @@ describe("controller lighting projection", () => {
     const frame = createControllerLightingFrame({ pins: [{ state: "error", selected: true }] });
     expect(frame[0]).toBe(0xff5577);
     expect(frame[3]).toBe(CONTROLLER_LIGHT.ambientSelected);
+  });
+
+  it("fades only working pin lights through a blue pulse", () => {
+    const dim = controllerWorkingPulseIntensity(0);
+    const bright = controllerWorkingPulseIntensity(1_000);
+    const dimFrame = createControllerLightingFrame({
+      pins: [
+        { state: "working", selected: false },
+        { state: "idle", selected: false },
+      ],
+      workingPulseIntensity: dim,
+    });
+    const brightFrame = createControllerLightingFrame({
+      pins: [
+        { state: "working", selected: false },
+        { state: "idle", selected: false },
+      ],
+      workingPulseIntensity: bright,
+    });
+
+    expect(dim).toBe(0.28);
+    expect(bright).toBe(1);
+    expect(dimFrame[0]).toBeLessThan(brightFrame[0]!);
+    expect(dimFrame[1]).toBe(CONTROLLER_LIGHT.idle);
+    expect(brightFrame[0]).toBe(CONTROLLER_LIGHT.working);
   });
 
   it("distinguishes disconnected, approval, failure, and active threads", () => {

@@ -44,6 +44,11 @@ describe("K0 input boundary", () => {
     expect(decodeK0Report(report(25))).toBeNull();
   });
 
+  it("maps black M1 and M5 to Settings toggle and the latest turn diff", () => {
+    expect(decodeK0Report(report(17))?.command).toBe("settings.toggle");
+    expect(decodeK0Report(report(20))?.command).toBe("diff.toggleLatestTurn");
+  });
+
   it("selects the T3 vendor collection rather than Codex or the maintenance keyboard", () => {
     const descriptor = Buffer.from(
       "0660ff0961a1010962150026ff009520750881020963150026ff00952075089102c0",

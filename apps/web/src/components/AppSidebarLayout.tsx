@@ -39,7 +39,7 @@ import { useThreadVisitedMigration } from "../hooks/useThreadVisitedMigration";
 import ThreadSidebar from "./Sidebar";
 import { SettingsSidebarNav } from "./settings/SettingsSidebarNav";
 import { SidebarChromeHeader } from "./sidebar/SidebarChrome";
-import { MainAppLocationTracker } from "./sidebar/mainAppLocation";
+import { MainAppLocationTracker, useNavigateToMainApp } from "./sidebar/mainAppLocation";
 import { readThreadShells, useProjects } from "../state/entities";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
 import { useScratchProject } from "../hooks/useScratchProject";
@@ -328,6 +328,11 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
   const panelAnimationsSuppressed = usePanelNavigationSuppression(pathname);
   const routePanelAnimationsActive = panelAnimationsActive && !panelAnimationsSuppressed;
   const isOnSettings = pathname === "/settings" || pathname.startsWith("/settings/");
+  const navigateToMainApp = useNavigateToMainApp();
+  const toggleSettings = useStableCallback(() => {
+    if (isOnSettings) void navigateToMainApp();
+    else void navigate({ to: "/settings" });
+  });
   const isMacosDesktop = isElectron && isMacPlatform(navigator.platform);
   const [sidebarWidth, setSidebarWidth] = useState(readInitialThreadSidebarWidth);
   // Subscribed rather than read once: the clamp must track live window size,
@@ -362,16 +367,19 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.repeat) return;
-      if (resolveShortcutCommand(event, keybindings) !== "open-settings") return;
+      const command = resolveShortcutCommand(event, keybindings);
+      if (command !== "open-settings" && command !== "settings.toggle") return;
       event.preventDefault();
       event.stopPropagation();
-      if (!/^\/settings(\/|$)/.test(pathname)) void navigate({ to: "/settings" });
+      if (command === "settings.toggle") toggleSettings();
+      else if (!isOnSettings) void navigate({ to: "/settings" });
     };
     const onMenuAction = window.desktopBridge?.onMenuAction;
     window.addEventListener("keydown", onKeyDown);
 
     const unsubscribe = onMenuAction?.((action) => {
-      if (action === "open-settings") {
+      if (action === "settings.toggle") toggleSettings();
+      else if (action === "open-settings") {
         const isSettingsRoute = /^\/settings(\/|$)/.test(pathname);
         if (!isSettingsRoute) {
           void navigate({ to: "/settings" });
@@ -383,7 +391,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
       window.removeEventListener("keydown", onKeyDown);
       unsubscribe?.();
     };
-  }, [keybindings, navigate, pathname]);
+  }, [isOnSettings, keybindings, navigate, pathname, toggleSettings]);
 
   return (
     <PanelAnimationSuppressionProvider value={panelAnimationsSuppressed}>

@@ -177,7 +177,7 @@ import {
 import { AsyncResult } from "effect/reactivity";
 import { isElectron } from "../env";
 import { readLocalApi } from "../localApi";
-import { useDiffPanelStore } from "../diffPanelStore";
+import { selectLatestTurnDiff, useDiffPanelStore } from "../diffPanelStore";
 import { useActiveThreadRef } from "../hooks/useActiveThreadRef";
 import {
   type ComposerSubmissionIntent,
@@ -3275,6 +3275,31 @@ export default function ChatView(props: ChatViewProps) {
   };
   const onToggleDiffStable = useStableCallback(onToggleDiff);
 
+  const onOpenTurnDiff = (runId: RunId, filePath?: string) => {
+    if (!isServerThread || !activeThreadRef) return;
+    const diffOpen =
+      selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, activeThreadRef) === "diff";
+    explicitDiffOpenRef.current = diffOpen ? null : activeThreadRef;
+    useDiffPanelStore.getState().selectTurn(activeThreadRef, runId, filePath);
+    useRightPanelStore.getState().open(activeThreadRef, "diff");
+    onDiffPanelOpen?.();
+  };
+  const onOpenTurnDiffStable = useStableCallback(onOpenTurnDiff);
+  const onToggleLatestTurnDiffStable = useStableCallback(() => {
+    if (!isServerThread || !activeThreadRef) return;
+    const panels = useRightPanelStore.getState();
+    if (selectActiveRightPanel(panels.byThreadKey, activeThreadRef) === "diff") {
+      panels.toggle(activeThreadRef, "diff");
+      return;
+    }
+    const latestTurn = selectLatestTurnDiff(turnDiffSummaries);
+    if (!latestTurn) {
+      toastManager.add({ type: "info", title: "No turn diff is available yet" });
+      return;
+    }
+    onOpenTurnDiffStable(latestTurn.runId);
+  });
+
   const needsLoadBalancing = automaticEnvironment && !draftThread?.loadBalancedEnvironmentId;
   const loadBalancingCandidates = needsLoadBalancing
     ? logicalProjectEnvironments
@@ -5894,6 +5919,7 @@ export default function ChatView(props: ChatViewProps) {
         createNewTerminalStable();
       },
       "diff.toggle": () => onToggleDiffStable(),
+      "diff.toggleLatestTurn": () => onToggleLatestTurnDiffStable(),
       "modelPicker.toggle": ({ event }) => {
         if (!event.repeat) composerRef.current?.toggleModelPicker();
       },
@@ -5952,6 +5978,7 @@ export default function ChatView(props: ChatViewProps) {
       if (!terminalUiState.terminalOpen && !canReadTerminal && !canOperateTerminal) return;
       toggleTerminalVisibilityStable();
     } else if (action === "diff.toggle") onToggleDiffStable();
+    else if (action === "diff.toggleLatestTurn") onToggleLatestTurnDiffStable();
     else if (action === "modelPicker.toggle") composerRef.current?.toggleModelPicker();
     else if (action === "composer.increaseEffort") composerRef.current?.stepReasoningEffort(1);
     else if (action === "composer.decreaseEffort") composerRef.current?.stepReasoningEffort(-1);
@@ -7975,16 +8002,6 @@ export default function ChatView(props: ChatViewProps) {
     openExpandedImagePreview(routeThreadKey, preview);
   };
   const onExpandTimelineImageStable = useStableCallback(onExpandTimelineImage);
-  const onOpenTurnDiff = (runId: RunId, filePath?: string) => {
-    if (!isServerThread || !activeThreadRef) return;
-    const diffOpen =
-      selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, activeThreadRef) === "diff";
-    explicitDiffOpenRef.current = diffOpen ? null : activeThreadRef;
-    useDiffPanelStore.getState().selectTurn(activeThreadRef, runId, filePath);
-    useRightPanelStore.getState().open(activeThreadRef, "diff");
-    onDiffPanelOpen?.();
-  };
-  const onOpenTurnDiffStable = useStableCallback(onOpenTurnDiff);
   const onTimelineRollbackCheckpoint = (input: {
     readonly checkpointId: string;
     readonly scopeId: string;

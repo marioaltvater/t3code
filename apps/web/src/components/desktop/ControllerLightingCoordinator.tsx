@@ -10,6 +10,7 @@ import {
 } from "../Sidebar.logic";
 import {
   createControllerLightingFrame,
+  controllerWorkingPulseIntensity,
   controllerSnoozeWakeDelay,
   resolveControllerThreadLightState,
 } from "./ControllerLightingCoordinator.logic";
@@ -21,6 +22,7 @@ export function ControllerLightingCoordinator() {
   const { routeThreadRef } = useHandleNewThread();
   const ui = useControllerUiSnapshot();
   const [wakeTick, bumpWakeTick] = useState(0);
+  const [pulseTime, setPulseTime] = useState(() => Date.now());
   const nowMs = new Date().getTime();
   const now = new Date(nowMs).toISOString();
   const wakeDelay = ui.pinnedThreads === null ? controllerSnoozeWakeDelay(threads, nowMs) : null;
@@ -45,25 +47,32 @@ export function ControllerLightingCoordinator() {
   const pins =
     ui.pinnedThreads ??
     fallbackPins.slice(0, 6).map(({ environmentId, id }) => ({ environmentId, threadId: id }));
+  const pinStates = pins.slice(0, 6).flatMap((ref) => {
+    const thread = threads.find(
+      (candidate) => candidate.environmentId === ref.environmentId && candidate.id === ref.threadId,
+    );
+    if (!thread) return [];
+    return [
+      {
+        state: resolveControllerThreadLightState(
+          thread,
+          presentationById.get(thread.environmentId)?.connection.phase === "connected",
+        ),
+        selected:
+          routeThreadRef?.environmentId === thread.environmentId &&
+          routeThreadRef.threadId === thread.id,
+      },
+    ];
+  });
+  const hasWorkingPin = pinStates.some((pin) => pin.state === "working");
+  useEffect(() => {
+    if (!hasWorkingPin || !window.desktopBridge?.controller?.setLighting) return;
+    const timer = window.setInterval(() => setPulseTime(Date.now()), 120);
+    return () => window.clearInterval(timer);
+  }, [hasWorkingPin]);
   const frame = createControllerLightingFrame({
-    pins: pins.slice(0, 6).flatMap((ref) => {
-      const thread = threads.find(
-        (candidate) =>
-          candidate.environmentId === ref.environmentId && candidate.id === ref.threadId,
-      );
-      if (!thread) return [];
-      return [
-        {
-          state: resolveControllerThreadLightState(
-            thread,
-            presentationById.get(thread.environmentId)?.connection.phase === "connected",
-          ),
-          selected:
-            routeThreadRef?.environmentId === thread.environmentId &&
-            routeThreadRef.threadId === thread.id,
-        },
-      ];
-    }),
+    pins: pinStates,
+    workingPulseIntensity: controllerWorkingPulseIntensity(pulseTime),
     secondary: ui.secondary,
   });
   const frameKey = frame.join(",");

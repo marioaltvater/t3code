@@ -4,6 +4,7 @@ import { resolveSidebarThreadStatus } from "../Sidebar.logic";
 export const CONTROLLER_LED_COUNT = 26;
 export const CONTROLLER_PINNED_LED_INDICES = [0, 1, 2, 5, 6, 7] as const;
 export const CONTROLLER_AMBIENT_LED_INDICES = [3, 8, 4, 9, 14, 18, 22, 24, 13, 25] as const;
+const WORKING_PULSE_PERIOD_MS = 2_000;
 
 export const CONTROLLER_LIGHT = {
   dark: 0x000000,
@@ -33,6 +34,11 @@ export function controllerSnoozeWakeDelay(
     return wake > now ? Math.min(earliest, wake) : earliest;
   }, Infinity);
   return Number.isFinite(next) ? Math.min(next - now + 50, 2_147_483_647) : null;
+}
+
+export function controllerWorkingPulseIntensity(now: number): number {
+  const wave = (Math.sin((2 * Math.PI * now) / WORKING_PULSE_PERIOD_MS - Math.PI / 2) + 1) / 2;
+  return 0.28 + wave * 0.72;
 }
 
 export function resolveControllerThreadLightState(
@@ -79,6 +85,7 @@ const SELECTED_STATE_COLOR: Record<ControllerThreadLightState, number> = {
 };
 
 export function createControllerLightingFrame(input: {
+  readonly workingPulseIntensity?: number;
   readonly pins: ReadonlyArray<{
     readonly state: ControllerThreadLightState;
     readonly selected: boolean;
@@ -100,7 +107,9 @@ export function createControllerLightingFrame(input: {
   input.pins.slice(0, CONTROLLER_PINNED_LED_INDICES.length).forEach((pin, slot) => {
     const led = CONTROLLER_PINNED_LED_INDICES[slot];
     if (led !== undefined) {
-      colors[led] = pin.selected ? SELECTED_STATE_COLOR[pin.state] : STATE_COLOR[pin.state];
+      const color = pin.selected ? SELECTED_STATE_COLOR[pin.state] : STATE_COLOR[pin.state];
+      colors[led] =
+        pin.state === "working" ? scaleRgb(color, input.workingPulseIntensity ?? 1) : color;
     }
     if (pin.selected) {
       for (const index of CONTROLLER_AMBIENT_LED_INDICES)

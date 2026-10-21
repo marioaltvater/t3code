@@ -1,5 +1,6 @@
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { RunId, ScopedThreadRef } from "@t3tools/contracts";
+import type { ThreadCheckpointSummary } from "@t3tools/client-runtime/state/thread-checkpoints";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
@@ -11,6 +12,19 @@ export type DiffPanelSelection =
   | { kind: "turn"; turnId: RunId; filePath: string | null; revealRequestId: number };
 
 const DEFAULT_SELECTION: DiffPanelSelection = { kind: "branch", baseRef: null };
+
+export function selectLatestTurnDiff(summaries: ReadonlyArray<ThreadCheckpointSummary>) {
+  return summaries.reduce<ThreadCheckpointSummary | undefined>((latest, summary) => {
+    if (
+      latest === undefined ||
+      summary.checkpointTurnCount > latest.checkpointTurnCount ||
+      (summary.checkpointTurnCount === latest.checkpointTurnCount &&
+        summary.completedAt > latest.completedAt)
+    )
+      return summary;
+    return latest;
+  }, undefined);
+}
 
 interface DiffPanelStoreState {
   byThreadKey: Record<string, DiffPanelSelection>;

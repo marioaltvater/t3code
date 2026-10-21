@@ -371,6 +371,8 @@ export function commandLabel(command: KeybindingCommand): string {
     return `Thread: Open Pinned Thread ${command.slice("thread.pinned.".length)}`;
   }
   if (command === "open-settings") return "Open Settings";
+  if (command === "settings.toggle") return "Toggle Settings";
+  if (command === "diff.toggleLatestTurn") return "Diff: Toggle Latest Turn";
   if (command === "composer.sendAlternate") return "Composer: Opposite Queue or Steer Action";
   if (command === "composer.sendBackground") return "Composer: Start in Background";
   if (command === "composer.sendAndNewThread") return "Composer: Send and Start New Thread";
