@@ -254,7 +254,7 @@ function PinnedSectionDialog({ sectionId }: { sectionId: string | null }) {
                 autoFocus
                 value={name}
                 maxLength={MAX_SIDEBAR_SECTION_NAME_LENGTH}
-                placeholder="Chief of Staff"
+                placeholder="Enter a section name"
                 onChange={(event) => {
                   setName(event.target.value);
                   setError(null);
