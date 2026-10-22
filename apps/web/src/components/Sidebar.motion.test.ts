@@ -29,6 +29,10 @@ class TestRow {
   inert = false;
   attributes: { name: string; value: string }[] = [];
   children: TestRow[] = [];
+  dataset: Record<string, string> = {};
+  get firstElementChild(): TestRow | null {
+    return this.children[0] ?? null;
+  }
   clones: TestRow[] = [];
   remove = vi.fn();
   animations: TestAnimation[] = [];
@@ -166,6 +170,53 @@ describe("sidebar list motion", () => {
     expectMove(a, 47);
     expect(b.animations).toHaveLength(0);
     expectMove(c, 16);
+  });
+
+  it("keeps release motion in screen coordinates when the drag list leaves its fixed position", () => {
+    const [a, b] = [new TestRow("a"), new TestRow("b")];
+    const { motion, layout, parent } = fixture([a, b]);
+    motion.update(false);
+    a.dragTranslate = 200;
+    motion.release();
+    parent.getBoundingClientRect = () => ({ top: 50 });
+    layout([b, a]);
+    a.dragTranslate = 0;
+    motion.update(true);
+    expectMove(a, 67);
+    expectMove(b, 33);
+  });
+
+  it("animates individual rows through their transparent section wrappers", () => {
+    const [a, b] = [new TestRow("a"), new TestRow("b")];
+    const { motion, layout, parent } = fixture([a, b]);
+    const group = new TestRow("section", 0);
+    const list = new TestRow("list", 0);
+    group.dataset.sidebarThreadGroup = "true";
+    group.children = [list];
+    list.children = [a, b];
+    parent.children = [group];
+    motion.update(false);
+    layout([b, a]);
+    list.children = [b, a];
+    parent.children = [group];
+    motion.update(true);
+    expectMove(a, -83);
+    expectMove(b, 83);
+    expect(group.animations).toHaveLength(0);
+  });
+
+  it("keeps the held thread's release position when it moves to a different section", () => {
+    const a = new TestRow("a");
+    a.dataset.threadItem = "thread-a";
+    const { motion, layout } = fixture([a]);
+    motion.update(false);
+    a.dragTranslate = 200;
+    motion.release();
+    const moved = new TestRow("a in destination");
+    moved.dataset.threadItem = "thread-a";
+    layout([moved]);
+    motion.update(true);
+    expectMove(moved, 200);
   });
 
   it("does not glide on release when motion is reduced", () => {

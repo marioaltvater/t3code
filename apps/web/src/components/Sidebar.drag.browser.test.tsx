@@ -1,6 +1,10 @@
 import { expect, it } from "vite-plus/test";
 import { render } from "../../test/render";
-import { measureSidebarDropTarget, sidebarSourceSortingStrategy } from "./Sidebar.drag";
+import {
+  measureSidebarDropTarget,
+  positionSidebarDragCard,
+  sidebarSourceSortingStrategy,
+} from "./Sidebar.drag";
 
 it.each([36, 82])(
   "keeps source peers in their slots while a %spx card follows the pointer",
@@ -77,5 +81,33 @@ it("keeps the remaining full-size card in first position when only the held card
     peer.style.transform = `translateY(${displacement?.y ?? 0}px)`;
     expect(peer.getBoundingClientRect().top).toBe(top);
     expect(peer.getBoundingClientRect().height).toBe(82);
+  }
+});
+
+it("keeps a fixed held card under the pointer while its outer list scrolls", async () => {
+  await using screen = await render(
+    <div data-testid="viewport" style={{ height: 100, overflowY: "auto", marginTop: 160 }}>
+      <ul style={{ height: 900, margin: 0, padding: 0 }}>
+        <li data-thread-item="held" style={{ height: 82, listStyle: "none" }}>
+          <div role="button" style={{ position: "fixed", top: 0, left: 0, height: 36 }}>
+            Held
+          </div>
+        </li>
+      </ul>
+    </div>,
+  );
+  const viewport = screen.container.querySelector<HTMLElement>('[data-testid="viewport"]')!;
+  const held = screen.container.querySelector<HTMLElement>('[data-thread-item="held"]')!;
+  const card = held.querySelector<HTMLElement>('[role="button"]')!;
+  const origin = held.getBoundingClientRect().top;
+  const pointerTop = origin + 20;
+  for (const scroll of [0, 300, 600, 0]) {
+    viewport.scrollTop = scroll;
+    positionSidebarDragCard(held, {
+      pointerY: pointerTop + 18,
+      grabFraction: 0.5,
+      bounds: { top: 0, height: 1000 },
+    });
+    expect(card.getBoundingClientRect().top).toBe(pointerTop);
   }
 });
