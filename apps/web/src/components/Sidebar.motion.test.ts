@@ -8,14 +8,21 @@ class TestAnimation {
   effect = { getComputedTiming: () => ({ progress: this.progress }) };
   cancel = vi.fn(() => {
     this.playState = "idle";
+    for (const listener of this.listeners.get("cancel") ?? []) listener();
   });
-  private onFinish: (() => void) | undefined;
-  addEventListener(_type: string, listener: () => void) {
-    this.onFinish = listener;
+  pause = vi.fn(() => {
+    this.playState = "paused";
+  });
+  play = vi.fn(() => {
+    this.playState = "running";
+  });
+  private listeners = new Map<string, (() => void)[]>();
+  addEventListener(type: string, listener: () => void) {
+    this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener]);
   }
   finish() {
     this.playState = "finished";
-    this.onFinish?.();
+    for (const listener of this.listeners.get("finish") ?? []) listener();
   }
 }
 
@@ -25,7 +32,7 @@ class TestRow {
   offsetWidth = 260;
   namespaceURI = "http://www.w3.org/1999/xhtml";
   dragTranslate = 0;
-  style: Record<string, string> = {};
+  style: Record<string, string> = { visibility: "" };
   inert = false;
   attributes: { name: string; value: string }[] = [];
   children: TestRow[] = [];
@@ -36,12 +43,18 @@ class TestRow {
   clones: TestRow[] = [];
   remove = vi.fn();
   animations: TestAnimation[] = [];
+  origin = () => 0;
   constructor(
     readonly name: string,
     public offsetHeight = 82,
   ) {}
   getBoundingClientRect() {
-    return { top: this.offsetTop + this.dragTranslate, height: this.offsetHeight };
+    return {
+      top: this.origin() + this.offsetTop + this.dragTranslate,
+      left: this.offsetLeft,
+      width: this.offsetWidth,
+      height: this.offsetHeight,
+    };
   }
   setAttribute(name: string, value: string) {
     this.removeAttribute(name);
@@ -52,6 +65,13 @@ class TestRow {
   }
   querySelectorAll(_selector: string): TestRow[] {
     return this.children.flatMap((child) => [child, ...child.querySelectorAll("*")]);
+  }
+  querySelector(_selector: string): TestRow | null {
+    return (
+      this.querySelectorAll("*").find((child) =>
+        child.attributes.some(({ name, value }) => name === "role" && value === "button"),
+      ) ?? null
+    );
   }
   cloneNode(_deep: boolean): TestRow {
     const clone = new TestRow(`${this.name} clone`, this.offsetHeight);
@@ -70,7 +90,11 @@ class TestRow {
 }
 
 function fixture(rows: TestRow[]) {
-  const media = { matches: false };
+  const media = {
+    matches: false,
+    addEventListener: vi.fn<(type: string, listener: () => void) => void>(),
+    removeEventListener: vi.fn<(type: string, listener: () => void) => void>(),
+  };
   const parent = {
     children: rows,
     ownerDocument: { defaultView: { matchMedia: () => media } },
@@ -86,11 +110,15 @@ function fixture(rows: TestRow[]) {
     let top = 8;
     for (const row of next) {
       row.offsetTop = top;
+      for (const node of [row, ...row.querySelectorAll("*")]) {
+        node.origin = () => parent.getBoundingClientRect().top;
+        node.offsetTop = top;
+      }
       top += row.offsetHeight + 1;
     }
     parent.children = [
       ...next,
-      ...parent.children.filter((row) => row.style.position === "absolute"),
+      ...parent.children.filter((row) => ["absolute", "fixed"].includes(row.style.position!)),
     ];
   }
   layout(rows);
@@ -103,6 +131,34 @@ function expectMove(row: TestRow, offset: number) {
     [{ transform: `translateY(${offset}px)` }, { transform: "translateY(0px)" }],
     { duration: 150, easing: "ease-out" },
   );
+}
+
+function expectDropMove(row: TestRow, offset: number) {
+  expect(row.animate).toHaveBeenLastCalledWith(
+    [{ transform: `translateY(${offset}px)` }, { transform: "translateY(0px)" }],
+    { duration: 180, easing: "cubic-bezier(0.77, 0, 0.175, 1)" },
+  );
+}
+
+function heldRow() {
+  const row = new TestRow("held slot");
+  row.dataset.threadItem = "environment:thread-a";
+  row.dataset.threadDragging = "true";
+  const visual = new TestRow("held compact visual", 36);
+  visual.setAttribute("role", "button");
+  visual.setAttribute("data-testid", "sidebar-row-slim");
+  visual.setAttribute("id", "held-control");
+  row.children = [visual];
+  return { row, visual };
+}
+
+function destinationRow(height = 82) {
+  const row = new TestRow("final row", height);
+  row.dataset.threadItem = "environment:thread-a";
+  const visual = new TestRow("final visual", height);
+  visual.setAttribute("role", "button");
+  row.children = [visual];
+  return row;
 }
 
 beforeEach(() => vi.stubGlobal("HTMLElement", TestRow));
@@ -167,9 +223,9 @@ describe("sidebar list motion", () => {
     layout([b, a, c]);
     a.dragTranslate = b.dragTranslate = c.dragTranslate = 0;
     motion.update(true);
-    expectMove(a, 47);
+    expectDropMove(a, 47);
     expect(b.animations).toHaveLength(0);
-    expectMove(c, 16);
+    expectDropMove(c, 16);
   });
 
   it("keeps release motion in screen coordinates when the drag list leaves its fixed position", () => {
@@ -182,8 +238,8 @@ describe("sidebar list motion", () => {
     layout([b, a]);
     a.dragTranslate = 0;
     motion.update(true);
-    expectMove(a, 67);
-    expectMove(b, 33);
+    expectDropMove(a, 67);
+    expectDropMove(b, 33);
   });
 
   it("animates individual rows through their transparent section wrappers", () => {
@@ -216,7 +272,7 @@ describe("sidebar list motion", () => {
     moved.dataset.threadItem = "thread-a";
     layout([moved]);
     motion.update(true);
-    expectMove(moved, 200);
+    expectDropMove(moved, 200);
   });
 
   it("does not glide on release when motion is reduced", () => {
@@ -231,6 +287,265 @@ describe("sidebar list motion", () => {
     motion.update(true);
     expect(a.animations).toHaveLength(0);
     expect(b.animations).toHaveLength(0);
+  });
+
+  it.each([36, 82])(
+    "lands the held compact silhouette before revealing the final %spx row",
+    (height) => {
+      const { row, visual } = heldRow();
+      const peer = new TestRow("peer");
+      const header = new TestRow("destination header", 32);
+      const { motion, layout, parent } = fixture([row, peer]);
+      motion.update(false);
+      visual.dragTranslate = 200;
+      motion.release();
+      const clone = visual.clones[0]!;
+      expect(row.style.visibility).toBe("hidden");
+      expect(clone.offsetHeight).toBe(36);
+      expect(clone.inert).toBe(true);
+      expect(clone.attributes).toEqual([
+        { name: "role", value: "button" },
+        { name: "aria-hidden", value: "true" },
+      ]);
+      expect(clone.style).toMatchObject({
+        position: "fixed",
+        top: "208px",
+        left: "4px",
+        width: "260px",
+        height: "36px",
+        transform: "none",
+        pointerEvents: "none",
+      });
+      const moved = destinationRow(height);
+      parent.getBoundingClientRect = () => ({ top: 50 });
+      layout([peer, header, moved]);
+      motion.update(true);
+      expect(moved.style.visibility).toBe("hidden");
+      expect(moved.animations).toHaveLength(0);
+      expect(clone.animate).toHaveBeenCalledExactlyOnceWith(
+        [{ transform: "translateY(0px)" }, { transform: "translateY(-34px)" }],
+        { duration: 68, easing: "cubic-bezier(0.77, 0, 0.175, 1)", fill: "forwards" },
+      );
+      const animation = clone.animations[0]!;
+      animation.progress = 0.5;
+      motion.update(true);
+      expect(clone.animate).toHaveBeenCalledOnce();
+      expect(animation.cancel).not.toHaveBeenCalled();
+      expect(moved.style.visibility).toBe("hidden");
+      expect(parent.children.includes(clone)).toBe(true);
+      animation.finish();
+      expect(moved.style.visibility).toBe("");
+      expect(row.style.visibility).toBe("");
+      expect(parent.children.includes(clone)).toBe(false);
+      motion.dispose();
+    },
+  );
+
+  it("restores headers and peers on the landing clock without cloning destination chrome", () => {
+    const { row, visual } = heldRow();
+    const marker = new TestRow("destination", 96);
+    const chrome = new TestRow("accepted blue destination", 96);
+    marker.children = [chrome];
+    const peer = new TestRow("peer");
+    const { motion, layout } = fixture([marker, row, peer]);
+    motion.update(false);
+    // A destination expansion is still in flight at release.
+    chrome.dragTranslate = 12;
+    visual.dragTranslate = -20;
+    motion.release();
+    marker.offsetHeight = 32;
+    marker.children = [new TestRow("updated title", 32)];
+    const moved = destinationRow();
+    layout([marker, peer, moved]);
+    motion.update(true);
+    expectDropMove(marker, 12);
+    expectDropMove(peer, 147);
+    expect(chrome.clones).toHaveLength(0);
+    expect(marker.children).toHaveLength(1);
+    expect(marker.children[0]!.animations).toHaveLength(0);
+    motion.dispose();
+  });
+
+  it("returns a cancelled or rejected drop to its original row with one visible visual", () => {
+    const { row, visual } = heldRow();
+    const { motion, layout, parent } = fixture([row]);
+    motion.update(false);
+    visual.dragTranslate = 90;
+    motion.release();
+    const clone = visual.clones[0]!;
+    delete row.dataset.threadDragging;
+    visual.dragTranslate = 0;
+    layout([row]);
+    motion.update(true);
+    expect(row.style.visibility).toBe("hidden");
+    expect(clone.animate).toHaveBeenCalledWith(
+      [{ transform: "translateY(0px)" }, { transform: "translateY(-90px)" }],
+      { duration: 180, easing: "cubic-bezier(0.77, 0, 0.175, 1)", fill: "forwards" },
+    );
+    clone.animations[0]!.finish();
+    expect(row.style.visibility).toBe("");
+    expect(parent.children).toEqual([row]);
+    motion.dispose();
+  });
+
+  it("keeps a remounted section header aligned with its returning source rows", () => {
+    const header = new TestRow("drag source header", 32);
+    header.dataset.sidebarMarker = "pinned-divider";
+    const peer = new TestRow("source peer");
+    peer.dataset.threadItem = "environment:peer";
+    const { motion, layout } = fixture([header, peer]);
+    header.dragTranslate = 120;
+    peer.dragTranslate = 120;
+    motion.release();
+    const restored = new TestRow("restored source header", 32);
+    restored.dataset.sidebarMarker = "pinned-divider";
+    layout([restored, peer]);
+    peer.dragTranslate = 0;
+    motion.update(true);
+    expectDropMove(restored, 120);
+    expectDropMove(peer, 120);
+    motion.dispose();
+  });
+
+  it("reveals a nearby full card without pausing a stationary compact visual", () => {
+    const { row, visual } = heldRow();
+    const { motion, layout, parent } = fixture([row]);
+    visual.dragTranslate = 3;
+    motion.release();
+    const clone = visual.clones[0]!;
+    const moved = destinationRow(82);
+    layout([moved]);
+    motion.update(true);
+    expect(clone.animations).toHaveLength(0);
+    expect(parent.children.includes(clone)).toBe(false);
+    expect(moved.style.visibility).toBe("");
+    const restored = moved.children[0]!;
+    expect(restored.animate).toHaveBeenCalledExactlyOnceWith(
+      [
+        { clipPath: "inset(0px 0px 46px 0px)", opacity: 0.5 },
+        { clipPath: "inset(0px 0px 0px 0px)", opacity: 1 },
+      ],
+      { duration: 100, easing: "cubic-bezier(0.23, 1, 0.32, 1)" },
+    );
+    motion.suspend();
+    expect(restored.animations[0]!.cancel).toHaveBeenCalledOnce();
+    expect(moved.style.visibility).toBe("");
+    motion.dispose();
+  });
+
+  it("reveals returning section contents after the moving source boundary settles", () => {
+    const header = new TestRow("source header", 32);
+    header.dataset.sidebarMarker = "pinned-divider";
+    const { motion, layout } = fixture([header]);
+    motion.release();
+    const restored = new TestRow("returning section row", 36);
+    restored.dataset.threadItem = "environment:restored";
+    layout([restored, header]);
+    motion.update(true);
+    const reveal = restored.animations[0]!;
+    expect(reveal.playState).toBe("paused");
+    header.animations[0]!.finish();
+    expect(reveal.playState).toBe("running");
+    motion.suspend();
+    expect(reveal.playState).toBe("idle");
+    motion.dispose();
+  });
+
+  it.each(["absent", "collapsed"])("cleans a release with an %s destination", (state) => {
+    const { row, visual } = heldRow();
+    const { motion, layout, parent } = fixture([row]);
+    motion.release();
+    const clone = visual.clones[0]!;
+    const moved = destinationRow(0);
+    layout(state === "absent" ? [] : [moved]);
+    motion.update(true);
+    expect(parent.children.includes(clone)).toBe(false);
+    expect(clone.animations).toHaveLength(0);
+    expect(row.style.visibility).toBe("");
+    expect(moved.style.visibility).toBe("");
+    motion.dispose();
+  });
+
+  it.each(["suspend", "dispose", "cancel", "rollback", "reduced"])(
+    "cleans the landing visual and hidden styles on %s",
+    (interruption) => {
+      const { row, visual } = heldRow();
+      const { motion, layout, parent, media } = fixture([row]);
+      motion.update(false);
+      visual.dragTranslate = 200;
+      motion.release();
+      const clone = visual.clones[0]!;
+      const moved = destinationRow();
+      moved.style.visibility = "inherit";
+      layout([moved]);
+      motion.update(true);
+      const animation = clone.animations[0]!;
+      if (interruption === "suspend") motion.suspend();
+      if (interruption === "dispose") motion.dispose();
+      if (interruption === "cancel") animation.cancel();
+      if (interruption === "rollback") {
+        layout([destinationRow()]);
+        motion.update(true);
+      }
+      if (interruption === "reduced") {
+        media.matches = true;
+        const onChange = media.addEventListener.mock.calls[0]![1];
+        onChange();
+      }
+      expect(animation.cancel).toHaveBeenCalled();
+      expect(row.style.visibility).toBe("");
+      expect(moved.style.visibility).toBe("inherit");
+      expect(parent.children.includes(clone)).toBe(false);
+      animation.finish();
+      expect(moved.style.visibility).toBe("inherit");
+      motion.dispose();
+      expect(media.removeEventListener).toHaveBeenCalledWith(
+        "change",
+        media.addEventListener.mock.calls[0]![1],
+      );
+    },
+  );
+
+  it("discards a pending release before another pickup and ignores stale completion", () => {
+    const { row, visual } = heldRow();
+    const { motion, layout, parent } = fixture([row]);
+    motion.release();
+    const pending = visual.clones[0]!;
+    motion.suspend();
+    expect(parent.children).toEqual([row]);
+    expect(row.style.visibility).toBe("");
+    visual.dragTranslate = 100;
+    motion.release();
+    layout([destinationRow()]);
+    motion.update(true);
+    const old = visual.clones[1]!.animations[0]!;
+    motion.suspend();
+    layout([row]);
+    motion.release();
+    const current = visual.clones[2]!;
+    old.finish();
+    expect(parent.children.includes(pending)).toBe(false);
+    expect(parent.children.includes(current)).toBe(true);
+    expect(row.style.visibility).toBe("hidden");
+    motion.dispose();
+    expect(row.style.visibility).toBe("");
+    expect(parent.children.includes(current)).toBe(false);
+  });
+
+  it("skips copying and hiding the held row with reduced motion", () => {
+    const { row, visual } = heldRow();
+    const { motion, layout, parent, media } = fixture([row]);
+    media.matches = true;
+    motion.release();
+    const moved = destinationRow();
+    layout([moved]);
+    motion.update(true);
+    expect(visual.clones).toHaveLength(0);
+    expect(row.style.visibility).toBe("");
+    expect(moved.style.visibility).toBe("");
+    expect(moved.animations).toHaveLength(0);
+    expect(parent.children).toEqual([moved]);
+    motion.dispose();
   });
 
   it("does not carry a canceled drag's transformed position into the next move", () => {

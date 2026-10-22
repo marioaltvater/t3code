@@ -1,4 +1,6 @@
 const motionTiming = { duration: 150, easing: "ease-out" };
+const dropTiming = { duration: 180, easing: "cubic-bezier(0.77, 0, 0.175, 1)" };
+const revealTiming = { duration: 100, easing: "cubic-bezier(0.23, 1, 0.32, 1)" };
 const rowTravel = (height: number) => Math.min(height, 40);
 // Fades are the expensive part: every removed row gets a deep clone and every
 // clone and entering row gets its own animation, and the layout reads in
@@ -6,6 +8,8 @@ const rowTravel = (height: number) => Math.min(height, 40);
 const MAX_FADED_ROWS_PER_UPDATE = 40;
 
 type RowPosition = { top: number; left: number; width: number; height: number };
+
+const rowKey = (node: HTMLElement) => node.dataset.threadItem ?? node.dataset.sidebarMarker ?? node;
 
 function listRows(parent: HTMLUListElement) {
   return Array.from(parent.children).flatMap((node) =>
@@ -21,6 +25,33 @@ function progress(animation: Animation) {
     : (animation.effect?.getComputedTiming().progress ?? 0);
 }
 
+function rowVisual(node: HTMLElement) {
+  return node.dataset.threadItem
+    ? (node.querySelector<HTMLElement>('[role="button"]') ?? node)
+    : node.firstElementChild instanceof HTMLElement
+      ? node.firstElementChild
+      : node;
+}
+
+function inertCopy(node: HTMLElement) {
+  const clone = node.cloneNode(true) as HTMLElement;
+  for (const element of [clone, ...clone.querySelectorAll("*")]) {
+    for (const attribute of Array.from(element.attributes)) {
+      if (
+        (attribute.name === "id" && element.namespaceURI !== "http://www.w3.org/2000/svg") ||
+        attribute.name === "data-thread-item" ||
+        attribute.name === "data-thread-selection-safe" ||
+        attribute.name === "data-testid"
+      ) {
+        element.removeAttribute(attribute.name);
+      }
+    }
+  }
+  clone.setAttribute("aria-hidden", "true");
+  clone.inert = true;
+  return clone;
+}
+
 /** The list must be
  * positioned so every direct child's offsetTop has the same origin. */
 export function createSidebarListMotion(parent: HTMLUListElement) {
@@ -33,6 +64,29 @@ export function createSidebarListMotion(parent: HTMLUListElement) {
   const entering = new Map<HTMLElement, { animation: Animation; travel: number }>();
   const exiting = new Map<HTMLElement, Animation>();
   let released: Map<HTMLElement | string, number> | null = null;
+  let landing: {
+    key: string;
+    clone: HTMLElement;
+    top: number;
+    height: number;
+    hidden: Map<HTMLElement, string>;
+    target?: HTMLElement;
+    animation?: Animation;
+  } | null = null;
+
+  const clearLanding = () => {
+    const current = landing;
+    landing = null;
+    if (!current) return;
+    for (const [node, visibility] of current.hidden) node.style.visibility = visibility;
+    current.clone.remove();
+    current.animation?.cancel();
+  };
+  const hideLandingRow = (node: HTMLElement) => {
+    if (!landing || landing.hidden.has(node)) return;
+    landing.hidden.set(node, node.style.visibility);
+    node.style.visibility = "hidden";
+  };
 
   const remainingOffset = (node: HTMLElement) => {
     const current = running.get(node);
@@ -50,21 +104,7 @@ export function createSidebarListMotion(parent: HTMLUListElement) {
   };
   const fadeOut = (node: HTMLElement, position: RowPosition, travel: number) => {
     if (position.height === 0) return;
-    const clone = node.cloneNode(true) as HTMLElement;
-    for (const element of [clone, ...clone.querySelectorAll("*")]) {
-      for (const attribute of Array.from(element.attributes)) {
-        if (
-          (attribute.name === "id" && element.namespaceURI !== "http://www.w3.org/2000/svg") ||
-          attribute.name === "data-thread-item" ||
-          attribute.name === "data-thread-selection-safe" ||
-          attribute.name === "data-testid"
-        ) {
-          element.removeAttribute(attribute.name);
-        }
-      }
-    }
-    clone.setAttribute("aria-hidden", "true");
-    clone.inert = true;
+    const clone = inertCopy(node);
     Object.assign(clone.style, {
       position: "absolute",
       top: `${position.top + remainingOffset(node)}px`,
@@ -104,19 +144,20 @@ export function createSidebarListMotion(parent: HTMLUListElement) {
     running.delete(node);
   };
   const suspend = () => {
+    clearLanding();
     for (const node of running.keys()) cancel(node);
     clearFades();
     positions = null;
     released = null;
   };
-  const move = (node: HTMLElement, offset: number) => {
+  const move = (node: HTMLElement, offset: number, timing = motionTiming) => {
     cancel(node);
     const entry = entering.get(node);
     if (entry) entry.travel = 0;
     if (offset === 0 && !entry) return;
     const animation = node.animate(
       [{ transform: `translateY(${offset}px)` }, { transform: "translateY(0px)" }],
-      motionTiming,
+      timing,
     );
     running.set(node, { animation, offset });
     animation.addEventListener(
@@ -126,14 +167,22 @@ export function createSidebarListMotion(parent: HTMLUListElement) {
       },
       { once: true },
     );
+    return animation;
   };
+  const onMotionPreferenceChange = () => {
+    if (reducedMotion?.matches) suspend();
+  };
+  reducedMotion?.addEventListener("change", onMotionPreferenceChange);
 
   return {
     update(animate: boolean) {
       if (disposed) return;
       const next = new Map(
         listRows(parent)
-          .filter((node): node is HTMLElement => node instanceof HTMLElement && !exiting.has(node))
+          .filter(
+            (node): node is HTMLElement =>
+              node instanceof HTMLElement && !exiting.has(node) && node !== landing?.clone,
+          )
           .map((node) => [
             node,
             {
@@ -144,6 +193,20 @@ export function createSidebarListMotion(parent: HTMLUListElement) {
             },
           ]),
       );
+      if (landing?.animation) {
+        // A rollback, collapsed destination or new layout ends the handoff;
+        // ordinary shell updates must not restart its travel.
+        const target = landing.target;
+        if (
+          !animate ||
+          reducedMotion?.matches ||
+          !target ||
+          !next.has(target) ||
+          target.offsetHeight === 0 ||
+          next.get(target)?.top !== positions?.get(target)?.top
+        )
+          clearLanding();
+      }
       let fadeCount = 0;
       if (positions !== null) {
         for (const [node, position] of positions) {
@@ -229,34 +292,161 @@ export function createSidebarListMotion(parent: HTMLUListElement) {
         }
       }
       if (released !== null) {
+        const current = landing;
+        const target = current
+          ? [...next.keys()].find((node) => node.dataset?.threadItem === current.key)
+          : undefined;
+        const visual = target ? rowVisual(target) : undefined;
+        const rect = visual?.getBoundingClientRect();
         if (!reducedMotion?.matches) {
-          const origin = parent.getBoundingClientRect().top;
+          const offsets = new Map<HTMLElement, number>();
           for (const [node, position] of next) {
-            const top = released.get(node.dataset?.threadItem ?? node);
-            if (top !== undefined) move(node, top - origin - position.top);
+            const top = released.get(rowKey(node));
+            if ((landing && node.dataset?.threadItem === landing.key) || position.height === 0)
+              continue;
+            const destination = node.dataset?.threadItem ? node : rowVisual(node);
+            if (top !== undefined) offsets.set(node, top - destination.getBoundingClientRect().top);
+          }
+          let restoring: Animation | undefined;
+          for (const [node, offset] of offsets) {
+            restoring = move(node, offset, dropTiming) ?? restoring;
+          }
+          // Rows hidden by destination boxes return after their boundaries
+          // settle, so a moving source header never crosses visible content.
+          for (const node of next.keys()) {
+            if (
+              !node.dataset.threadItem ||
+              node.dataset.threadItem === current?.key ||
+              released.has(rowKey(node)) ||
+              node.offsetHeight === 0
+            )
+              continue;
+            const animation = node.animate([{ opacity: 0 }, { opacity: 1 }], revealTiming);
+            entering.set(node, { animation, travel: 0 });
+            if (restoring) {
+              animation.pause();
+              const reveal = () => {
+                if (entering.get(node)?.animation === animation) animation.play();
+              };
+              restoring.addEventListener("finish", reveal, { once: true });
+              restoring.addEventListener("cancel", reveal, { once: true });
+            }
+            animation.addEventListener(
+              "finish",
+              () => {
+                if (entering.get(node)?.animation === animation) entering.delete(node);
+              },
+              { once: true },
+            );
           }
         }
         released = null;
+        if (current) {
+          if (!target || !visual || !rect || rect.height === 0 || reducedMotion?.matches)
+            clearLanding();
+          else {
+            hideLandingRow(target);
+            current.target = target;
+            const reveal = () => {
+              if (landing !== current) return;
+              const cropped = Math.max(0, rect.height - current.height);
+              clearLanding();
+              if (cropped > 1) {
+                const animation = visual.animate(
+                  [
+                    { clipPath: `inset(0px 0px ${cropped}px 0px)`, opacity: 0.5 },
+                    { clipPath: "inset(0px 0px 0px 0px)", opacity: 1 },
+                  ],
+                  revealTiming,
+                );
+                entering.set(target, { animation, travel: 0 });
+                animation.addEventListener(
+                  "finish",
+                  () => {
+                    if (entering.get(target)?.animation === animation) entering.delete(target);
+                  },
+                  { once: true },
+                );
+              }
+            };
+            // Tiny corrections should not hold a compact row still before
+            // revealing its destination's full card.
+            if (Math.abs(rect.top - current.top) <= 8) {
+              reveal();
+            } else {
+              const distance = Math.abs(rect.top - current.top);
+              current.animation = current.clone.animate(
+                [
+                  { transform: "translateY(0px)" },
+                  { transform: `translateY(${rect.top - current.top}px)` },
+                ],
+                {
+                  ...dropTiming,
+                  duration: Math.min(dropTiming.duration, Math.max(60, distance * 2)),
+                  fill: "forwards",
+                },
+              );
+              current.animation.addEventListener("finish", reveal, { once: true });
+              current.animation.addEventListener(
+                "cancel",
+                () => {
+                  if (landing === current) clearLanding();
+                },
+                { once: true },
+              );
+            }
+          }
+        }
       }
       positions = next;
     },
     release() {
+      if (disposed) return;
       suspend();
-      released = new Map(
-        listRows(parent)
-          .filter((node): node is HTMLElement => node instanceof HTMLElement && !exiting.has(node))
-          .map((node) => [
-            node.dataset?.threadItem ?? node,
-            (node.dataset?.threadDragging
-              ? node.querySelector('[role="button"]')
-              : node
-            )?.getBoundingClientRect().top ?? node.getBoundingClientRect().top,
-          ]),
-      );
+      const rows = listRows(parent)
+        .filter((node): node is HTMLElement => node instanceof HTMLElement)
+        .map((node) => {
+          const visual = rowVisual(node);
+          const rect = (
+            node.dataset.threadItem && !node.dataset.threadDragging ? node : visual
+          ).getBoundingClientRect();
+          return { node, visual, rect };
+        });
+      released = new Map();
+      for (const { node, visual, rect } of rows) {
+        released.set(rowKey(node), rect.top);
+        if (!node.dataset.threadDragging || !node.dataset.threadItem || reducedMotion?.matches)
+          continue;
+        const clone = inertCopy(visual);
+        Object.assign(clone.style, {
+          position: "fixed",
+          top: `${rect.top}px`,
+          left: `${rect.left}px`,
+          width: `${rect.width}px`,
+          height: `${rect.height}px`,
+          margin: "0",
+          boxSizing: "border-box",
+          contentVisibility: "visible",
+          transform: "none",
+          transition: "none",
+          pointerEvents: "none",
+          zIndex: "40",
+        });
+        landing = {
+          key: node.dataset.threadItem,
+          clone,
+          top: rect.top,
+          height: rect.height,
+          hidden: new Map(),
+        };
+        parent.append(clone);
+        hideLandingRow(node);
+      }
     },
     suspend,
     dispose() {
       suspend();
+      reducedMotion?.removeEventListener("change", onMotionPreferenceChange);
       disposed = true;
     },
   };

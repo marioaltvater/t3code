@@ -5409,7 +5409,7 @@ export default function Sidebar() {
                                           "relative list-none",
                                           section === "active" && "min-h-9 flex-1",
                                           destination.size === "half" &&
-                                            "sticky bottom-2 z-10 mt-auto border-t-8 border-sidebar bg-sidebar",
+                                            "sticky bottom-2 z-10 mt-auto border-t-8 border-transparent",
                                           destination.size === "half"
                                             ? "h-26 min-h-11 shrink"
                                             : section === "pinned" && pinnedDropTargetsExpanded
