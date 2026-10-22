@@ -250,6 +250,8 @@ import { resolveLocalCheckoutBranchMismatch } from "./BranchToolbar.logic";
 import {
   createSidebarDestinationCollisionDetection,
   measureSidebarDropTarget,
+  sidebarDragTranslation,
+  positionSidebarDragCard,
   sidebarSourceSortingStrategy,
 } from "./Sidebar.drag";
 import { SidebarDragLifecycle, SidebarPointerSensor } from "./Sidebar.pointer";
@@ -1178,7 +1180,12 @@ function SnoozeMenuButton(props: {
 type SortableThreadRowBag = Pick<
   ReturnType<typeof useSortable>,
   "listeners" | "setNodeRef" | "transform" | "transition" | "isDragging"
-> & { floating?: boolean; dragging?: boolean; slotHeight?: number | undefined };
+> & {
+  floating?: boolean;
+  dragging?: boolean;
+  slotHeight?: number | undefined;
+  overlay?: { left: number; width: number } | undefined;
+};
 
 // Keep marker registration stable across sidebar updates.
 const SIDEBAR_SORTABLE_DRAG_DISABLED = { draggable: true } as const;
@@ -1237,6 +1244,7 @@ function DraggableThreadRow(
     floatingDuringDrag: boolean;
     sidebarDragging: boolean;
     dragSlotHeight: number | undefined;
+    dragOverlay: { left: number; width: number } | undefined;
   },
 ) {
   const {
@@ -1246,6 +1254,7 @@ function DraggableThreadRow(
     floatingDuringDrag,
     sidebarDragging,
     dragSlotHeight,
+    dragOverlay,
     ...rowProps
   } = props;
   const canOperateThread = useEnvironmentScope(
@@ -1281,6 +1290,7 @@ function DraggableThreadRow(
     floating: floatingDuringDrag && isDragging && !contextDrag,
     dragging: sidebarDragging,
     slotHeight: dragSlotHeight,
+    overlay: isDragging && !contextDrag ? dragOverlay : undefined,
   };
   // Keyed by variant so a card/slim switch remounts the row.
   return <SidebarThreadRow key={rowProps.variant} {...rowProps} sortable={bag} />;
@@ -2008,8 +2018,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     ? {
         ref: sortable.setNodeRef,
         style: {
-          transform: CSS.Translate.toString(sortable.transform),
+          transform: sortable.overlay ? undefined : CSS.Translate.toString(sortable.transform),
           transition: sortable.transition,
+          contentVisibility: sortable.isDragging ? ("visible" as const) : undefined,
           // Compacting the held card must not resize neighboring destinations.
           minHeight: sortable.isDragging ? sortable.slotHeight : undefined,
           // A zero-height boundary also makes dnd-kit scale the source to
@@ -2022,6 +2033,15 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         ...sortable.listeners,
       }
     : {};
+  const dragOverlayStyle = sortable?.overlay
+    ? {
+        position: "fixed" as const,
+        top: 0,
+        left: sortable.overlay.left,
+        width: sortable.overlay.width,
+        zIndex: 40,
+      }
+    : undefined;
   const destinationVerb = props.sweepAction === "unsnooze" ? "wake" : props.sweepAction;
   const dragDestination =
     destinationVerb !== null ? (
@@ -2192,6 +2212,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                 aria-label={accessibility.label}
                 aria-current={accessibility.current}
                 data-testid="sidebar-row-slim"
+                style={dragOverlayStyle}
                 aria-busy={isRegeneratingTitle || undefined}
                 className={cn(rowSurfaceClassName, "flex h-9 items-center gap-2.5 px-2.5")}
                 onClick={handleClick}
@@ -2364,6 +2385,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               aria-label={accessibility.label}
               aria-current={accessibility.current}
               data-testid="sidebar-row-card"
+              style={dragOverlayStyle}
               aria-busy={isRegeneratingTitle || undefined}
               className={rowSurfaceClassName}
               onClick={handleClick}
@@ -3430,6 +3452,19 @@ export default function Sidebar() {
       }
     })();
   };
+  const positionDragCard = useStableCallback(() => {
+    const anchor = dragAnchorRef.current;
+    const node = threadListRef.current?.querySelector<HTMLElement>(
+      "[data-thread-item][data-thread-dragging]",
+    );
+    if (!anchor || !node || !dragState) return;
+    positionSidebarDragCard(node, {
+      pointerY: dragPointerYRef.current,
+      grabFraction: anchor.grabFraction,
+      bounds: dragState.dropBounds,
+    });
+  });
+  useLayoutEffect(positionDragCard);
   const anchorSidebarDrag: Modifier = (args) => {
     const anchor = dragAnchorRef.current;
     const node = threadListRef.current?.querySelector<HTMLElement>(
@@ -3438,18 +3473,20 @@ export default function Sidebar() {
     if (!anchor || !node || !dragState) return args.transform;
     const card = node.querySelector<HTMLElement>('[role="button"]') ?? node;
     const rect = card.getBoundingClientRect();
-    const translation = new DOMMatrixReadOnly(getComputedStyle(node).transform);
     const bounds = dragState.dropBounds;
     // Section containers and compact siblings move the source's layout slot.
     // Anchor the held card to the original pointer grab point instead.
-    const top = Math.max(
-      bounds.top,
-      Math.min(
-        dragPointerYRef.current - anchor.grabFraction * rect.height,
-        bounds.top + bounds.height - rect.height,
-      ),
-    );
-    return { ...args.transform, x: 0, y: top - (rect.top - translation.m42) };
+    return {
+      ...args.transform,
+      x: 0,
+      y: sidebarDragTranslation({
+        pointerY: dragPointerYRef.current,
+        grabFraction: anchor.grabFraction,
+        cardHeight: rect.height,
+        bounds,
+        originTop: args.draggingNodeRect?.top ?? 0,
+      }),
+    };
   };
   const dndModifiers = [anchorSidebarDrag];
   const attachListMotionRef = (node: HTMLUListElement | null) => {
@@ -3492,6 +3529,7 @@ export default function Sidebar() {
   };
   const moveThreadContextDrag = (point: { x: number; y: number }) => {
     dragPointerYRef.current = point.y;
+    positionDragCard();
     const contextDrag = pointerOutsideThreadList(point);
     const pinnedAreaBottom = threadListRef.current
       ?.querySelector('[data-sidebar-marker="pinned-divider"]')
@@ -3857,14 +3895,16 @@ export default function Sidebar() {
       const translation = new DOMMatrixReadOnly(getComputedStyle(node).transform);
       return { top: rect.top - translation.m42, bottom: rect.bottom - translation.m42 };
     });
+    const sourceList = threadListRef.current?.querySelector<HTMLElement>(
+      "[data-sidebar-source-list]",
+    );
     const sourceBounds = {
       top:
-        rows[0]?.previousElementSibling?.getBoundingClientRect().top ??
+        sourceList?.previousElementSibling?.getBoundingClientRect().top ??
         Math.min(...slots.map((slot) => slot.top)),
       // Empty space before the next target still belongs to the source section.
       bottom:
-        rows.at(-1)?.nextElementSibling?.getBoundingClientRect().top ??
-        Math.max(...slots.map((slot) => slot.bottom)),
+        sourceList?.getBoundingClientRect().bottom ?? Math.max(...slots.map((slot) => slot.bottom)),
     };
     if (mixedDrag) {
       dragSourceReturnBoundsRef.current = sourceBounds;
@@ -5120,10 +5160,21 @@ export default function Sidebar() {
                         // presentational list also makes its implicit listitems
                         // presentational while preserving every descendant control.
                         role="presentation"
-                        style={mixedDrag ? { minHeight: dragState.dropBounds.height } : undefined}
+                        data-sidebar-drag-list={organizingDrag || undefined}
+                        style={
+                          organizingDrag
+                            ? {
+                                position: "fixed",
+                                top: dragState.dropBounds.top,
+                                left: dragState.dropBounds.left,
+                                width: dragState.dropBounds.width,
+                                height: dragState.dropBounds.height,
+                              }
+                            : undefined
+                        }
                         className={cn(
                           "relative flex flex-col gap-px",
-                          organizingDrag && "gap-2 py-2 [&>li]:shrink-0",
+                          organizingDrag && "gap-2 overflow-y-auto py-2 [overflow-anchor:none]",
                           sidebarListItems.length > 0 && "flex-1",
                           actionSweep !== null && "**:pointer-events-none",
                         )}
@@ -5162,6 +5213,7 @@ export default function Sidebar() {
                                     ? dragState.sourceRowHeight
                                     : undefined
                                 }
+                                dragOverlay={organizingDrag ? dragState.dropBounds : undefined}
                                 draggableDisabled={
                                   renamingThreadKey === threadKey ||
                                   !draggableThreadKeys.has(threadKey) ||
@@ -5261,6 +5313,7 @@ export default function Sidebar() {
                                   onDraftContextMenu={handleDraftContextMenu}
                                 />,
                               ];
+                          let threadGroup: { key: string; rows: ReactNode[] } | undefined;
                           for (const item of sidebarListItems) {
                             if (organizingDrag) {
                               if (item.kind === "thread" && !sourceKeys.has(item.key)) continue;
@@ -5300,12 +5353,13 @@ export default function Sidebar() {
                                         data-sidebar-marker={item.marker}
                                         className={cn(
                                           "relative list-none",
-                                          section === "active" && "flex-1",
-                                          destination.size === "half" && "mt-auto",
+                                          section === "active" && "min-h-9 flex-1",
+                                          destination.size === "half" &&
+                                            "sticky bottom-2 z-10 mt-auto bg-sidebar",
                                           destination.size === "half" ||
                                             (section === "pinned" && pinnedDropTargetsExpanded)
-                                            ? "h-24"
-                                            : "h-9",
+                                            ? "h-24 min-h-9 shrink"
+                                            : "h-9 shrink-0",
                                         )}
                                       >
                                         <SidebarDropBox destination={destination} />
@@ -5321,7 +5375,10 @@ export default function Sidebar() {
                                     key={item.marker}
                                     data-sidebar-marker={item.marker}
                                     data-sidebar-source
-                                    className={cn("list-none", section === "settled" && "mt-auto")}
+                                    className={cn(
+                                      "shrink-0 list-none",
+                                      section === "settled" && "mt-auto",
+                                    )}
                                   >
                                     <div className="flex h-8 min-w-0 items-center px-2 text-sm leading-5 font-medium text-sidebar-foreground">
                                       <span className="truncate">
@@ -5335,7 +5392,40 @@ export default function Sidebar() {
                               }
                             }
                             if (item.kind === "thread") {
-                              items.push(renderThreadRow(threadByKey.get(item.key)!, item.section));
+                              const key = `${item.section}:${item.pinnedSectionId ?? ""}`;
+                              if (threadGroup?.key !== key) {
+                                threadGroup = { key, rows: [] };
+                                const source = organizingDrag && sourceKeys.has(item.key);
+                                items.push(
+                                  <li
+                                    key={`threads:${key}`}
+                                    data-sidebar-thread-group
+                                    data-sidebar-source-list={source || undefined}
+                                    className={
+                                      source
+                                        ? cn(
+                                            "min-h-9 shrink list-none overflow-y-auto [overflow-anchor:none]",
+                                            item.section === "active" && "flex-1",
+                                          )
+                                        : "contents"
+                                    }
+                                  >
+                                    <ul
+                                      role="presentation"
+                                      className={
+                                        source
+                                          ? "relative flex flex-col gap-2 [&>li]:shrink-0"
+                                          : "contents"
+                                      }
+                                    >
+                                      {threadGroup.rows}
+                                    </ul>
+                                  </li>,
+                                );
+                              }
+                              threadGroup.rows.push(
+                                renderThreadRow(threadByKey.get(item.key)!, item.section),
+                              );
                               continue;
                             }
                             if (item.marker.startsWith("pinned-section:")) {

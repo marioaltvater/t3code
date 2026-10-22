@@ -5,6 +5,43 @@ import {
   type CollisionDetection,
 } from "@dnd-kit/core";
 import { verticalListSortingStrategy, type SortingStrategy } from "@dnd-kit/sortable";
+export function sidebarDragTranslation({
+  pointerY,
+  grabFraction,
+  cardHeight,
+  bounds,
+  originTop,
+}: {
+  pointerY: number;
+  grabFraction: number;
+  cardHeight: number;
+  bounds: { top: number; height: number };
+  originTop: number;
+}) {
+  const top = Math.max(
+    bounds.top,
+    Math.min(pointerY - grabFraction * cardHeight, bounds.top + bounds.height - cardHeight),
+  );
+  // Collision geometry uses a delta; the fixed card retains its viewport origin.
+  return top - originTop;
+}
+
+export function positionSidebarDragCard(
+  node: HTMLElement,
+  anchor: { pointerY: number; grabFraction: number; bounds: { top: number; height: number } },
+) {
+  const card = node.querySelector<HTMLElement>('[role="button"]');
+  if (!card) return;
+  // Fixed cards use viewport coordinates, independently of dnd-kit's ancestor
+  // scroll compensation, which changes when the pointer enters another section.
+  const top = sidebarDragTranslation({
+    ...anchor,
+    cardHeight: card.getBoundingClientRect().height,
+    originTop: 0,
+  });
+  card.style.top = `${top}px`;
+}
+
 export function measureSidebarDropTarget(element: HTMLElement) {
   const rect = getClientRect(element, { ignoreTransform: true });
   const list = element.parentElement;
@@ -40,7 +77,17 @@ export function createSidebarDestinationCollisionDetection(
       String(container.id).startsWith("sidebar-destination:"),
     );
     const boxes = pointerWithin({ ...args, droppableContainers: destinations });
-    const box = boxes[0];
+    const listViewport = destinations[0]?.node.current
+      ?.closest("[data-sidebar-drag-list]")
+      ?.getBoundingClientRect();
+    if (
+      listViewport &&
+      (args.pointerCoordinates.y < listViewport.top ||
+        args.pointerCoordinates.y > listViewport.bottom)
+    )
+      return [];
+    // Settled stays above overflowed sections at the bottom of short lists.
+    const box = boxes.find(({ id }) => id === "sidebar-destination:settled") ?? boxes[0];
     if (box) return isValidTarget(String(box.id)) ? [box] : [];
     const source = args.droppableContainers.filter((container) =>
       sourceKeys.has(String(container.id)),
@@ -50,10 +97,16 @@ export function createSidebarDestinationCollisionDetection(
       return rect ? [rect] : [];
     });
     const pointer = args.pointerCoordinates;
+    const viewport = source[0]?.node.current
+      ?.closest("[data-sidebar-source-list]")
+      ?.getBoundingClientRect();
     // Include trailing whitespace so releasing there commits the previewed
     // reorder. Explicit destination boxes above retain priority.
     if (
       !rects.length ||
+      pointer.y <
+        Math.max(viewport?.top ?? -Infinity, Math.min(...rects.map((rect) => rect.top))) ||
+      (viewport !== undefined && pointer.y > viewport.bottom) ||
       pointer.x < Math.min(...rects.map((rect) => rect.left)) ||
       pointer.x > Math.max(...rects.map((rect) => rect.right))
     )

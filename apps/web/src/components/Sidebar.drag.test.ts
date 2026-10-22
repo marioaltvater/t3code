@@ -4,6 +4,7 @@ import { type SortingStrategy } from "@dnd-kit/sortable";
 import {
   createSidebarDestinationCollisionDetection,
   sidebarSourceSortingStrategy,
+  sidebarDragTranslation,
 } from "./Sidebar.drag";
 import {
   sidebarListItemId,
@@ -110,6 +111,51 @@ describe("sidebar collision detection", () => {
     } satisfies Parameters<CollisionDetection>[0];
   }
 
+  it.each([0, 310, 700])(
+    "matches the held card to source slots at viewport origin %s",
+    (originTop) => {
+      const args = collisionArgs();
+      const keys = ["source", "blocked"];
+      const rects = keys.map((_, index) => ({
+        top: originTop + index * 90,
+        bottom: originTop + index * 90 + 82,
+        left: 0,
+        right: 260,
+        width: 260,
+        height: 82,
+      }));
+      const detector = createSidebarDestinationCollisionDetection(() => true, new Set(keys));
+      for (const index of [0, 1, 0]) {
+        const pointerY = rects[index]!.top + 41;
+        const delta = sidebarDragTranslation({
+          pointerY,
+          grabFraction: 0.5,
+          cardHeight: 82,
+          bounds: { top: 0, height: 1000 },
+          originTop,
+        });
+        const collisionRect = {
+          ...rects[0]!,
+          top: originTop + delta,
+          bottom: originTop + delta + 82,
+        };
+        const [collision] = detector({
+          ...args,
+          collisionRect,
+          pointerCoordinates: { x: 100, y: pointerY },
+          droppableRects: new Map(keys.map((key, i) => [key, rects[i]!])),
+          droppableContainers: args.droppableContainers.slice(0, 2).map((container, i) => ({
+            ...container,
+            id: keys[i]!,
+            key: keys[i]!,
+            rect: { current: rects[i]! },
+          })),
+        });
+        expect(collision?.id).toBe(keys[index]);
+      }
+    },
+  );
+
   it("only accepts destination boxes under the pointer, with no snapping across gaps", () => {
     const args = collisionArgs();
     const boxId = "sidebar-destination:pinned";
@@ -184,6 +230,57 @@ describe("sidebar collision detection", () => {
     },
   );
 
+  it.each([true, false])(
+    "keeps sticky Settled above an overlapping pin when accepted=%s",
+    (accepted) => {
+      const args = collisionArgs();
+      const rect = { top: 300, bottom: 396, left: 0, right: 260, width: 260, height: 96 };
+      const ids = ["sidebar-destination:pinned", "sidebar-destination:settled"];
+      const detector = createSidebarDestinationCollisionDetection(
+        (id) => id !== ids[1] || accepted,
+      );
+      const result = detector({
+        ...args,
+        pointerCoordinates: { x: 100, y: 350 },
+        droppableContainers: ids.map((id) => ({
+          ...args.droppableContainers[0]!,
+          id,
+          key: id,
+          rect: { current: rect },
+        })),
+        droppableRects: new Map(ids.map((id) => [id, rect])),
+      });
+      expect(result.map(({ id }) => id)).toEqual(accepted ? [ids[1]] : []);
+    },
+  );
+
+  it("does not accept a scrolled destination through the clipped edge of its viewport", () => {
+    const args = collisionArgs();
+    const id = "sidebar-destination:pinned";
+    const rect = { top: 60, bottom: 120, left: 0, right: 260, width: 260, height: 60 };
+    const node = {
+      closest: () => ({ getBoundingClientRect: () => ({ top: 100, bottom: 400 }) }),
+    } as unknown as HTMLElement;
+    const detector = createSidebarDestinationCollisionDetection(() => true);
+    const targets = {
+      ...args,
+      droppableContainers: [
+        {
+          ...args.droppableContainers[0]!,
+          id,
+          key: id,
+          node: { current: node },
+          rect: { current: rect },
+        },
+      ],
+      droppableRects: new Map([[id, rect]]),
+    };
+    expect(detector({ ...targets, pointerCoordinates: { x: 100, y: 90 } })).toEqual([]);
+    expect(
+      detector({ ...targets, pointerCoordinates: { x: 100, y: 110 } }).map(({ id }) => id),
+    ).toEqual([id]);
+  });
+
   it("keeps the reorder target while the pointer crosses a gap in the source list", () => {
     const args = collisionArgs();
     const sourceRect = args.droppableRects.get("source")!;
@@ -200,6 +297,18 @@ describe("sidebar collision detection", () => {
         ({ id }) => id,
       ),
     ).toEqual(["blocked"]);
+  });
+
+  it("does not reopen the source slot in gaps above its list", () => {
+    const args = collisionArgs();
+    const sourceTop = args.droppableRects.get("source")!.top;
+    const detector = createSidebarDestinationCollisionDetection(
+      () => true,
+      new Set(["source", "blocked"]),
+    );
+    for (const y of [0, sourceTop - 20, sourceTop - 1]) {
+      expect(detector({ ...args, pointerCoordinates: { x: 100, y } })).toEqual([]);
+    }
   });
 
   it("keeps the end-of-list reorder on release in empty space before Settled", () => {

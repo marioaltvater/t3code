@@ -7,6 +7,14 @@ const MAX_FADED_ROWS_PER_UPDATE = 40;
 
 type RowPosition = { top: number; left: number; width: number; height: number };
 
+function listRows(parent: HTMLUListElement) {
+  return Array.from(parent.children).flatMap((node) =>
+    node instanceof HTMLElement && node.dataset?.sidebarThreadGroup !== undefined
+      ? Array.from(node.firstElementChild?.children ?? [])
+      : [node],
+  );
+}
+
 function progress(animation: Animation) {
   return animation.playState === "finished"
     ? 1
@@ -24,7 +32,7 @@ export function createSidebarListMotion(parent: HTMLUListElement) {
   const running = new Map<HTMLElement, { animation: Animation; offset: number }>();
   const entering = new Map<HTMLElement, { animation: Animation; travel: number }>();
   const exiting = new Map<HTMLElement, Animation>();
-  let released: Map<HTMLElement, number> | null = null;
+  let released: Map<HTMLElement | string, number> | null = null;
 
   const remainingOffset = (node: HTMLElement) => {
     const current = running.get(node);
@@ -124,7 +132,7 @@ export function createSidebarListMotion(parent: HTMLUListElement) {
     update(animate: boolean) {
       if (disposed) return;
       const next = new Map(
-        Array.from(parent.children)
+        listRows(parent)
           .filter((node): node is HTMLElement => node instanceof HTMLElement && !exiting.has(node))
           .map((node) => [
             node,
@@ -222,9 +230,10 @@ export function createSidebarListMotion(parent: HTMLUListElement) {
       }
       if (released !== null) {
         if (!reducedMotion?.matches) {
+          const origin = parent.getBoundingClientRect().top;
           for (const [node, position] of next) {
-            const top = released.get(node);
-            if (top !== undefined) move(node, top - position.top);
+            const top = released.get(node.dataset?.threadItem ?? node);
+            if (top !== undefined) move(node, top - origin - position.top);
           }
         }
         released = null;
@@ -233,11 +242,16 @@ export function createSidebarListMotion(parent: HTMLUListElement) {
     },
     release() {
       suspend();
-      const origin = parent.getBoundingClientRect().top;
       released = new Map(
-        Array.from(parent.children)
+        listRows(parent)
           .filter((node): node is HTMLElement => node instanceof HTMLElement && !exiting.has(node))
-          .map((node) => [node, node.getBoundingClientRect().top - origin]),
+          .map((node) => [
+            node.dataset?.threadItem ?? node,
+            (node.dataset?.threadDragging
+              ? node.querySelector('[role="button"]')
+              : node
+            )?.getBoundingClientRect().top ?? node.getBoundingClientRect().top,
+          ]),
       );
     },
     suspend,
