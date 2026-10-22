@@ -5464,7 +5464,7 @@ export default function Sidebar() {
                                     className={
                                       source
                                         ? cn(
-                                            "min-h-9 shrink list-none overflow-y-auto [overflow-anchor:none]",
+                                            "relative min-h-9 shrink list-none overflow-y-auto [overflow-anchor:none]",
                                             item.section === "active" && "flex-1",
                                           )
                                         : "contents"
