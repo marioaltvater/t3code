@@ -2796,8 +2796,7 @@ export default function ChatView(props: ChatViewProps) {
     else if (action === "rightPanel.toggleMaximized") toggleRightPanelMaximizedStable();
     else if (action === "threadPanel.toggle") toggleThreadPanelStable();
     else if (action === "terminal.toggle") {
-      if (!terminalUiState.terminalOpen && !canReadTerminal && !canOperateTerminal) return;
-      toggleTerminalVisibilityStable();
+      terminalShortcuts["terminal.toggle"]();
     } else if (action === "diff.toggle") onToggleDiffStable();
     else if (action === "diff.toggleLatestTurn") onToggleLatestTurnDiffStable();
     else if (action === "modelPicker.toggle") composerRef.current?.toggleModelPicker();

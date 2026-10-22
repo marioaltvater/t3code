@@ -19,8 +19,6 @@ import {
   reorderProjects,
   resolveProjectExpanded,
   setProjectExpanded,
-  setSidebarProjectScopeKey,
-  setThreadChangedFilesExpanded,
   toggleSidebarPinnedSection,
   setSidebarSectionCompact,
   type UiState,

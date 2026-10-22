@@ -517,6 +517,8 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       assert.isNull(personalLinux.publish);
       assert.isNull(preview.publish);
       assert.isNull(previewChannel.publish);
+      assert.equal(release.productName, "T3 Code Personal");
+      assert.equal(release.artifactName, "T3-Code-Personal-${version}-${arch}.${ext}");
       assert.deepStrictEqual(release.publish, [
         {
           provider: "github",

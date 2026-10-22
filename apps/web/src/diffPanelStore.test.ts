@@ -1,16 +1,12 @@
-import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { EnvironmentId, ThreadId, RunId, CheckpointRef } from "@t3tools/contracts";
+import { RunId, CheckpointRef } from "@t3tools/contracts";
 import type { ThreadCheckpointSummary } from "@t3tools/client-runtime/state/thread-checkpoints";
-import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { beforeEach, describe, expect, it } from "vite-plus/test";
 
 import {
-  selectThreadDiffPanelSelection,
   selectLatestTurnDiff,
   useDiffPanelSessionStore,
   useDiffPanelStore,
 } from "./diffPanelStore";
-
-const THREAD_REF = scopeThreadRef(EnvironmentId.make("environment-1"), ThreadId.make("thread-1"));
 
 function checkpointSummary(
   runId: string,

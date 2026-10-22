@@ -26,7 +26,15 @@ if (formattedFiles.length) run(process.execPath, [vp, "fmt", "--check", ...forma
 if (sourceFiles.length) {
   run(process.execPath, [vp, "lint", "--report-unused-disable-directives", ...sourceFiles]);
 }
-run("pnpm", ["--filter", "@t3tools/web", "--filter", "@t3tools/shared", "typecheck"]);
+run(process.execPath, [
+  vp,
+  "run",
+  "--filter",
+  "@t3tools/web",
+  "--filter",
+  "@t3tools/shared",
+  "typecheck",
+]);
 run(process.execPath, [
   vp,
   "test",
