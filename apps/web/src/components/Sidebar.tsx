@@ -3454,10 +3454,11 @@ export default function Sidebar() {
   };
   const positionDragCard = useStableCallback(() => {
     const anchor = dragAnchorRef.current;
+    if (!anchor || !dragState) return;
     const node = threadListRef.current?.querySelector<HTMLElement>(
       "[data-thread-item][data-thread-dragging]",
     );
-    if (!anchor || !node || !dragState) return;
+    if (!node) return;
     positionSidebarDragCard(node, {
       pointerY: dragPointerYRef.current,
       grabFraction: anchor.grabFraction,
