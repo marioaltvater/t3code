@@ -121,6 +121,20 @@ An empty database is a bad test. Seed your worktree's `.t3` with a copy of real 
 
 For authorized mobile verification, a missing or outdated native client is a build step, not a blocker. Run `node scripts/mobile-native-client.ts ensure <ios|android> <device-id>` on the simulator host before starting Metro. It checks the local Expo fingerprint and builds/installs when needed. See `test-t3-mobile` for the full workflow.
 
+## Personal desktop releases
+
+Personal desktop builds are cumulative: merge the installed build's source commit
+into the integration branch before building another feature. Coordinate with any
+thread already preparing a replacement. Install through
+`scripts/install-personal-linux.sh`; it checks the actual embedded commits and
+blocks builds that omit installed history. Never replace the personal AppImage
+with a direct copy to bypass this check. A blocked install needs integration and
+a rebuild. Keep backups and activate with a normal restart when authorized.
+
+The Linux installer requires Node, Git, `flock`, and `unsquashfs` to inspect
+packaged source identity. Unknown source commits block installation; make the
+source history available locally before retrying.
+
 ## Pull requests
 
 - Never make a PR unless the developer explicitly asks you to do so.
