@@ -10,9 +10,7 @@ export function SidebarDragLayout({
   listRef: { readonly current: HTMLUListElement | null };
 }) {
   const { measureDroppableContainers } = useDndContext();
-  const previous = useRef(
-    new Map<string, { top: number; height: number; box?: HTMLElement; source?: boolean }>(),
-  );
+  const previous = useRef(new Map<string, { top: number; height: number; box?: HTMLElement }>());
   const animations = useRef<
     Map<
       string,
@@ -42,10 +40,7 @@ export function SidebarDragLayout({
       animation.cancel();
     }
     animations.current.clear();
-    const next = new Map<
-      string,
-      { top: number; height: number; box?: HTMLElement; source?: boolean }
-    >();
+    const next = new Map<string, { top: number; height: number; box?: HTMLElement }>();
     for (const child of list.children) {
       if (!(child instanceof HTMLElement)) continue;
       const key = child.dataset.threadItem ?? child.dataset.sidebarMarker;
@@ -54,21 +49,11 @@ export function SidebarDragLayout({
       const position = {
         top: child.offsetTop,
         height: child.offsetHeight,
-        source: child.hasAttribute("data-sidebar-source"),
         ...(box ? { box } : {}),
       };
       next.set(key, position);
       const before = previous.current.get(key);
-      // The source header follows its cards; a separate transform makes its
-      // text shimmer while the cards use the sorter's own peer motion.
-      if (
-        !layout.dragging ||
-        reducedMotion ||
-        child.dataset.threadItem ||
-        position.source ||
-        before?.source
-      )
-        continue;
+      if (!layout.dragging || reducedMotion || child.dataset.threadItem) continue;
       if (
         before &&
         before.top === position.top &&
@@ -83,7 +68,7 @@ export function SidebarDragLayout({
       const padding = position.height - visualHeight;
       // Release motion belongs to Sidebar.motion, which restores headers and
       // rows together. During drag, keep sortable transforms and the held
-      // card under pointer control by animating only destination contents.
+      // card under pointer control by animating only section chrome.
       animations.current.set(key, {
         from: before ?? position,
         to: position,

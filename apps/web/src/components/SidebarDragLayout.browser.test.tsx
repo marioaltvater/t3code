@@ -125,7 +125,7 @@ it("removes accepted destination chrome before restoring the updated header", as
   ).toHaveLength(0);
 });
 
-it("keeps the source title out of destination animations and leaves stationary targets alone", async () => {
+it("moves the source title with expanding targets and leaves stationary targets alone", async () => {
   await using screen = await render(<Layout dragging={false} />);
   await screen.rerender(<Layout dragging />);
   const source = screen.container.querySelector<HTMLElement>(
@@ -134,13 +134,76 @@ it("keeps the source title out of destination animations and leaves stationary t
   const destination = screen.container.querySelector<HTMLElement>(
     '[data-testid="sidebar-destination:pinned"]',
   )!;
-  expect(source.getAnimations({ subtree: true })).toHaveLength(0);
+  expect(source.getAnimations({ subtree: true })).toHaveLength(1);
+  for (const animation of source.getAnimations({ subtree: true })) animation.finish();
   for (const animation of destination.getAnimations()) animation.finish();
   await screen.rerender(<Layout dragging revision={1} />);
   expect(source.getAnimations({ subtree: true })).toHaveLength(0);
   expect(destination.getAnimations()).toHaveLength(0);
   await screen.rerender(<Layout dragging={false} />);
   expect(source.getAnimations({ subtree: true })).toHaveLength(0);
+});
+
+function SourceBoundaryLayout({ expanded }: { expanded: boolean }) {
+  const listRef = useRef<HTMLUListElement>(null);
+  return (
+    <DndContext>
+      <SidebarDragLayout layout={{ key: String(expanded), dragging: true }} listRef={listRef} />
+      <ul ref={listRef} style={{ position: "relative", width: 260, padding: 0, margin: 0 }}>
+        <li data-sidebar-marker="named" style={{ height: expanded ? 96 : 36 }}>
+          <div data-testid="sidebar-destination:named" style={{ height: "100%" }}>
+            Chief of Staff
+          </div>
+        </li>
+        <li data-sidebar-marker="active" data-sidebar-source style={{ height: 32 }}>
+          <div data-testid="source-title" style={{ height: 32 }}>
+            Active
+          </div>
+        </li>
+        <li data-thread-item="held" style={{ height: 82 }}>
+          <div role="button" style={{ position: "fixed", top: 280, height: 78 }}>
+            Held
+          </div>
+        </li>
+      </ul>
+    </DndContext>
+  );
+}
+
+it("keeps Active below the named destination throughout collapse and reversal", async () => {
+  await using screen = await render(<SourceBoundaryLayout expanded />);
+  const box = screen.container.querySelector<HTMLElement>(
+    '[data-testid="sidebar-destination:named"]',
+  )!;
+  const title = screen.container.querySelector<HTMLElement>('[data-testid="source-title"]')!;
+  const held = screen.container.querySelector<HTMLElement>('[role="button"]')!;
+  const animations = () => [...box.getAnimations(), ...title.getAnimations()];
+  for (const animation of animations()) animation.finish();
+  await screen.rerender(<SourceBoundaryLayout expanded={false} />);
+  const collapsing = animations();
+  for (const animation of collapsing) animation.pause();
+  for (const time of [0, 45, 90]) {
+    for (const animation of collapsing) animation.currentTime = time;
+    expect(
+      Math.abs(title.getBoundingClientRect().top - box.getBoundingClientRect().bottom),
+    ).toBeLessThanOrEqual(1);
+    expect(held.getBoundingClientRect().top).toBe(280);
+  }
+  const beforeReversal = title.getBoundingClientRect().top;
+  await screen.rerender(<SourceBoundaryLayout expanded />);
+  const expanding = animations();
+  for (const animation of expanding) {
+    animation.pause();
+    animation.currentTime = 0;
+  }
+  expect(Math.abs(title.getBoundingClientRect().top - beforeReversal)).toBeLessThanOrEqual(1);
+  for (const time of [0, 90, 180]) {
+    for (const animation of expanding) animation.currentTime = time;
+    expect(
+      Math.abs(title.getBoundingClientRect().top - box.getBoundingClientRect().bottom),
+    ).toBeLessThanOrEqual(1);
+    expect(held.getBoundingClientRect().top).toBe(280);
+  }
 });
 
 it("starts a fresh drag after release without resurrecting outgoing destination chrome", async () => {
