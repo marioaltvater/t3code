@@ -28,6 +28,7 @@ const settledHeader = marker("settled-header");
 describe("sidebar drag expansion", () => {
   const input = {
     sourceBounds: { top: 200, bottom: 700 },
+    anchor: null,
     sourceSection: "active",
     pinnedAreaBottom: 240,
     expanded: false,
@@ -35,18 +36,41 @@ describe("sidebar drag expansion", () => {
   };
 
   it("expands the pinned targets and source layout together at their visible boundary", () => {
-    expect(sidebarDragExpansion({ ...input, centerY: 230 })).toEqual({
+    expect(sidebarDragExpansion({ ...input, pointerY: 230 })).toEqual({
       expanded: true,
       pinnedExpanded: true,
     });
-    expect(sidebarDragExpansion({ ...input, centerY: 250 })).toEqual({
+    expect(sidebarDragExpansion({ ...input, pointerY: 250 })).toEqual({
       expanded: false,
       pinnedExpanded: false,
     });
   });
 
+  it("keeps the expanded state stable when a top-grabbed card shrinks near Settled", () => {
+    const atBoundary = {
+      ...input,
+      sourceBounds: { top: 200, bottom: 984 },
+      pointerY: 962,
+      anchor: { grabFraction: 0.1, cardHeight: 78 },
+    };
+    expect(sidebarDragExpansion(atBoundary).expanded).toBe(true);
+    expect(sidebarDragExpansion({ ...atBoundary, expanded: true }).expanded).toBe(true);
+    expect(sidebarDragExpansion({ ...atBoundary, pointerY: 940, expanded: true }).expanded).toBe(
+      false,
+    );
+  });
+
+  it("keeps a bottom-edge grab stable across compaction at the pinned boundary", () => {
+    const atBoundary = { ...input, pointerY: 260, anchor: { grabFraction: 0.9, cardHeight: 78 } };
+    expect(sidebarDragExpansion(atBoundary)).toEqual({ expanded: true, pinnedExpanded: true });
+    expect(sidebarDragExpansion({ ...atBoundary, expanded: true, pinnedExpanded: true })).toEqual({
+      expanded: true,
+      pinnedExpanded: true,
+    });
+  });
+
   it("preserves source reordering inside a pinned section", () => {
-    expect(sidebarDragExpansion({ ...input, sourceSection: "pinned", centerY: 230 })).toEqual({
+    expect(sidebarDragExpansion({ ...input, sourceSection: "pinned", pointerY: 230 })).toEqual({
       expanded: false,
       pinnedExpanded: false,
     });
@@ -54,7 +78,7 @@ describe("sidebar drag expansion", () => {
 
   it("collapses the pinned targets again on the way to Settled", () => {
     expect(
-      sidebarDragExpansion({ ...input, centerY: 800, expanded: true, pinnedExpanded: true }),
+      sidebarDragExpansion({ ...input, pointerY: 800, expanded: true, pinnedExpanded: true }),
     ).toEqual({
       expanded: true,
       pinnedExpanded: false,
@@ -227,6 +251,29 @@ describe("sidebar collision detection", () => {
     expect(detector(boxArgs)).toEqual([]);
   });
 
+  it("uses the visible destination bounds while its measured size lags behind expansion", () => {
+    const args = collisionArgs();
+    const id = "sidebar-destination:pinned";
+    const cached = { top: 100, bottom: 136, left: 0, right: 260, width: 260, height: 36 };
+    const visible = { ...cached, bottom: 196, height: 96 };
+    const node = {
+      getBoundingClientRect: () => visible,
+      closest: () => null,
+    } as unknown as HTMLElement;
+    const detector = createSidebarDestinationCollisionDetection(() => true);
+    expect(
+      detector({
+        ...args,
+        pointerCoordinates: { x: 100, y: 145 },
+        collisionRect: { ...args.collisionRect, top: 142, bottom: 178, height: 36 },
+        droppableContainers: [
+          { ...args.droppableContainers[0]!, id, key: id, node: { current: node } },
+        ],
+        droppableRects: new Map([[id, cached]]),
+      }).map(({ id }) => id),
+    ).toEqual([id]);
+  });
+
   it("keeps source membership when dragging past unrelated rows", () => {
     const args = collisionArgs();
     const detector = createSidebarDestinationCollisionDetection(() => true, new Set(["source"]));
@@ -326,6 +373,7 @@ describe("sidebar collision detection", () => {
     const id = "sidebar-destination:pinned";
     const rect = { top: 60, bottom: 120, left: 0, right: 260, width: 260, height: 60 };
     const node = {
+      getBoundingClientRect: () => rect,
       closest: () => ({ getBoundingClientRect: () => ({ top: 100, bottom: 400 }) }),
     } as unknown as HTMLElement;
     const detector = createSidebarDestinationCollisionDetection(() => true);
