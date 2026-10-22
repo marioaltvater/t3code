@@ -2,6 +2,8 @@ import { useDndContext } from "@dnd-kit/core";
 import { useLayoutEffect, useRef } from "react";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 
+const dragLayoutTiming = { duration: 180, easing: "ease-out" };
+
 export function SidebarDragLayout({
   layout,
   listRef,
@@ -81,9 +83,23 @@ export function SidebarDragLayout({
             },
             { transform: "translateY(0px)", height: `${visualHeight}px`, opacity: 1 },
           ],
-          { duration: 180, easing: "ease-out" },
+          dragLayoutTiming,
         ),
       });
+      const sourceList = child.nextElementSibling;
+      if (
+        child.dataset.sidebarSource !== undefined &&
+        sourceList instanceof HTMLElement &&
+        sourceList.dataset.sidebarSourceList !== undefined
+      ) {
+        // Move the clipped viewport with its title. A transform here would
+        // create a containing block and displace the fixed held card.
+        animations.current.set(`${key}:list`, {
+          from: before ?? position,
+          to: position,
+          animation: sourceList.animate([{ top: `${offset}px` }, { top: "0px" }], dragLayoutTiming),
+        });
+      }
     }
     previous.current = next;
     if (layout.dragging) {

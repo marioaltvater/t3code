@@ -160,34 +160,62 @@ function SourceBoundaryLayout({ expanded }: { expanded: boolean }) {
             Active
           </div>
         </li>
-        <li data-thread-item="held" style={{ height: 82 }}>
-          <div role="button" style={{ position: "fixed", top: 280, height: 78 }}>
-            Held
-          </div>
+        <li
+          data-sidebar-thread-group
+          data-sidebar-source-list
+          style={{ position: "relative", overflowY: "auto", height: 164 }}
+        >
+          <ul style={{ position: "relative", padding: 0, margin: 0 }}>
+            <li data-thread-item="held" data-thread-dragging style={{ height: 82 }}>
+              <div role="button" style={{ position: "fixed", top: 280, height: 78 }}>
+                Held
+              </div>
+            </li>
+            <li data-thread-item="peer" style={{ height: 82, transform: "translateY(-82px)" }}>
+              <div role="button" data-testid="source-peer" style={{ height: 78 }}>
+                Peer
+              </div>
+            </li>
+          </ul>
         </li>
       </ul>
     </DndContext>
   );
 }
 
-it("keeps Active below the named destination throughout collapse and reversal", async () => {
+it("keeps the source title, viewport and reordered peer together through collapse and reversal", async () => {
   await using screen = await render(<SourceBoundaryLayout expanded />);
   const box = screen.container.querySelector<HTMLElement>(
     '[data-testid="sidebar-destination:named"]',
   )!;
   const title = screen.container.querySelector<HTMLElement>('[data-testid="source-title"]')!;
   const held = screen.container.querySelector<HTMLElement>('[role="button"]')!;
-  const animations = () => [...box.getAnimations(), ...title.getAnimations()];
+  const sourceList = screen.container.querySelector<HTMLElement>("[data-sidebar-source-list]")!;
+  const peer = screen.container.querySelector<HTMLElement>('[data-testid="source-peer"]')!;
+  const animations = () => [
+    ...box.getAnimations(),
+    ...title.getAnimations(),
+    ...sourceList.getAnimations(),
+  ];
+  const expectAligned = () => {
+    expect(
+      Math.abs(title.getBoundingClientRect().top - box.getBoundingClientRect().bottom),
+    ).toBeLessThanOrEqual(1);
+    expect(
+      Math.abs(sourceList.getBoundingClientRect().top - title.getBoundingClientRect().bottom),
+    ).toBeLessThanOrEqual(1);
+    expect(
+      Math.abs(peer.getBoundingClientRect().top - sourceList.getBoundingClientRect().top),
+    ).toBeLessThanOrEqual(1);
+    expect(held.getBoundingClientRect().top).toBe(280);
+  };
   for (const animation of animations()) animation.finish();
   await screen.rerender(<SourceBoundaryLayout expanded={false} />);
   const collapsing = animations();
   for (const animation of collapsing) animation.pause();
   for (const time of [0, 45, 90]) {
     for (const animation of collapsing) animation.currentTime = time;
-    expect(
-      Math.abs(title.getBoundingClientRect().top - box.getBoundingClientRect().bottom),
-    ).toBeLessThanOrEqual(1);
-    expect(held.getBoundingClientRect().top).toBe(280);
+    expectAligned();
   }
   const beforeReversal = title.getBoundingClientRect().top;
   await screen.rerender(<SourceBoundaryLayout expanded />);
@@ -199,11 +227,11 @@ it("keeps Active below the named destination throughout collapse and reversal", 
   expect(Math.abs(title.getBoundingClientRect().top - beforeReversal)).toBeLessThanOrEqual(1);
   for (const time of [0, 90, 180]) {
     for (const animation of expanding) animation.currentTime = time;
-    expect(
-      Math.abs(title.getBoundingClientRect().top - box.getBoundingClientRect().bottom),
-    ).toBeLessThanOrEqual(1);
-    expect(held.getBoundingClientRect().top).toBe(280);
+    expectAligned();
   }
+  await screen.rerender(<SourceBoundaryLayout expanded={false} />);
+  for (const animation of animations()) animation.finish();
+  expectAligned();
 });
 
 it("starts a fresh drag after release without resurrecting outgoing destination chrome", async () => {
