@@ -7,14 +7,16 @@ import {
 import { verticalListSortingStrategy, type SortingStrategy } from "@dnd-kit/sortable";
 
 export function sidebarDragExpansion({
-  centerY,
+  pointerY,
+  anchor,
   sourceBounds,
   sourceSection,
   pinnedAreaBottom,
   expanded,
   pinnedExpanded,
 }: {
-  centerY: number;
+  pointerY: number;
+  anchor: { grabFraction: number; cardHeight: number } | null;
   sourceBounds: { top: number; bottom: number } | null;
   sourceSection: string;
   pinnedAreaBottom: number | undefined;
@@ -22,6 +24,8 @@ export function sidebarDragExpansion({
   pinnedExpanded: boolean;
 }) {
   if (!sourceBounds) return { expanded, pinnedExpanded };
+  // Shrinking the held card must not move the layout transition boundary.
+  const centerY = pointerY + (anchor ? (0.5 - anchor.grabFraction) * anchor.cardHeight : 0);
   const margin = expanded ? 6 : -6;
   // The retained pickup bounds can extend behind the current pinned targets.
   // Crossing their shared boundary must expand both layouts in the same frame.
@@ -115,6 +119,12 @@ export function createSidebarDestinationCollisionDetection(
     const card = activeNode?.querySelector<HTMLElement>('[role="button"]');
     // The compact held card can be shorter than dnd-kit's original row slot.
     const heldRect = card?.getBoundingClientRect() ?? args.collisionRect;
+    const destinationRects = new Map(args.droppableRects);
+    for (const destination of destinations) {
+      const rect = destination.node.current?.getBoundingClientRect();
+      // Cached DnD measurements can lag behind the target's expansion animation.
+      if (rect) destinationRects.set(destination.id, rect);
+    }
     const boxes = pointerWithin({
       ...args,
       pointerCoordinates: {
@@ -122,6 +132,7 @@ export function createSidebarDestinationCollisionDetection(
         y: heldRect.top + heldRect.height / 2,
       },
       droppableContainers: destinations,
+      droppableRects: destinationRects,
     });
     const listViewport = destinations[0]?.node.current
       ?.closest("[data-sidebar-drag-list]")

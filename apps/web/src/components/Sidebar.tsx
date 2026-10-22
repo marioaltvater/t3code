@@ -2961,7 +2961,7 @@ export default function Sidebar() {
   const [renamingTitle, setRenamingTitle] = useState("");
   const settlingThreadKeysRef = useRef(new Set<string>());
   const threadListRef = useRef<HTMLUListElement | null>(null);
-  const dragAnchorRef = useRef<{ grabFraction: number } | null>(null);
+  const dragAnchorRef = useRef<{ grabFraction: number; cardHeight: number } | null>(null);
   const dragSourceBoundsRef = useRef<{ top: number; bottom: number } | null>(null);
   const dragSourceReturnBoundsRef = useRef<{ top: number; bottom: number } | null>(null);
   const dragPointerYRef = useRef(0);
@@ -3536,9 +3536,6 @@ export default function Sidebar() {
     const pinnedAreaBottom = threadListRef.current
       ?.querySelector('[data-sidebar-marker="pinned-divider"]')
       ?.getBoundingClientRect().top;
-    const card = threadListRef.current
-      ?.querySelector<HTMLElement>('[data-thread-item][data-thread-dragging] [role="button"]')
-      ?.getBoundingClientRect();
     setDragState((current) => {
       if (current === null) return current;
       const sourceBounds = current.destinationsExpanded
@@ -3550,7 +3547,8 @@ export default function Sidebar() {
             pinnedExpanded: current.pinnedDestinationsExpanded,
           }
         : sidebarDragExpansion({
-            centerY: card ? card.top + card.height / 2 : point.y,
+            pointerY: point.y,
+            anchor: dragAnchorRef.current,
             sourceBounds,
             sourceSection: current.activeSection,
             pinnedAreaBottom,
@@ -3729,6 +3727,7 @@ export default function Sidebar() {
       sourceNode?.querySelector<HTMLElement>('[role="button"]')?.getBoundingClientRect() ??
       sourceRect;
     dragAnchorRef.current = {
+      cardHeight: cardRect?.height ?? 0,
       grabFraction:
         cardRect && cardRect.height > 0
           ? Math.max(0, Math.min(1, (pointerY - cardRect.top) / cardRect.height))
