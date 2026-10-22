@@ -108,17 +108,16 @@ export function sidebarSourceSortingStrategy(args: Parameters<SortingStrategy>[0
 export function createSidebarDestinationCollisionDetection(
   isValidTarget: (id: string) => boolean,
   sourceKeys: ReadonlySet<string> = new Set(),
+  getHeldCardRect?: () => Pick<DOMRect, "top" | "height"> | undefined,
 ): CollisionDetection {
   return (args) => {
     if (!args.pointerCoordinates) return [];
     const destinations = args.droppableContainers.filter((container) =>
       String(container.id).startsWith("sidebar-destination:"),
     );
-    const activeNode = args.droppableContainers.find((container) => container.id === args.active.id)
-      ?.node.current;
-    const card = activeNode?.querySelector<HTMLElement>('[role="button"]');
-    // The compact held card can be shorter than dnd-kit's original row slot.
-    const heldRect = card?.getBoundingClientRect() ?? args.collisionRect;
+    // A single source row has no enabled droppable, but still has a held card.
+    // Its compact height can differ from dnd-kit's original collision rectangle.
+    const heldRect = getHeldCardRect?.() ?? args.collisionRect;
     const destinationRects = new Map(args.droppableRects);
     for (const destination of destinations) {
       const rect = destination.node.current?.getBoundingClientRect();
