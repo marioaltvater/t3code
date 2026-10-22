@@ -5,6 +5,40 @@ import {
   type CollisionDetection,
 } from "@dnd-kit/core";
 import { verticalListSortingStrategy, type SortingStrategy } from "@dnd-kit/sortable";
+
+export function sidebarDragExpansion({
+  centerY,
+  sourceBounds,
+  sourceSection,
+  pinnedAreaBottom,
+  expanded,
+  pinnedExpanded,
+}: {
+  centerY: number;
+  sourceBounds: { top: number; bottom: number } | null;
+  sourceSection: string;
+  pinnedAreaBottom: number | undefined;
+  expanded: boolean;
+  pinnedExpanded: boolean;
+}) {
+  if (!sourceBounds) return { expanded, pinnedExpanded };
+  const margin = expanded ? 6 : -6;
+  // The retained pickup bounds can extend behind the current pinned targets.
+  // Crossing their shared boundary must expand both layouts in the same frame.
+  const top =
+    sourceSection === "active"
+      ? Math.max(sourceBounds.top, pinnedAreaBottom ?? -Infinity)
+      : sourceBounds.top;
+  const nextExpanded = centerY < top + margin || centerY > sourceBounds.bottom - margin;
+  return {
+    expanded: nextExpanded,
+    pinnedExpanded:
+      nextExpanded &&
+      pinnedAreaBottom !== undefined &&
+      centerY < pinnedAreaBottom + (pinnedExpanded ? 6 : -6),
+  };
+}
+
 export function sidebarDragTranslation({
   pointerY,
   grabFraction,
@@ -76,7 +110,19 @@ export function createSidebarDestinationCollisionDetection(
     const destinations = args.droppableContainers.filter((container) =>
       String(container.id).startsWith("sidebar-destination:"),
     );
-    const boxes = pointerWithin({ ...args, droppableContainers: destinations });
+    const activeNode = args.droppableContainers.find((container) => container.id === args.active.id)
+      ?.node.current;
+    const card = activeNode?.querySelector<HTMLElement>('[role="button"]');
+    // The compact held card can be shorter than dnd-kit's original row slot.
+    const heldRect = card?.getBoundingClientRect() ?? args.collisionRect;
+    const boxes = pointerWithin({
+      ...args,
+      pointerCoordinates: {
+        x: args.pointerCoordinates.x,
+        y: heldRect.top + heldRect.height / 2,
+      },
+      droppableContainers: destinations,
+    });
     const listViewport = destinations[0]?.node.current
       ?.closest("[data-sidebar-drag-list]")
       ?.getBoundingClientRect();
