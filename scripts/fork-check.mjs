@@ -4,8 +4,8 @@ import * as NodeURL from "node:url";
 
 const root = NodeURL.fileURLToPath(new URL("../", import.meta.url));
 process.chdir(root);
-if (Number(process.versions.node.split(".")[0]) !== 24) {
-  throw new Error("Use Node 24 (see .node-version), then rerun pnpm fork:check.");
+if (Number(process.versions.node.split(".")[0]) !== 26) {
+  throw new Error("Use Node 26.12.1 (see .node-version), then rerun pnpm fork:check.");
 }
 const run = (command, args) => NodeChildProcess.execFileSync(command, args, { stdio: "inherit" });
 const git = (...args) => NodeChildProcess.execFileSync("git", args, { encoding: "utf8" });

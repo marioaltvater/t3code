@@ -161,7 +161,7 @@ export class ThreadActiveReorderUnsupportedError extends Schema.TaggedError<Thre
   }
 }
 
-export async function requestThreadUnpinConfirmation(input: {
+async function requestThreadUnpinConfirmation(input: {
   enabled: boolean;
   title: string;
   confirm: ((message: string) => Promise<boolean>) | null;
@@ -692,6 +692,9 @@ export function useThreadActions() {
       if (canReorder) orderKey = append.orderKey;
     }
     ThreadUndo.invalidate("pin", scopedThreadKey(target));
+    // Pinning clears snooze, so older Settled or Snoozed undos would fight this pin.
+    ThreadUndo.invalidate("settle", scopedThreadKey(target));
+    ThreadUndo.invalidate("snooze", scopedThreadKey(target));
     return pinThreadMutation({
       environmentId: target.environmentId,
       input: {
@@ -713,7 +716,7 @@ export function useThreadActions() {
       );
     }
     const thread = readThreadShell(target);
-    const orderKey = thread?.pinOrderKey ?? null;
+    const undoPlan = ThreadUndo.planThreadUndo("unpin", thread);
     const action = ThreadUndo.begin("pin", scopedThreadKey(target));
     const result = await unpinThreadMutation({
       environmentId: target.environmentId,
@@ -723,7 +726,7 @@ export function useThreadActions() {
       showThreadUndoNotice({
         action: "Unpinned",
         claim: action,
-        undo: () => pinThread(target, { orderKey }),
+        undo: () => runUndoPlan(target, undoPlan),
         failureTitle: "Failed to undo unpin",
       });
     } else {
@@ -747,11 +750,7 @@ export function useThreadActions() {
     const wokeAt = resolved
       ? threadWokeAt(resolved.thread, { now: new Date().toISOString() })
       : null;
-    // Settling also drops the pin and the snooze server-side, so Undo
-    // has to put those back as well.
-    const pinOrderKey = resolved?.thread.pinnedAt != null ? resolved.thread.pinOrderKey : null;
-    const wasPinned = resolved?.thread.pinnedAt != null;
-    const snoozedUntil = resolved?.thread.snoozedUntil ?? null;
+    const undoPlan = ThreadUndo.planThreadUndo("settle", resolved?.thread);
     // An older unpin/snooze Undo would re-pin or re-snooze, and the server
     // treats either as a promotion that un-settles; settling supersedes them.
     ThreadUndo.invalidate("pin", scopedThreadKey(target));
@@ -771,21 +770,7 @@ export function useThreadActions() {
     showThreadUndoNotice({
       action: "Settled",
       claim: action,
-      undo: async () => {
-        const unsettled = await unsettleThread(target);
-        if (unsettled._tag !== "Success") return unsettled;
-        if (wasPinned) {
-          const pinned = await pinThread(target, { orderKey: pinOrderKey });
-          if (pinned._tag !== "Success") return pinned;
-        }
-        if (snoozedUntil !== null) {
-          return snoozeThreadMutation({
-            environmentId: target.environmentId,
-            input: { threadId: target.threadId, snoozedUntil },
-          });
-        }
-        return unsettled;
-      },
+      undo: () => runUndoPlan(target, undoPlan),
       failureTitle: "Failed to undo settle",
     });
     return result;
@@ -897,11 +882,35 @@ export function useThreadActions() {
     showThreadUndoNotice({
       action: "Snoozed",
       claim: action,
-      undo: () => unsnoozeThread(target),
+      undo: () => runUndoPlan(target, ThreadUndo.planThreadUndo("snooze")),
       failureTitle: "Failed to wake thread",
     });
     return result;
   };
+
+  const runUndoPlan = (target: ScopedThreadRef, plan: ThreadUndo.ThreadUndoPlan) =>
+    ThreadUndo.executeThreadUndo(
+      plan,
+      async (step) => {
+        switch (step.action) {
+          case "unsettle":
+            return unsettleThread(target);
+          case "unsnooze":
+            return unsnoozeThread(target);
+          case "pin":
+            return pinThread(
+              target,
+              step.orderKey === undefined ? {} : { orderKey: step.orderKey },
+            );
+          case "snooze":
+            return snoozeThreadMutation({
+              environmentId: target.environmentId,
+              input: { threadId: target.threadId, snoozedUntil: step.snoozedUntil },
+            });
+        }
+      },
+      (result) => result._tag === "Success",
+    );
 
   const confirmAndDeleteThread = async (target: ScopedThreadRef) => {
     const permissionFailure = threadOperationFailure(target);

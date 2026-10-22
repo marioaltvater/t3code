@@ -7,7 +7,7 @@ used inside the desktop app.
 
 ## Develop locally
 
-Use Node **24.18.0** (`.node-version` / `.nvmrc`) and pnpm **11.10.0** (pinned in
+Use Node **26.12.1** (`.node-version` / `.nvmrc`) and pnpm **12.14.0** (pinned in
 `package.json`). With nvm installed:
 
 ```sh
@@ -37,7 +37,7 @@ This builds the actual Electron app, with its bundled web interface and local
 server. It runs independently of the web development server.
 
 On Fedora, install `gcc`, `pkgconf-pkg-config`, `libsecret-devel`, `cargo` and
-`rust`. Then use Node 24 and the pinned pnpm version:
+`rust`. Then use Node 26.12.1 and the pinned pnpm version:
 
 ```sh
 pnpm fork:desktop:setup
