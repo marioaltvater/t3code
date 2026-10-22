@@ -20,11 +20,15 @@ applications_dir="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
 icon_dir="${XDG_DATA_HOME:-$HOME/.local/share}/icons"
 app_path="$app_dir/T3-Code-Personal.AppImage"
 mkdir -p "$app_dir" "$applications_dir" "$icon_dir"
+# Hold the lock through replacement so parallel installers cannot validate against a stale baseline.
+exec 9>"$app_dir/.T3-Code-Personal.install.lock"
+flock -n 9 || { echo "Another personal T3 install is running." >&2; exit 1; }
 temporary_app="$(mktemp "$app_dir/.T3-Code-Personal.XXXXXXXX")"
 trap 'rm -f "$temporary_app"' EXIT
 cp "$artifact" "$temporary_app"
 chmod 755 "$temporary_app"
 [[ "$(sha256sum "$artifact" | cut -d' ' -f1)" = "$(sha256sum "$temporary_app" | cut -d' ' -f1)" ]]
+node "$repo_dir/scripts/personal-install-guard.ts" "$repo_dir" "$temporary_app" "$app_path"
 if [[ -e "$app_path" ]]; then
   cp -p "$app_path" "$app_path.backup-$(date +%Y%m%d-%H%M%S)"
 fi
