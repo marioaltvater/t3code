@@ -1,8 +1,69 @@
 import { DndContext } from "@dnd-kit/core";
 import { useRef } from "react";
 import { expect, it } from "vite-plus/test";
+import "../index.css";
 import { render } from "../../test/render";
 import { SidebarDragLayout } from "./SidebarDragLayout";
+import { SidebarDropBox } from "./SidebarDropTargets";
+import { CollapsibleSectionHeader } from "./ui/collapsible-section-header";
+
+function PinnedLayout({ dragging, named }: { dragging: boolean; named: boolean }) {
+  const listRef = useRef<HTMLUListElement>(null);
+  const label = named ? "Research" : "Pinned";
+  return (
+    <DndContext>
+      <SidebarDragLayout layout={{ key: String(dragging), dragging }} listRef={listRef} />
+      <ul ref={listRef} style={{ position: "relative", width: 260, padding: 0, margin: 0 }}>
+        <li
+          data-sidebar-marker="pinned-header"
+          style={{ position: "relative", height: dragging ? 96 : 32 }}
+        >
+          {dragging ? (
+            <SidebarDropBox
+              destination={{
+                id: "sidebar-destination:pinned",
+                label,
+                count: 2,
+                disabled: false,
+              }}
+              align="start"
+            />
+          ) : (
+            <CollapsibleSectionHeader variant="sidebar" expanded>
+              {label} (2)
+            </CollapsibleSectionHeader>
+          )}
+        </li>
+      </ul>
+    </DndContext>
+  );
+}
+
+it.each([false, true])(
+  "keeps a pinned target and title horizontally anchored through drag transitions (named=%s)",
+  async (named) => {
+    await using screen = await render(<PinnedLayout dragging={false} named={named} />);
+    const title = screen.container.querySelector("button[aria-expanded] span")!;
+    const left = title.getBoundingClientRect().left;
+    const width = screen.container.querySelector("li")!.getBoundingClientRect().width;
+    await screen.rerender(<PinnedLayout dragging named={named} />);
+    const box = screen.container.querySelector<HTMLElement>(
+      '[data-testid="sidebar-destination:pinned"]',
+    )!;
+    const [animation] = box.getAnimations();
+    animation!.pause();
+    for (const time of [0, 90, 180]) {
+      animation!.currentTime = time;
+      expect(box.getBoundingClientRect().width).toBe(width);
+      expect(
+        Math.abs(box.firstElementChild!.getBoundingClientRect().left - left),
+      ).toBeLessThanOrEqual(1);
+    }
+    await screen.rerender(<PinnedLayout dragging={false} named={named} />);
+    const restoredTitle = screen.container.querySelector("button[aria-expanded] span")!;
+    expect(restoredTitle.getBoundingClientRect().left).toBe(left);
+  },
+);
 
 function Layout({ dragging, revision = 0 }: { dragging: boolean; revision?: number }) {
   const listRef = useRef<HTMLUListElement>(null);
