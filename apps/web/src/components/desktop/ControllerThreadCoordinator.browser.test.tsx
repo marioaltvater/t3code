@@ -11,6 +11,12 @@ import { ControllerThreadCoordinator } from "./ControllerThreadCoordinator";
 const fixture = vi.hoisted(() => ({
   threads: [] as EnvironmentThreadShell[],
   workingShelfEnabled: false,
+  configs: new Map([
+    [
+      "test-environment",
+      { environment: { capabilities: { threadSnooze: true, threadSettlement: true } } },
+    ],
+  ]),
   bindings: [] as ReturnType<typeof compileResolvedKeybindingsConfig>,
 }));
 vi.mock("../../state/server", () => ({
@@ -19,17 +25,7 @@ vi.mock("../../state/server", () => ({
 }));
 vi.mock("@effect/atom-react", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@effect/atom-react")>()),
-  useAtomValue: (atom: string) =>
-    atom === "configs"
-      ? new Map([
-          [
-            "test-environment",
-            {
-              environment: { capabilities: { threadSnooze: true, threadSettlement: true } },
-            },
-          ],
-        ])
-      : fixture.bindings,
+  useAtomValue: (atom: string) => (atom === "configs" ? fixture.configs : fixture.bindings),
 }));
 vi.mock("../../state/entities", () => ({ useThreadShells: () => fixture.threads }));
 vi.mock("../../hooks/useSettings", () => ({
@@ -83,7 +79,7 @@ it("routes Settings controls using Active fallback and named pins, with vacant s
     sidebarPinnedSections: [
       {
         id: "chief",
-        name: " Chief of Staff ",
+        name: "First custom section",
         collapsed: true,
         threadKeys: ["test-environment:chief"],
       },

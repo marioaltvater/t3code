@@ -31,14 +31,14 @@ export function ControllerThreadCoordinator() {
   const pinnedSections = useUiStateStore((state) => state.sidebarPinnedSections);
   const ui = useControllerUiSnapshot();
   const navigate = useNavigate();
-  const [wakeTick, bumpWakeTick] = useState(0);
-  const wakeDelay =
-    ui.threadTargets === null ? controllerSnoozeWakeDelay(threads, new Date().getTime()) : null;
+  const [wakeTime, setWakeTime] = useState(() => Date.now());
   useEffect(() => {
-    if (wakeDelay === null) return;
-    const timer = window.setTimeout(() => bumpWakeTick(wakeTick + 1), wakeDelay);
+    if (ui.threadTargets !== null) return;
+    const delay = controllerSnoozeWakeDelay(threads, Math.max(wakeTime, Date.now()));
+    if (delay === null) return;
+    const timer = window.setTimeout(() => setWakeTime(Date.now()), delay);
     return () => window.clearTimeout(timer);
-  }, [wakeDelay, wakeTick]);
+  }, [threads, ui.threadTargets, wakeTime]);
   const targets =
     ui.threadTargets ??
     resolveControllerThreadTargets({
@@ -48,6 +48,7 @@ export function ControllerThreadCoordinator() {
         serverConfigs: configs,
         optimisticDrop: null,
         workingShelfEnabled,
+        clockKey: String(wakeTime),
       }),
       pinnedSections,
     });

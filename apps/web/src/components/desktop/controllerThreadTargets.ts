@@ -15,9 +15,7 @@ export function resolveControllerThreadTargets(input: {
   readonly pinnedThreads: readonly Thread[];
   readonly pinnedSections: readonly SidebarPinnedSection[];
 }): ControllerThreadTargets {
-  const section = input.pinnedSections.find(
-    (section) => section.name.trim().toLowerCase() === "chief of staff",
-  );
+  const section = input.pinnedSections[0];
   const sectionKeys = new Set(section?.threadKeys);
   const toRef = (thread: Thread): ControllerThreadRef => ({
     environmentId: thread.environmentId,

@@ -113,7 +113,7 @@ it("follows Working shelf eligibility and return order across sidebar and fallba
   ).toEqual([returned.id, idle.id]);
 });
 
-it("addresses the named Chief of Staff section in pin display order even when collapsed", () => {
+it("addresses the first section below Pinned in display order even when renamed or collapsed", () => {
   const first = thread("first", { pinnedAt: now, pinOrderKey: "a0" });
   const second = thread("second", { pinnedAt: now, pinOrderKey: "a1" });
   const outside = thread("outside", { pinnedAt: now, pinOrderKey: "Zz" });
@@ -122,11 +122,17 @@ it("addresses the named Chief of Staff section in pin display order even when co
     pinnedSections: [
       {
         id: "chief",
-        name: "  cHieF oF sTaff  ",
+        name: "My renamed section",
         collapsed: true,
         threadKeys: [second, first].map((t) =>
           scopedThreadKey(scopeThreadRef(t.environmentId, t.id)),
         ),
+      },
+      {
+        id: "second-section",
+        name: "Chief of Staff",
+        collapsed: false,
+        threadKeys: [scopedThreadKey(scopeThreadRef(outside.environmentId, outside.id))],
       },
     ],
   });
@@ -138,7 +144,7 @@ it("addresses the named Chief of Staff section in pin display order even when co
   expect(controllerThreadTargetFromCommand("thread.active.1", targets)).toBeNull();
 });
 
-it("does not substitute ordinary pins when the named section or requested position is missing", () => {
+it("does not substitute ordinary pins when the first section or requested position is missing", () => {
   const targets = resolveControllerThreadTargets({
     ...partition([thread("other-pin", { pinnedAt: now })]),
     pinnedSections: [],

@@ -24,8 +24,6 @@ export function ControllerLightingCoordinator({
   const { routeThreadRef } = useHandleNewThread();
   const ui = useControllerUiSnapshot();
   const [pulseTime, setPulseTime] = useState(() => Date.now());
-  const nowMs = new Date().getTime();
-  const now = new Date(nowMs).toISOString();
   const pinStates = activeThreads.slice(0, 6).map((ref) => {
     const thread = threads.find(
       (candidate) => candidate.environmentId === ref.environmentId && candidate.id === ref.threadId,
@@ -35,7 +33,9 @@ export function ControllerLightingCoordinator({
       thread.lastVisitedAt,
       localVisits[scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id))],
     );
-    const wokeAt = threadWokeAt(thread, { now });
+    const wokeAt = threadWokeAt(thread, {
+      now: new Date().toISOString(),
+    });
     const isWoke =
       wokeAt !== null &&
       Number.isFinite(Date.parse(wokeAt)) &&

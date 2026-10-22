@@ -374,7 +374,7 @@ export function commandLabel(command: KeybindingCommand): string {
     return `Thread: Open Active Thread ${command.slice("thread.active.".length)}`;
   }
   if (command.startsWith("thread.chiefOfStaff.")) {
-    return `Thread: Open Chief of Staff Thread ${command.slice("thread.chiefOfStaff.".length)}`;
+    return `Thread: Open First Section Thread ${command.slice("thread.chiefOfStaff.".length)}`;
   }
   if (command === "open-settings") return "Open Settings";
   if (command === "settings.toggle") return "Toggle Settings";

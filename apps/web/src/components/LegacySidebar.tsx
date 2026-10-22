@@ -3321,25 +3321,23 @@ export default function LegacySidebar() {
   const controllerConfigs = useAtomValue(environmentServerConfigsAtom);
   const controllerWorkingShelfEnabled = useClientSettings((s) => s.sidebarWorkingShelfEnabled);
   const controllerPinnedSections = useUiStateStore((s) => s.sidebarPinnedSections);
-  const [controllerWakeTick, bumpControllerWakeTick] = useState(0);
-  const controllerWakeDelay = controllerSnoozeWakeDelay(
-    [...sidebarThreadByKey.values()],
-    new Date().getTime(),
-  );
+  const [controllerWakeTime, setControllerWakeTime] = useState(() => Date.now());
   useEffect(() => {
-    if (controllerWakeDelay === null) return;
-    const timer = window.setTimeout(
-      () => bumpControllerWakeTick(controllerWakeTick + 1),
-      controllerWakeDelay,
+    const delay = controllerSnoozeWakeDelay(
+      [...sidebarThreadByKey.values()],
+      Math.max(controllerWakeTime, Date.now()),
     );
+    if (delay === null) return;
+    const timer = window.setTimeout(() => setControllerWakeTime(Date.now()), delay);
     return () => window.clearTimeout(timer);
-  }, [controllerWakeDelay, controllerWakeTick]);
+  }, [sidebarThreadByKey, controllerWakeTime]);
   const controllerPartition = partitionSidebarThreads({
     threads: [...sidebarThreadByKey.values()],
     scopedProjectKeys: null,
     serverConfigs: controllerConfigs,
     optimisticDrop: null,
     workingShelfEnabled: controllerWorkingShelfEnabled,
+    clockKey: String(controllerWakeTime),
   });
   const controllerActiveKeys = new Set(
     controllerPartition.activeThreads.map((thread) =>
