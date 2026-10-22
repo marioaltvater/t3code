@@ -5408,7 +5408,10 @@ export default function Sidebar() {
                                             : "h-9 shrink-0",
                                         )}
                                       >
-                                        <SidebarDropBox destination={destination} />
+                                        <SidebarDropBox
+                                          destination={destination}
+                                          align={section === "pinned" ? "start" : "center"}
+                                        />
                                       </li>,
                                     );
                                   continue;

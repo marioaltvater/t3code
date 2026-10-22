@@ -10,9 +10,15 @@ export type SidebarDropDestination = {
 };
 
 const sidebarSectionBoxClassName =
-  "absolute inset-0 flex min-h-0 flex-col items-center justify-center rounded-lg border border-dashed border-sidebar-foreground/20 px-3 text-sm leading-5 font-medium text-sidebar-foreground/80";
+  "absolute inset-0 flex min-h-0 flex-col justify-center rounded-lg border border-dashed border-sidebar-foreground/20 text-sm leading-5 font-medium text-sidebar-foreground/80";
 
-export function SidebarDropBox({ destination }: { destination: SidebarDropDestination }) {
+export function SidebarDropBox({
+  destination,
+  align = "center",
+}: {
+  destination: SidebarDropDestination;
+  align?: "start" | "center";
+}) {
   const { setNodeRef, isOver } = useDroppable({
     id: destination.id,
     disabled: destination.disabled,
@@ -25,6 +31,7 @@ export function SidebarDropBox({ destination }: { destination: SidebarDropDestin
       data-testid={destination.id}
       className={cn(
         sidebarSectionBoxClassName,
+        align === "start" ? "items-start px-2" : "items-center px-3",
         isOver &&
           "border-transparent bg-primary/20 text-sidebar-foreground ring-2 ring-inset ring-primary",
         destination.disabled && "opacity-40",
