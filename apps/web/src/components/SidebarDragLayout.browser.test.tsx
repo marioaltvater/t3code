@@ -74,13 +74,16 @@ function Layout({ dragging, revision = 0 }: { dragging: boolean; revision?: numb
         <li data-sidebar-marker="pinned-header" style={{ height: dragging ? 96 : 32 }}>
           {dragging ? (
             <div
+              key="destination"
               data-testid="sidebar-destination:pinned"
               style={{ height: 96, border: "1px dashed gray", boxSizing: "border-box" }}
             >
-              Pinned (2)
+              Pinned ({2 + revision})
             </div>
           ) : (
-            <div style={{ height: 32 }}>Pinned (2)</div>
+            <div key="header" style={{ height: 32 }}>
+              Pinned ({2 + revision})
+            </div>
           )}
         </li>
         <li
@@ -98,32 +101,25 @@ function Layout({ dragging, revision = 0 }: { dragging: boolean; revision?: numb
   );
 }
 
-it("collapses and fades outgoing destinations before removing them", async () => {
+it("removes accepted destination chrome before restoring the updated header", async () => {
   await using screen = await render(<Layout dragging={false} />);
   await screen.rerender(<Layout dragging />);
   const box = screen.container.querySelector<HTMLElement>(
     '[data-testid="sidebar-destination:pinned"]',
   )!;
+  box.setAttribute("data-drop-accepted", "true");
   for (const animation of box.getAnimations()) animation.finish();
-  await screen.rerender(<Layout dragging={false} />);
-  const exit = screen.container.querySelector<HTMLElement>('[aria-hidden="true"]')!;
-  expect(exit).not.toBeNull();
-  expect(exit.inert).toBe(true);
-  expect(exit.hasAttribute("data-testid")).toBe(false);
-  const [animation] = exit.getAnimations();
-  animation!.pause();
-  animation!.currentTime = 0;
-  const start = exit.getBoundingClientRect().height;
-  animation!.currentTime = 75;
-  expect(exit.getBoundingClientRect().height).toBeLessThan(start);
-  expect(exit.getBoundingClientRect().height).toBeGreaterThan(32);
-  expect(Number(getComputedStyle(exit).opacity)).toBeGreaterThan(0);
-  expect(Number(getComputedStyle(exit).opacity)).toBeLessThan(1);
-  await new Promise<void>((resolve) => {
-    animation!.addEventListener("finish", () => resolve(), { once: true });
-    animation!.finish();
-  });
-  expect(exit.isConnected).toBe(false);
+  await screen.rerender(<Layout dragging={false} revision={1} />);
+  expect(screen.container.querySelector('[data-testid="sidebar-destination:pinned"]')).toBeNull();
+  expect(screen.container.querySelector('[aria-hidden="true"]')).toBeNull();
+  expect(screen.container.querySelector("[data-drop-accepted]")).toBeNull();
+  expect(screen.container.textContent).toContain("Pinned (3)");
+  expect(screen.container.textContent).not.toContain("Pinned (2)");
+  const header = screen.container.querySelector<HTMLElement>(
+    '[data-sidebar-marker="pinned-header"]',
+  )!;
+  // Release travel is owned by list motion; destination chrome has no second clock.
+  expect(header.getAnimations({ subtree: true })).toHaveLength(0);
   expect(
     screen.container.querySelector('[data-thread-item="source"]')!.getAnimations(),
   ).toHaveLength(0);
@@ -147,15 +143,18 @@ it("keeps the source title out of destination animations and leaves stationary t
   expect(source.getAnimations({ subtree: true })).toHaveLength(0);
 });
 
-it("reverses an unfinished exit without leaving duplicate destination chrome", async () => {
+it("starts a fresh drag after release without resurrecting outgoing destination chrome", async () => {
   await using screen = await render(<Layout dragging={false} />);
   await screen.rerender(<Layout dragging />);
+  const old = screen.container.querySelector<HTMLElement>(
+    '[data-testid="sidebar-destination:pinned"]',
+  )!;
+  const [expanding] = old.getAnimations();
+  expanding!.pause();
+  expanding!.currentTime = 60;
   await screen.rerender(<Layout dragging={false} />);
-  const exit = screen.container.querySelector<HTMLElement>('[aria-hidden="true"]')!;
-  const [animation] = exit.getAnimations();
-  animation!.pause();
-  animation!.currentTime = 60;
-  const halfway = exit.getBoundingClientRect().height;
+  expect(screen.container.querySelector('[data-testid="sidebar-destination:pinned"]')).toBeNull();
+  expect(screen.container.querySelector('[aria-hidden="true"]')).toBeNull();
   await screen.rerender(<Layout dragging />);
   const box = screen.container.querySelector<HTMLElement>(
     '[data-testid="sidebar-destination:pinned"]',
@@ -163,8 +162,8 @@ it("reverses an unfinished exit without leaving duplicate destination chrome", a
   const [returning] = box.getAnimations();
   returning!.pause();
   returning!.currentTime = 0;
-  expect(Math.abs(box.getBoundingClientRect().height - halfway)).toBeLessThan(1);
-  expect(exit.isConnected).toBe(false);
+  expect(box.getBoundingClientRect().height).toBe(32);
+  expect(screen.container.querySelector('[aria-hidden="true"]')).toBeNull();
   expect(
     screen.container.querySelectorAll('[data-testid="sidebar-destination:pinned"]'),
   ).toHaveLength(1);

@@ -13,7 +13,6 @@ export function SidebarDragLayout({
   const previous = useRef(
     new Map<string, { top: number; height: number; box?: HTMLElement; source?: boolean }>(),
   );
-  const wasDragging = useRef(false);
   const animations = useRef<
     Map<
       string,
@@ -21,8 +20,6 @@ export function SidebarDragLayout({
         animation: Animation;
         from: { top: number; height: number };
         to: { top: number; height: number };
-        exit?: HTMLElement;
-        entering?: Animation;
       }
     >
   >(new Map());
@@ -31,10 +28,8 @@ export function SidebarDragLayout({
     const list = listRef.current;
     if (!list) return;
     const completion = new AbortController();
-    const leaving = wasDragging.current && !layout.dragging;
-    wasDragging.current = layout.dragging;
     for (const entry of animations.current) {
-      const [key, { animation, from, to, exit, entering }] = entry;
+      const [key, { animation, from, to }] = entry;
       const progress = animation.effect?.getComputedTiming().progress;
       // Reversing a transition must start at its current visible position.
       if (progress != null) {
@@ -45,8 +40,6 @@ export function SidebarDragLayout({
         });
       }
       animation.cancel();
-      entering?.cancel();
-      exit?.remove();
     }
     animations.current.clear();
     const next = new Map<
@@ -69,7 +62,7 @@ export function SidebarDragLayout({
       // The source header follows its cards; a separate transform makes its
       // text shimmer while the cards use the sorter's own peer motion.
       if (
-        (!layout.dragging && !leaving) ||
+        !layout.dragging ||
         reducedMotion ||
         child.dataset.threadItem ||
         position.source ||
@@ -88,58 +81,24 @@ export function SidebarDragLayout({
       const offset = before ? before.top - position.top : 0;
       const visualHeight = visual.offsetHeight;
       const padding = position.height - visualHeight;
-      const duration = leaving ? 150 : 180;
-      // Keep only outgoing destination chrome alive while the normal header
-      // returns. It is inert and never registers as a second drop target.
-      const exit = leaving && before?.box ? (before.box.cloneNode(true) as HTMLElement) : undefined;
-      if (exit) {
-        exit.removeAttribute("data-testid");
-        exit.removeAttribute("data-drop-accepted");
-        exit.setAttribute("aria-hidden", "true");
-        exit.inert = true;
-        Object.assign(exit.style, {
-          position: "absolute",
-          top: `${position.top}px`,
-          left: `${child.offsetLeft}px`,
-          bottom: "auto",
-          width: `${child.offsetWidth}px`,
-          boxSizing: "border-box",
-          pointerEvents: "none",
-          overflow: "hidden",
-        });
-        list.append(exit);
-      }
-      // Animate the contents, leaving sortable transforms and the held card
-      // under pointer control. No exiting thread clones participate in the drag.
+      // Release motion belongs to Sidebar.motion, which restores headers and
+      // rows together. During drag, keep sortable transforms and the held
+      // card under pointer control by animating only destination contents.
       animations.current.set(key, {
         from: before ?? position,
         to: position,
-        ...(exit
-          ? {
-              exit,
-              entering: visual.animate([{ opacity: 0 }, { opacity: 1 }], {
-                duration,
-                easing: "ease-out",
-              }),
-            }
-          : {}),
-        animation: (exit ?? visual).animate(
+        animation: visual.animate(
           [
             {
               transform: `translateY(${offset}px)`,
               height: `${Math.max(0, (before?.height ?? position.height) - padding)}px`,
               opacity: before ? 1 : 0,
             },
-            { transform: "translateY(0px)", height: `${visualHeight}px`, opacity: exit ? 0 : 1 },
+            { transform: "translateY(0px)", height: `${visualHeight}px`, opacity: 1 },
           ],
-          { duration, easing: "ease-out" },
+          { duration: 180, easing: "ease-out" },
         ),
       });
-      if (exit)
-        animations.current.get(key)!.animation.addEventListener("finish", () => exit.remove(), {
-          once: true,
-          signal: completion.signal,
-        });
     }
     previous.current = next;
     if (layout.dragging) {
@@ -156,10 +115,8 @@ export function SidebarDragLayout({
   useLayoutEffect(
     () => () => {
       for (const entry of animations.current.values()) {
-        const { animation, exit, entering } = entry;
+        const { animation } = entry;
         animation.cancel();
-        entering?.cancel();
-        exit?.remove();
       }
     },
     [],
