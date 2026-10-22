@@ -295,29 +295,37 @@ describe("sidebar collision detection", () => {
     ).toEqual([]);
   });
 
-  it("uses the visible compact card rather than its original full-height slot for destination hits", () => {
-    const args = collisionArgs();
-    const id = "sidebar-destination:active";
-    const rect = { top: 300, bottom: 500, left: 0, right: 260, width: 260, height: 200 };
-    let cardTop = 280;
-    const node = {
-      querySelector: () => ({ getBoundingClientRect: () => ({ top: cardTop, height: 36 }) }),
-    } as unknown as HTMLElement;
-    const detector = createSidebarDestinationCollisionDetection(() => true);
-    const input = {
-      ...args,
-      pointerCoordinates: { x: 100, y: 290 },
-      collisionRect: { ...args.collisionRect, top: 280, bottom: 362, height: 82 },
-      droppableContainers: [
-        { ...args.droppableContainers[0]!, id: "source", node: { current: node } },
-        { ...args.droppableContainers[0]!, id, key: id, rect: { current: rect } },
-      ],
-      droppableRects: new Map([[id, rect]]),
-    };
-    expect(detector(input)).toEqual([]);
-    cardTop = 284;
-    expect(detector(input).map(({ id }) => id)).toEqual([id]);
-  });
+  it.each([true, false])(
+    "uses the visible compact card when source reordering is enabled=%s",
+    (reordering) => {
+      const args = collisionArgs();
+      const id = "sidebar-destination:active";
+      const rect = { top: 300, bottom: 500, left: 0, right: 260, width: 260, height: 200 };
+      let cardTop = 280;
+      const detector = createSidebarDestinationCollisionDetection(
+        () => true,
+        new Set(reordering ? ["source", "blocked"] : []),
+        () => ({ top: cardTop, height: 32 }),
+      );
+      const input = {
+        ...args,
+        pointerCoordinates: { x: 100, y: 290 },
+        collisionRect: { ...args.collisionRect, top: 280, bottom: 362, height: 82 },
+        droppableContainers: [
+          ...(reordering ? args.droppableContainers : []),
+          { ...args.droppableContainers[0]!, id, key: id, rect: { current: rect } },
+        ],
+        droppableRects: new Map([[id, rect]]),
+      };
+      expect(detector(input)).toEqual([]);
+      cardTop = 285;
+      expect(detector(input).map(({ id }) => id)).toEqual([id]);
+      cardTop = 485;
+      expect(detector(input)).toEqual([]);
+      cardTop = 483;
+      expect(detector(input).map(({ id }) => id)).toEqual([id]);
+    },
+  );
 
   it.each([true, false])(
     "gives Settled priority over the source fallback when accepted=%s",

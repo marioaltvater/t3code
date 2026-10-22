@@ -107,6 +107,50 @@ it("routes Settings controls using Active fallback and named pins, with vacant s
   expect(device.listeners.size).toBe(0);
 });
 
+it("maps only Active when Chief of Staff and Simmer pins appear above its single thread", async () => {
+  setup();
+  const chiefs = ["main", "loomia", "iot", "talos"].map((id, index) =>
+    thread(id, { pinnedAt: "2026-10-22T00:00:00Z", pinOrderKey: `a${index}` }),
+  );
+  const simmer = thread("simmer", { pinnedAt: "2026-10-22T00:00:00Z", pinOrderKey: "a4" });
+  fixture.threads = [
+    ...chiefs,
+    simmer,
+    thread("active"),
+    thread("settled", { settledOverride: "settled" }),
+  ];
+  useUiStateStore.setState({
+    sidebarPinnedSections: [
+      {
+        id: "chief",
+        name: "Chief of Staff",
+        collapsed: false,
+        threadKeys: chiefs.map((t) => `test-environment:${t.id}`),
+      },
+      { id: "simmer", name: "Simmer", collapsed: false, threadKeys: ["test-environment:simmer"] },
+    ],
+  });
+  const device = bridge();
+  using _bridge = stubGlobal("desktopBridge", device);
+  await using screen = await render(<ControllerThreadCoordinator />);
+  const colors = device.setLighting.mock.calls.at(-1)![0];
+  expect([0, 1, 2, 5, 6, 7].map((index) => colors[index])).toEqual([0x2e2e2e, 0, 0, 0, 0, 0]);
+  for (let slot = 1; slot <= 6; slot++) {
+    await act(() => {
+      for (const listener of device.listeners) listener(`thread.active.${slot}`);
+    });
+    expect(screen.router!.state.location.pathname).toBe("/test-environment/active");
+  }
+  for (let slot = 1; slot <= 4; slot++) {
+    await act(() => {
+      for (const listener of device.listeners) listener(`thread.chiefOfStaff.${slot}`);
+    });
+    expect(screen.router!.state.location.pathname).toBe(
+      `/test-environment/${chiefs[slot - 1]!.id}`,
+    );
+  }
+});
+
 it("uses the sidebar's published scope and order for both keyboard navigation and LEDs without compacting holes", async () => {
   setup();
   fixture.threads = [
