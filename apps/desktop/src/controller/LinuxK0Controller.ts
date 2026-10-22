@@ -34,6 +34,7 @@ export function startLinuxK0Controller(options: {
   let lastWarning = "";
   let lighting: ReadonlyArray<number> | null = null;
   let lightingDirty = false;
+  let microphoneRecording = false;
   let lightingSequence = 0;
   let lightingSentAt = 0;
   let blackoutPending = false;
@@ -45,25 +46,32 @@ export function startLinuxK0Controller(options: {
     if (message !== lastWarning) options.warning(message);
     lastWarning = message;
   };
-  const dictation = makeControllerDictation(async (args) => {
-    const executable =
-      process.env.T3CODE_WHISPER_CURSOR ??
-      NodePath.join(NodeOS.homedir(), ".local/bin/whisper-cursor");
-    const { stdout } = await execFileAsync(executable, ["session", ...args], {
-      timeout: args[0] === "result" ? 180_000 : 15_000,
-      maxBuffer: 2 * 1024 * 1024,
-      encoding: "utf8",
-    });
-    const result: unknown = JSON.parse(stdout);
-    if (typeof result !== "object" || result === null)
-      throw new Error("Invalid Whisper Cursor response");
-    const value = result as { session_id?: unknown; text?: unknown; error?: unknown };
-    if (typeof value.error === "string") throw new Error(value.error);
-    return {
-      ...(typeof value.session_id === "string" ? { session_id: value.session_id } : {}),
-      ...(typeof value.text === "string" ? { text: value.text } : {}),
-    };
-  }, options.event);
+  const dictation = makeControllerDictation(
+    async (args) => {
+      const executable =
+        process.env.T3CODE_WHISPER_CURSOR ??
+        NodePath.join(NodeOS.homedir(), ".local/bin/whisper-cursor");
+      const { stdout } = await execFileAsync(executable, ["session", ...args], {
+        timeout: args[0] === "result" ? 180_000 : 15_000,
+        maxBuffer: 2 * 1024 * 1024,
+        encoding: "utf8",
+      });
+      const result: unknown = JSON.parse(stdout);
+      if (typeof result !== "object" || result === null)
+        throw new Error("Invalid Whisper Cursor response");
+      const value = result as { session_id?: unknown; text?: unknown; error?: unknown };
+      if (typeof value.error === "string") throw new Error(value.error);
+      return {
+        ...(typeof value.session_id === "string" ? { session_id: value.session_id } : {}),
+        ...(typeof value.text === "string" ? { text: value.text } : {}),
+      };
+    },
+    (event) => {
+      microphoneRecording = event.type === "microphone" && event.pressed;
+      lightingDirty = true;
+      options.event(event);
+    },
+  );
 
   const disconnect = () => {
     if (device !== null) {
@@ -74,6 +82,7 @@ export function startLinuxK0Controller(options: {
       }
     }
     device = null;
+    microphoneRecording = false;
     lightingDirty = true;
     previousSequence = null;
     lightingSentSequence = null;
@@ -114,7 +123,13 @@ export function startLinuxK0Controller(options: {
   const writeLighting = (colors: ReadonlyArray<number>) => {
     if (device === null) return false;
     try {
-      for (const report of encodeK0Lighting(colors, lightingSequence++)) {
+      // Firmware's physical hold override ends on release; keep a latched
+      // recording visible until the host actually stops it.
+      const frame =
+        ready && microphoneRecording
+          ? colors.map((color, index) => (index === 16 ? 0xff0000 : color))
+          : colors;
+      for (const report of encodeK0Lighting(frame, lightingSequence++)) {
         if (NodeFS.writeSync(device, report) !== report.length) {
           throw new Error("Incomplete K0 lighting report");
         }
@@ -231,6 +246,7 @@ export function startLinuxK0Controller(options: {
   return {
     setReady(value: boolean) {
       if (!value) {
+        microphoneRecording = false;
         blackoutPending = !writeLighting(dark);
         lighting = null;
         lightingStartedAt = null;

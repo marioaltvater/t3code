@@ -5,12 +5,17 @@ import type { DesktopControllerEvent } from "@t3tools/contracts";
 type SessionReply = { session_id?: string; text?: string };
 type Capture = {
   id: string;
-  held: boolean;
+  pressed: boolean;
+  latched: boolean;
+  stopping: boolean;
   accepted: boolean;
   cancelled: boolean;
   sessionId: string | null;
   deadline: ReturnType<typeof setTimeout>;
+  releaseTimer: ReturnType<typeof setTimeout> | null;
 };
+
+const DOUBLE_TAP_WINDOW_MS = 300;
 
 export function makeControllerDictation(
   run: (args: string[]) => Promise<SessionReply>,
@@ -32,6 +37,7 @@ export function makeControllerDictation(
       // A failed transcription keeps its tokenized audio/result on disk for recovery.
       current.cancelled = true;
       clearTimeout(current.deadline);
+      if (current.releaseTimer) clearTimeout(current.releaseTimer);
       if (capture === current) capture = null;
       if (current.sessionId) {
         try {
@@ -48,19 +54,23 @@ export function makeControllerDictation(
     const current = capture;
     if (!current || (id !== undefined && current.id !== id)) return queue;
     current.cancelled = true;
-    current.held = false;
+    current.pressed = false;
+    if (ready) emit({ type: "microphone", captureId: current.id, pressed: false });
     clearTimeout(current.deadline);
+    if (current.releaseTimer) clearTimeout(current.releaseTimer);
     if (capture === current) capture = null;
     return enqueue(current, async () => {
       if (current.sessionId) await run(["cancel", current.sessionId, "--json"]);
     });
   };
 
-  const release = () => {
-    const current = capture;
-    if (!current || !current.held) return;
-    current.held = false;
+  const stop = (current: Capture) => {
+    if (current.stopping || current.cancelled) return;
+    current.stopping = true;
+    current.pressed = false;
     clearTimeout(current.deadline);
+    if (current.releaseTimer) clearTimeout(current.releaseTimer);
+    current.releaseTimer = null;
     if (ready) emit({ type: "microphone", captureId: current.id, pressed: false });
     if (!current.accepted) {
       void cancel(current.id);
@@ -80,20 +90,48 @@ export function makeControllerDictation(
     });
   };
 
+  const release = () => {
+    const current = capture;
+    if (!current || !current.pressed) return;
+    current.pressed = false;
+    if (current.latched || current.stopping) return;
+    current.releaseTimer = setTimeout(() => {
+      current.releaseTimer = null;
+      stop(current);
+    }, DOUBLE_TAP_WINDOW_MS);
+  };
+
   return {
     setReady(value: boolean) {
       ready = value;
       if (!value) void cancel();
     },
     press() {
-      if (!ready || capture) return;
-      const current: Capture = {
+      if (!ready) return;
+      if (capture) {
+        const current = capture;
+        if (current.stopping || current.cancelled || current.pressed) return;
+        current.pressed = true;
+        if (current.releaseTimer) {
+          clearTimeout(current.releaseTimer);
+          current.releaseTimer = null;
+          current.latched = true;
+        } else if (current.latched) {
+          stop(current);
+        }
+        return;
+      }
+      let current: Capture;
+      current = {
         id: crypto.randomUUID(),
-        held: true,
+        pressed: true,
+        latched: false,
+        stopping: false,
         accepted: false,
         cancelled: false,
         sessionId: null,
-        deadline: setTimeout(() => release(), 60_000),
+        deadline: setTimeout(() => stop(current), 60_000),
+        releaseTimer: null,
       };
       capture = current;
       emit({ type: "microphone", captureId: current.id, pressed: true });
@@ -101,7 +139,14 @@ export function makeControllerDictation(
     release,
     accept(id: string) {
       const current = capture;
-      if (!ready || !current || current.id !== id || !current.held || current.accepted)
+      if (
+        !ready ||
+        !current ||
+        current.id !== id ||
+        current.stopping ||
+        current.cancelled ||
+        current.accepted
+      )
         return queue;
       current.accepted = true;
       return enqueue(current, async () => {

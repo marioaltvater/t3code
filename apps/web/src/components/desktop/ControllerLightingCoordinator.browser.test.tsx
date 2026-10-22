@@ -51,7 +51,7 @@ vi.mock("../../hooks/useHandleNewThread", () => ({
 }));
 vi.mock("./controllerUiState", () => ({
   useControllerUiSnapshot: () => ({
-    pinnedThreads: [{ environmentId: "test-environment", threadId: "working-pin" }],
+    threadTargets: null,
     secondary: { pinOpen: fixture.pinned },
   }),
 }));
@@ -78,7 +78,11 @@ it("changes working pin brightness and stops sending animation frames after idle
   vi.setSystemTime(0);
   const setLighting = vi.fn(async (_colors: number[]) => {});
   using _bridge = stubGlobal("desktopBridge", { controller: { setLighting } });
-  await using screen = await render(<ControllerLightingCoordinator />);
+  await using screen = await render(
+    <ControllerLightingCoordinator
+      activeThreads={[{ environmentId: "test-environment", threadId: "working-pin" }]}
+    />,
+  );
   const dim = setLighting.mock.calls.at(-1)![0][0];
   await act(() => vi.advanceTimersByTime(960));
   const bright = setLighting.mock.calls.at(-1)![0][0];
@@ -103,7 +107,11 @@ it("does not start a pulse timer in a web client without the controller bridge",
   setup();
   fixture.status = "completed";
   using _bridge = stubGlobal("desktopBridge", undefined);
-  await using _screen = await render(<ControllerLightingCoordinator />);
+  await using _screen = await render(
+    <ControllerLightingCoordinator
+      activeThreads={[{ environmentId: "test-environment", threadId: "working-pin" }]}
+    />,
+  );
   using interval = vi.spyOn(window, "setInterval");
   await setStatus("running");
   expect(interval).not.toHaveBeenCalled();
@@ -114,7 +122,11 @@ it("sends brighter selected idle colors and a separate dim blue pin indicator", 
   fixture.status = "seen";
   const setLighting = vi.fn(async (_colors: number[]) => {});
   using _bridge = stubGlobal("desktopBridge", { controller: { setLighting } });
-  await using _screen = await render(<ControllerLightingCoordinator />);
+  await using _screen = await render(
+    <ControllerLightingCoordinator
+      activeThreads={[{ environmentId: "test-environment", threadId: "working-pin" }]}
+    />,
+  );
   expect(setLighting.mock.calls.at(-1)![0][0]).toBe(0x2e2e2e);
   expect(setLighting.mock.calls.at(-1)![0][12]).toBe(0);
   fixture.selected = true;

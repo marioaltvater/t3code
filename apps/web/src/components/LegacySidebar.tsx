@@ -25,7 +25,11 @@ import { ProjectFavicon } from "./ProjectFavicon";
 import { useAtomValue } from "@effect/atom-react";
 import { autoAnimate } from "@formkit/auto-animate";
 import React, { useEffect, useEffectEvent, useLayoutEffect, memo, useRef, useState } from "react";
-import { publishControllerPins } from "./desktop/controllerUiState";
+import { publishControllerThreadTargets } from "./desktop/controllerUiState";
+import { resolveControllerThreadTargets } from "./desktop/controllerThreadTargets";
+import { partitionSidebarThreads } from "./Sidebar.threadPartition";
+import { controllerSnoozeWakeDelay } from "./desktop/ControllerLightingCoordinator.logic";
+import { environmentServerConfigsAtom } from "../state/server";
 import { cn } from "~/lib/utils";
 import { useShallow } from "zustand/react/shallow";
 import {
@@ -3234,6 +3238,12 @@ function useLegacySidebarThreads(input: {
     },
   );
   return {
+    controllerOrderedThreads: sortedProjects.flatMap((project) =>
+      sortThreads(
+        filterSidebarV2VisibleThreads(threadsByProjectKey.get(project.projectKey) ?? [], null),
+        sidebarThreadSortOrder,
+      ),
+    ),
     sidebarThreadByKey,
     activeRouteProjectKey,
     visibleSidebarThreadKeys,
@@ -3293,6 +3303,7 @@ export default function LegacySidebar() {
   });
   const {
     sidebarThreadByKey,
+    controllerOrderedThreads,
     activeRouteProjectKey,
     visibleSidebarThreadKeys,
     threadJumpCommandByKey,
@@ -3307,18 +3318,45 @@ export default function LegacySidebar() {
     sidebarThreadPreviewCount,
     expandedThreadListsByProject,
   });
-  const controllerPinnedThreads = resolveLegacyPinnedThreads([
-    ...sidebarThreadByKey.values(),
-  ]).slice(0, 6);
-  useLayoutEffect(() => {
-    publishControllerPins(
-      controllerPinnedThreads.map((thread) => ({
-        environmentId: thread.environmentId,
-        threadId: thread.id,
-      })),
+  const controllerConfigs = useAtomValue(environmentServerConfigsAtom);
+  const controllerWorkingShelfEnabled = useClientSettings((s) => s.sidebarWorkingShelfEnabled);
+  const controllerPinnedSections = useUiStateStore((s) => s.sidebarPinnedSections);
+  const [controllerWakeTick, bumpControllerWakeTick] = useState(0);
+  const controllerWakeDelay = controllerSnoozeWakeDelay(
+    [...sidebarThreadByKey.values()],
+    new Date().getTime(),
+  );
+  useEffect(() => {
+    if (controllerWakeDelay === null) return;
+    const timer = window.setTimeout(
+      () => bumpControllerWakeTick(controllerWakeTick + 1),
+      controllerWakeDelay,
     );
-  }, [controllerPinnedThreads]);
-  useLayoutEffect(() => () => publishControllerPins(null), []);
+    return () => window.clearTimeout(timer);
+  }, [controllerWakeDelay, controllerWakeTick]);
+  const controllerPartition = partitionSidebarThreads({
+    threads: [...sidebarThreadByKey.values()],
+    scopedProjectKeys: null,
+    serverConfigs: controllerConfigs,
+    optimisticDrop: null,
+    workingShelfEnabled: controllerWorkingShelfEnabled,
+  });
+  const controllerActiveKeys = new Set(
+    controllerPartition.activeThreads.map((thread) =>
+      scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
+    ),
+  );
+  const controllerTargets = resolveControllerThreadTargets({
+    activeThreads: controllerOrderedThreads.filter((thread) =>
+      controllerActiveKeys.has(scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id))),
+    ),
+    pinnedThreads: controllerPartition.pinnedThreads,
+    pinnedSections: controllerPinnedSections,
+  });
+  useLayoutEffect(() => {
+    publishControllerThreadTargets(controllerTargets);
+  }, [controllerTargets]);
+  useLayoutEffect(() => () => publishControllerThreadTargets(null), []);
   const newThreadShortcutLabelOptions = {
     platform,
     context: {

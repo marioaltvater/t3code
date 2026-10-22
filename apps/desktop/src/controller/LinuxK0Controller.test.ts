@@ -35,6 +35,21 @@ vi.mock("node:fs", () => ({
   },
 }));
 
+vi.mock("node:child_process", () => ({
+  execFile: Object.assign(() => {}, {
+    [Symbol.for("nodejs.util.promisify.custom")]: async (_file: string, args: string[]) => ({
+      stdout: JSON.stringify(
+        args[1] === "start"
+          ? { session_id: "0123456789abcdef0123456789abcdef" }
+          : args[1] === "result"
+            ? { text: "Recorded" }
+            : {},
+      ),
+      stderr: "",
+    }),
+  }),
+}));
+
 vi.mock("node:net", () => ({
   createServer: () => ({
     on(name: string, listener: () => void) {
@@ -58,8 +73,9 @@ function setup() {
   vi.useFakeTimers();
   const command = vi.fn();
   const warning = vi.fn();
-  const controller = startLinuxK0Controller({ command, event: vi.fn(), warning });
-  return { controller, command, warning };
+  const event = vi.fn();
+  const controller = startLinuxK0Controller({ command, event, warning });
+  return { controller, command, warning, event };
 }
 
 function submit(sequence: number) {
@@ -201,6 +217,44 @@ it("reestablishes the empty queue boundary after unplug and reconnect", async ()
     device.reports.push(submit(2));
     await vi.advanceTimersByTimeAsync(12);
     expect(command).toHaveBeenCalledExactlyOnceWith("composer.submit");
+  } finally {
+    await controller.close();
+    vi.useRealTimers();
+  }
+});
+
+it("keeps the microphone LED red after a double tap and clears it on stop or renderer loss", async () => {
+  const { controller, event } = setup();
+  const mic = (sequence: number, phase: number) => {
+    const report = submit(sequence);
+    report[5] = 11;
+    report[6] = phase;
+    return report;
+  };
+  const microphoneColor = () => [...device.writes.at(-2)!.subarray(9, 12)];
+  try {
+    controller.setReady(true);
+    controller.setLighting(Array<number>(26).fill(0));
+    device.reports.push(mic(1, 1));
+    await vi.advanceTimersByTimeAsync(12);
+    await controller.acceptDictation(event.mock.calls[0]![0].captureId);
+    device.reports.push(mic(2, 0));
+    await vi.advanceTimersByTimeAsync(12);
+    device.reports.push(mic(3, 1), mic(4, 0));
+    await vi.advanceTimersByTimeAsync(312);
+    expect(microphoneColor()).toEqual([255, 0, 0]);
+    expect(event.mock.calls.filter(([value]) => value.type === "dictation")).toHaveLength(0);
+    device.reports.push(mic(5, 1), mic(6, 0));
+    await vi.advanceTimersByTimeAsync(24);
+    expect(microphoneColor()).toEqual([0, 0, 0]);
+    expect(event.mock.calls.filter(([value]) => value.type === "dictation")).toHaveLength(1);
+    device.reports.push(mic(7, 1));
+    await vi.advanceTimersByTimeAsync(12);
+    expect(microphoneColor()).toEqual([255, 0, 0]);
+    controller.setReady(false);
+    expect(
+      device.writes.slice(-4).every((report) => report.subarray(9).every((x) => x === 0)),
+    ).toBe(true);
   } finally {
     await controller.close();
     vi.useRealTimers();

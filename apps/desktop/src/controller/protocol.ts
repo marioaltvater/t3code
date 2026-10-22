@@ -41,12 +41,12 @@ export function encodeK0Lighting(colors: ReadonlyArray<number>, sequence: number
 }
 
 export const K0_COMMANDS = {
-  1: "thread.pinned.1",
-  2: "thread.pinned.2",
-  3: "thread.pinned.3",
-  4: "thread.pinned.4",
-  5: "thread.pinned.5",
-  6: "thread.pinned.6",
+  1: "thread.active.1",
+  2: "thread.active.2",
+  3: "thread.active.3",
+  4: "thread.active.4",
+  5: "thread.active.5",
+  6: "thread.active.6",
   7: "sidebar.toggle",
   8: "preview.toggle",
   9: "thread.pin",
@@ -67,8 +67,8 @@ export const K0_COMMANDS = {
   // The flashed encoder map emits 25 clockwise and 26 counterclockwise.
   25: "chat.nextTurn",
   26: "chat.previousTurn",
-  27: "thread.previous",
-  28: "thread.next",
+  27: "thread.chiefOfStaff.1",
+  28: "thread.chiefOfStaff.2",
   30: "threadPanel.toggle",
 } as const satisfies Record<number, KeybindingCommand>;
 
@@ -96,8 +96,10 @@ export function decodeK0Report(report: Uint8Array) {
     command:
       control === 11
         ? null
-        : control === 27 && report[7] === 1
-          ? "thread.settle"
+        : (control === 27 || control === 28) && report[7] === 1
+          ? control === 27
+            ? "thread.chiefOfStaff.3"
+            : "thread.chiefOfStaff.4"
           : K0_COMMANDS[control as keyof typeof K0_COMMANDS],
   };
 }

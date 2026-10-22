@@ -28,7 +28,7 @@ import { RelayClientInstallDialog } from "../components/cloud/RelayClientInstall
 import { SshPasswordPromptDialog } from "../components/desktop/SshPasswordPromptDialog";
 import { SnapShotCoordinator } from "../components/desktop/SnapShotCoordinator";
 import { ControllerCoordinator } from "../components/desktop/ControllerCoordinator";
-import { ControllerLightingCoordinator } from "../components/desktop/ControllerLightingCoordinator";
+import { ControllerThreadCoordinator } from "../components/desktop/ControllerThreadCoordinator";
 import { DesktopAppActivationCoordinator } from "../components/desktop/DesktopAppActivationCoordinator";
 import { DesktopWebLinkCoordinator } from "../components/desktop/DesktopWebLinkCoordinator";
 import { RunningThreadKeepAlive } from "../components/desktop/RunningThreadKeepAlive";
@@ -242,7 +242,7 @@ function RootRouteView() {
           <SshPasswordPromptDialog />
           <SnapShotCoordinator />
           <ControllerCoordinator />
-          <ControllerLightingCoordinator />
+          <ControllerThreadCoordinator />
           <ThreadNotificationCoordinator />
           <ReopenClosedViewShortcut />
           <ConfirmDialogHost />

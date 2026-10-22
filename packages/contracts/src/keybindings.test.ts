@@ -57,6 +57,29 @@ it.effect("accepts pinned thread controller commands from keybindings JSON", () 
   }),
 );
 
+it.effect("accepts active and Chief of Staff slots and rejects out-of-range slots", () =>
+  Effect.gen(function* () {
+    for (const command of [
+      "thread.active.1",
+      "thread.active.6",
+      "thread.chiefOfStaff.1",
+      "thread.chiefOfStaff.4",
+    ]) {
+      const parsed = yield* decode(KeybindingRule, { key: "f13", command });
+      assert.strictEqual(parsed.command, command);
+    }
+    for (const command of [
+      "thread.active.0",
+      "thread.active.7",
+      "thread.chiefOfStaff.0",
+      "thread.chiefOfStaff.5",
+    ]) {
+      const result = yield* Effect.exit(decode(KeybindingRule, { key: "f13", command }));
+      assert.strictEqual(result._tag, "Failure");
+    }
+  }),
+);
+
 it.effect("parses keybindings array payload", () =>
   Effect.gen(function* () {
     const parsed = yield* decode(KeybindingsConfig, [

@@ -17,9 +17,9 @@ function report(control: number, phase = 1) {
 }
 
 describe("K0 input boundary", () => {
-  it("decodes pinned slots, microphone release, and physical dial directions independently", () => {
+  it("decodes active slots, microphone release, and physical dial directions independently", () => {
     expect(decodeK0Report(report(6))).toMatchObject({
-      command: "thread.pinned.6",
+      command: "thread.active.6",
       sequence: 65_535,
     });
     expect(decodeK0Report(report(11, 0))).toMatchObject({ control: 11, phase: 0, command: null });
@@ -49,14 +49,22 @@ describe("K0 input boundary", () => {
     expect(decodeK0Report(report(20))?.command).toBe("rightPanel.toggle");
   });
 
-  it("settles with Command D6 + fn1 E1 and keeps plain fn1 navigation", () => {
-    expect(decodeK0Report(report(27))?.command).toBe("thread.previous");
-    const modified = report(27);
-    modified[7] = 1;
-    expect(decodeK0Report(modified)?.command).toBe("thread.settle");
-    const otherControl = report(28);
-    otherControl[7] = 1;
-    expect(decodeK0Report(otherControl)?.command).toBe("thread.next");
+  it("maps fn1/fn2 and local Command to the four Chief of Staff positions", () => {
+    for (const [control, modifier, command] of [
+      [27, 0, "thread.chiefOfStaff.1"],
+      [28, 0, "thread.chiefOfStaff.2"],
+      [27, 1, "thread.chiefOfStaff.3"],
+      [28, 1, "thread.chiefOfStaff.4"],
+    ] as const) {
+      const value = report(control);
+      value[7] = modifier;
+      expect(decodeK0Report(value)?.command).toBe(command);
+    }
+    for (let control = 1; control <= 6; control++) {
+      const value = report(control);
+      value[7] = 1;
+      expect(decodeK0Report(value)?.command).toBe(`thread.active.${control}`);
+    }
   });
 
   it("selects the T3 vendor collection rather than Codex or the maintenance keyboard", () => {

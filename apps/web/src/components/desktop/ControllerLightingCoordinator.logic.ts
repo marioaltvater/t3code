@@ -102,7 +102,7 @@ export function createControllerLightingFrame(input: {
   readonly pins: ReadonlyArray<{
     readonly state: ControllerThreadLightState;
     readonly selected: boolean;
-  }>;
+  } | null>;
   readonly secondary?: {
     readonly terminalOpen?: boolean;
     readonly browserOpen?: boolean;
@@ -118,6 +118,7 @@ export function createControllerLightingFrame(input: {
   const colors = Array<number>(CONTROLLER_LED_COUNT).fill(CONTROLLER_LIGHT.dark);
   for (const index of CONTROLLER_AMBIENT_LED_INDICES) colors[index] = CONTROLLER_LIGHT.ambient;
   input.pins.slice(0, CONTROLLER_PINNED_LED_INDICES.length).forEach((pin, slot) => {
+    if (!pin) return;
     const led = CONTROLLER_PINNED_LED_INDICES[slot];
     if (led !== undefined) {
       const color = pin.selected ? SELECTED_STATE_COLOR[pin.state] : STATE_COLOR[pin.state];

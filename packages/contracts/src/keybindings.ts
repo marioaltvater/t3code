@@ -30,6 +30,25 @@ export const THREAD_PINNED_KEYBINDING_COMMANDS = [
 ] as const;
 export type ThreadPinnedKeybindingCommand = (typeof THREAD_PINNED_KEYBINDING_COMMANDS)[number];
 
+export const THREAD_ACTIVE_KEYBINDING_COMMANDS = [
+  "thread.active.1",
+  "thread.active.2",
+  "thread.active.3",
+  "thread.active.4",
+  "thread.active.5",
+  "thread.active.6",
+] as const;
+export type ThreadActiveKeybindingCommand = (typeof THREAD_ACTIVE_KEYBINDING_COMMANDS)[number];
+
+export const THREAD_CHIEF_OF_STAFF_KEYBINDING_COMMANDS = [
+  "thread.chiefOfStaff.1",
+  "thread.chiefOfStaff.2",
+  "thread.chiefOfStaff.3",
+  "thread.chiefOfStaff.4",
+] as const;
+export type ThreadChiefOfStaffKeybindingCommand =
+  (typeof THREAD_CHIEF_OF_STAFF_KEYBINDING_COMMANDS)[number];
+
 export const MODEL_PICKER_JUMP_KEYBINDING_COMMANDS = [
   "modelPicker.jump.1",
   "modelPicker.jump.2",
@@ -56,6 +75,8 @@ const THREAD_KEYBINDING_COMMANDS = [
   "thread.undo",
   ...THREAD_JUMP_KEYBINDING_COMMANDS,
   ...THREAD_PINNED_KEYBINDING_COMMANDS,
+  ...THREAD_ACTIVE_KEYBINDING_COMMANDS,
+  ...THREAD_CHIEF_OF_STAFF_KEYBINDING_COMMANDS,
 ] as const;
 export type ThreadKeybindingCommand = (typeof THREAD_KEYBINDING_COMMANDS)[number];
 

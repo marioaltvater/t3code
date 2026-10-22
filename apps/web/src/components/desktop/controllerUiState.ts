@@ -1,8 +1,9 @@
 import { useSyncExternalStore } from "react";
+import type { ControllerThreadTargets } from "./controllerThreadTargets";
 
 export type ControllerThreadRef = { readonly environmentId: string; readonly threadId: string };
 export type ControllerUiSnapshot = {
-  readonly pinnedThreads: readonly ControllerThreadRef[] | null;
+  readonly threadTargets: ControllerThreadTargets | null;
   readonly secondary: {
     readonly terminalOpen: boolean;
     readonly browserOpen: boolean;
@@ -27,7 +28,7 @@ const EMPTY_SECONDARY: ControllerUiSnapshot["secondary"] = {
   canLowerEffort: false,
   canRaiseEffort: false,
 };
-let snapshot: ControllerUiSnapshot = { pinnedThreads: null, secondary: EMPTY_SECONDARY };
+let snapshot: ControllerUiSnapshot = { threadTargets: null, secondary: EMPTY_SECONDARY };
 const listeners = new Set<() => void>();
 
 function update(next: ControllerUiSnapshot) {
@@ -36,9 +37,17 @@ function update(next: ControllerUiSnapshot) {
   for (const listener of listeners) listener();
 }
 
-export function publishControllerPins(pinnedThreads: readonly ControllerThreadRef[] | null) {
-  if (samePins(snapshot.pinnedThreads, pinnedThreads)) return;
-  update({ ...snapshot, pinnedThreads });
+export function publishControllerThreadTargets(threadTargets: ControllerThreadTargets | null) {
+  const previous = snapshot.threadTargets;
+  if (
+    previous === threadTargets ||
+    (previous !== null &&
+      threadTargets !== null &&
+      sameThreads(previous.activeThreads, threadTargets.activeThreads) &&
+      sameThreads(previous.chiefOfStaffThreads, threadTargets.chiefOfStaffThreads))
+  )
+    return;
+  update({ ...snapshot, threadTargets });
 }
 
 export function publishControllerSecondary(secondary: Partial<ControllerUiSnapshot["secondary"]>) {
@@ -56,15 +65,10 @@ export function publishControllerEffort(
   publishControllerSecondary(effort);
 }
 
-function samePins(
-  left: ControllerUiSnapshot["pinnedThreads"],
-  right: ControllerUiSnapshot["pinnedThreads"],
-) {
+function sameThreads(left: readonly ControllerThreadRef[], right: readonly ControllerThreadRef[]) {
   return (
     left === right ||
-    (left !== null &&
-      right !== null &&
-      left.length === right.length &&
+    (left.length === right.length &&
       left.every(
         (pin, index) =>
           pin.environmentId === right[index]?.environmentId &&

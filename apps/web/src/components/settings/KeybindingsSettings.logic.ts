@@ -370,6 +370,12 @@ export function commandLabel(command: KeybindingCommand): string {
   if (command.startsWith("thread.pinned.")) {
     return `Thread: Open Pinned Thread ${command.slice("thread.pinned.".length)}`;
   }
+  if (command.startsWith("thread.active.")) {
+    return `Thread: Open Active Thread ${command.slice("thread.active.".length)}`;
+  }
+  if (command.startsWith("thread.chiefOfStaff.")) {
+    return `Thread: Open Chief of Staff Thread ${command.slice("thread.chiefOfStaff.".length)}`;
+  }
   if (command === "open-settings") return "Open Settings";
   if (command === "settings.toggle") return "Toggle Settings";
   if (command === "diff.toggleLatestTurn") return "Diff: Toggle Latest Turn";
