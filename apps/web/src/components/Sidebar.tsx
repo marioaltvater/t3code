@@ -1330,10 +1330,10 @@ const SIDEBAR_DRAG_DISTANCE = 6;
 
 type SidebarSweepAction = "settle" | "unsettle" | "unsnooze";
 
-function SidebarDragBoundary(props: { marker: "pinned-divider" }) {
+function SidebarDragBoundary(props: { marker: "pinned-divider"; count: number }) {
   return (
     <SortableSidebarMarker marker={props.marker} data-testid={`sidebar-${props.marker}`}>
-      <SidebarThreadSectionHeader shelf="active" />
+      <SidebarThreadSectionHeader shelf="active" count={props.count} />
     </SortableSidebarMarker>
   );
 }
@@ -3964,7 +3964,7 @@ export default function Sidebar() {
       label: section.name,
       count: threads.length,
     })),
-    { id: sidebarDestinationId("active"), label: "Active" },
+    { id: sidebarDestinationId("active"), label: "Active", count: activeThreads.length },
     {
       id: sidebarDestinationId("settled"),
       label: "Settled",
@@ -5421,6 +5421,7 @@ export default function Sidebar() {
                                   <SidebarDragBoundary
                                     key="pinned-divider"
                                     marker="pinned-divider"
+                                    count={activeThreads.length}
                                   />,
                                 );
                                 break;
