@@ -5,6 +5,7 @@ import {
   createSidebarDestinationCollisionDetection,
   sidebarSourceSortingStrategy,
   sidebarDragTranslation,
+  sidebarDragExpansion,
 } from "./Sidebar.drag";
 import {
   sidebarListItemId,
@@ -23,6 +24,43 @@ const marker = (marker: SidebarListMarker): SidebarListItem => ({ kind: "marker"
 const pinnedHeader = marker("pinned-header");
 const divider = marker("pinned-divider");
 const settledHeader = marker("settled-header");
+
+describe("sidebar drag expansion", () => {
+  const input = {
+    sourceBounds: { top: 200, bottom: 700 },
+    sourceSection: "active",
+    pinnedAreaBottom: 240,
+    expanded: false,
+    pinnedExpanded: false,
+  };
+
+  it("expands the pinned targets and source layout together at their visible boundary", () => {
+    expect(sidebarDragExpansion({ ...input, centerY: 230 })).toEqual({
+      expanded: true,
+      pinnedExpanded: true,
+    });
+    expect(sidebarDragExpansion({ ...input, centerY: 250 })).toEqual({
+      expanded: false,
+      pinnedExpanded: false,
+    });
+  });
+
+  it("preserves source reordering inside a pinned section", () => {
+    expect(sidebarDragExpansion({ ...input, sourceSection: "pinned", centerY: 230 })).toEqual({
+      expanded: false,
+      pinnedExpanded: false,
+    });
+  });
+
+  it("collapses the pinned targets again on the way to Settled", () => {
+    expect(
+      sidebarDragExpansion({ ...input, centerY: 800, expanded: true, pinnedExpanded: true }),
+    ).toEqual({
+      expanded: true,
+      pinnedExpanded: false,
+    });
+  });
+});
 
 function layout(
   items: readonly SidebarListItem[],
@@ -156,7 +194,7 @@ describe("sidebar collision detection", () => {
     },
   );
 
-  it("only accepts destination boxes under the pointer, with no snapping across gaps", () => {
+  it("accepts a destination when half the held card enters it, independently of the grab point", () => {
     const args = collisionArgs();
     const boxId = "sidebar-destination:pinned";
     const row = args.droppableContainers[0]!;
@@ -171,18 +209,21 @@ describe("sidebar collision detection", () => {
       droppableRects: new Map([...args.droppableRects, [boxId, boxRect]]),
     };
     const detector = createSidebarDestinationCollisionDetection(() => true);
-    expect(
-      detector({ ...boxArgs, pointerCoordinates: { x: 100, y: 350 } }).map(({ id }) => id),
-    ).toEqual([boxId]);
-    expect(detector({ ...boxArgs, pointerCoordinates: { x: 100, y: 290 } })).toEqual([]);
-    expect(detector({ ...boxArgs, pointerCoordinates: { x: 270, y: 350 } })).toEqual([]);
-    expect(detector({ ...boxArgs, pointerCoordinates: { x: 100, y: 110 } })).toEqual([]);
-    expect(
-      createSidebarDestinationCollisionDetection(() => false)({
-        ...boxArgs,
-        pointerCoordinates: { x: 100, y: 350 },
-      }),
-    ).toEqual([]);
+    const at = (centerY: number, pointerY: number, x = 100) => ({
+      ...boxArgs,
+      collisionRect: {
+        ...boxArgs.collisionRect,
+        top: centerY - 18,
+        bottom: centerY + 18,
+        height: 36,
+      },
+      pointerCoordinates: { x, y: pointerY },
+    });
+    expect(detector(at(301, 290)).map(({ id }) => id)).toEqual([boxId]);
+    expect(detector(at(299, 310))).toEqual([]);
+    expect(detector(at(350, 350, 270))).toEqual([]);
+    expect(detector(at(110, 110))).toEqual([]);
+    expect(createSidebarDestinationCollisionDetection(() => false)(at(350, 350))).toEqual([]);
     expect(detector(boxArgs)).toEqual([]);
   });
 
@@ -207,6 +248,30 @@ describe("sidebar collision detection", () => {
     ).toEqual([]);
   });
 
+  it("uses the visible compact card rather than its original full-height slot for destination hits", () => {
+    const args = collisionArgs();
+    const id = "sidebar-destination:active";
+    const rect = { top: 300, bottom: 500, left: 0, right: 260, width: 260, height: 200 };
+    let cardTop = 280;
+    const node = {
+      querySelector: () => ({ getBoundingClientRect: () => ({ top: cardTop, height: 36 }) }),
+    } as unknown as HTMLElement;
+    const detector = createSidebarDestinationCollisionDetection(() => true);
+    const input = {
+      ...args,
+      pointerCoordinates: { x: 100, y: 290 },
+      collisionRect: { ...args.collisionRect, top: 280, bottom: 362, height: 82 },
+      droppableContainers: [
+        { ...args.droppableContainers[0]!, id: "source", node: { current: node } },
+        { ...args.droppableContainers[0]!, id, key: id, rect: { current: rect } },
+      ],
+      droppableRects: new Map([[id, rect]]),
+    };
+    expect(detector(input)).toEqual([]);
+    cardTop = 284;
+    expect(detector(input).map(({ id }) => id)).toEqual([id]);
+  });
+
   it.each([true, false])(
     "gives Settled priority over the source fallback when accepted=%s",
     (accepted) => {
@@ -224,6 +289,7 @@ describe("sidebar collision detection", () => {
           { ...args.droppableContainers[0]!, id: boxId, key: boxId, rect: { current: boxRect } },
         ],
         droppableRects: new Map([...args.droppableRects, [boxId, boxRect]]),
+        collisionRect: { ...args.collisionRect, top: 832, bottom: 868, height: 36 },
         pointerCoordinates: { x: 100, y: 850 },
       });
       expect(result.map(({ id }) => id)).toEqual(accepted ? [boxId] : []);
@@ -242,6 +308,7 @@ describe("sidebar collision detection", () => {
       const result = detector({
         ...args,
         pointerCoordinates: { x: 100, y: 350 },
+        collisionRect: { ...args.collisionRect, top: 332, bottom: 368, height: 36 },
         droppableContainers: ids.map((id) => ({
           ...args.droppableContainers[0]!,
           id,
@@ -275,9 +342,14 @@ describe("sidebar collision detection", () => {
       ],
       droppableRects: new Map([[id, rect]]),
     };
-    expect(detector({ ...targets, pointerCoordinates: { x: 100, y: 90 } })).toEqual([]);
+    const collisionRect = { ...args.collisionRect, top: 92, bottom: 128, height: 36 };
+    expect(detector({ ...targets, collisionRect, pointerCoordinates: { x: 100, y: 90 } })).toEqual(
+      [],
+    );
     expect(
-      detector({ ...targets, pointerCoordinates: { x: 100, y: 110 } }).map(({ id }) => id),
+      detector({ ...targets, collisionRect, pointerCoordinates: { x: 100, y: 110 } }).map(
+        ({ id }) => id,
+      ),
     ).toEqual([id]);
   });
 

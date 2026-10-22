@@ -251,6 +251,7 @@ import {
   createSidebarDestinationCollisionDetection,
   measureSidebarDropTarget,
   sidebarDragTranslation,
+  sidebarDragExpansion,
   positionSidebarDragCard,
   sidebarSourceSortingStrategy,
 } from "./Sidebar.drag";
@@ -3535,21 +3536,29 @@ export default function Sidebar() {
     const pinnedAreaBottom = threadListRef.current
       ?.querySelector('[data-sidebar-marker="pinned-divider"]')
       ?.getBoundingClientRect().top;
+    const card = threadListRef.current
+      ?.querySelector<HTMLElement>('[data-thread-item][data-thread-dragging] [role="button"]')
+      ?.getBoundingClientRect();
     setDragState((current) => {
       if (current === null) return current;
       const sourceBounds = current.destinationsExpanded
         ? dragSourceReturnBoundsRef.current
         : dragSourceBoundsRef.current;
-      const margin = current.destinationsExpanded ? 6 : -6;
-      const destinationsExpanded =
-        contextDrag || sourceBounds === null
-          ? current.destinationsExpanded
-          : point.y < sourceBounds.top + margin || point.y > sourceBounds.bottom - margin;
-      const pinnedDestinationsExpanded = contextDrag
-        ? current.pinnedDestinationsExpanded
-        : destinationsExpanded &&
-          pinnedAreaBottom !== undefined &&
-          point.y < pinnedAreaBottom + (current.pinnedDestinationsExpanded ? 6 : -6);
+      const expansion = contextDrag
+        ? {
+            expanded: current.destinationsExpanded,
+            pinnedExpanded: current.pinnedDestinationsExpanded,
+          }
+        : sidebarDragExpansion({
+            centerY: card ? card.top + card.height / 2 : point.y,
+            sourceBounds,
+            sourceSection: current.activeSection,
+            pinnedAreaBottom,
+            expanded: current.destinationsExpanded,
+            pinnedExpanded: current.pinnedDestinationsExpanded,
+          });
+      const destinationsExpanded = expansion.expanded;
+      const pinnedDestinationsExpanded = expansion.pinnedExpanded;
       return current.contextDrag === contextDrag &&
         current.destinationsExpanded === destinationsExpanded &&
         current.pinnedDestinationsExpanded === pinnedDestinationsExpanded
@@ -5356,11 +5365,12 @@ export default function Sidebar() {
                                           "relative list-none",
                                           section === "active" && "min-h-9 flex-1",
                                           destination.size === "half" &&
-                                            "sticky bottom-2 z-10 mt-auto bg-sidebar",
-                                          destination.size === "half" ||
-                                            (section === "pinned" && pinnedDropTargetsExpanded)
-                                            ? "h-24 min-h-9 shrink"
-                                            : "h-9 shrink-0",
+                                            "sticky bottom-2 z-10 mt-auto border-t-8 border-sidebar bg-sidebar",
+                                          destination.size === "half"
+                                            ? "h-26 min-h-11 shrink"
+                                            : section === "pinned" && pinnedDropTargetsExpanded
+                                              ? "h-24 min-h-9 shrink"
+                                              : "h-9 shrink-0",
                                         )}
                                       >
                                         <SidebarDropBox
