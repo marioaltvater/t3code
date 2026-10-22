@@ -1,7 +1,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { isElectron } from "../../env";
 import { isCommandPaletteOpen } from "../../commandPaletteBus";
 import { useClientSettings } from "../../hooks/useSettings";
@@ -12,6 +12,7 @@ import { isTerminalFocused } from "../../lib/terminalFocus";
 import { useThreadShells } from "../../state/entities";
 import { environmentServerConfigsAtom, primaryServerKeybindingsAtom } from "../../state/server";
 import { buildThreadRouteParams } from "../../threadRoutes";
+import { useThreadSelectionStore } from "../../threadSelectionStore";
 import { useUiStateStore } from "../../uiStateStore";
 import { partitionSidebarThreads } from "../Sidebar.threadPartition";
 import { ControllerLightingCoordinator } from "./ControllerLightingCoordinator";
@@ -63,9 +64,13 @@ export function ControllerThreadCoordinator() {
         thread.archivedAt === null,
     );
     if (!thread) return;
+    const threadRef = scopeThreadRef(thread.environmentId, thread.id);
+    const selection = useThreadSelectionStore.getState();
+    if (selection.selectedThreadKeys.size > 0) selection.clearSelection();
+    selection.setAnchor(scopedThreadKey(threadRef));
     void navigate({
       to: "/$environmentId/$threadId",
-      params: buildThreadRouteParams(scopeThreadRef(thread.environmentId, thread.id)),
+      params: buildThreadRouteParams(threadRef),
     });
   });
   const onKeyDown = useStableCallback((event: KeyboardEvent) => {

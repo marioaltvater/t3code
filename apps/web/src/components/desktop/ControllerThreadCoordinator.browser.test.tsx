@@ -4,6 +4,7 @@ import { compileResolvedKeybindingsConfig } from "@t3tools/shared/keybindings";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import { makeThreadFixture } from "../../test-fixtures";
 import { useUiStateStore } from "../../uiStateStore";
+import { useThreadSelectionStore } from "../../threadSelectionStore";
 import { act, fakeTimers, render, stubGlobal } from "../../../test/render";
 import { publishControllerThreadTargets } from "./controllerUiState";
 import { ControllerThreadCoordinator } from "./ControllerThreadCoordinator";
@@ -47,6 +48,7 @@ function setup() {
     { key: "alt+2", command: "thread.active.2" },
   ]);
   publishControllerThreadTargets(null);
+  useThreadSelectionStore.getState().clearSelection();
   useUiStateStore.setState({ sidebarPinnedSections: [], threadLastVisitedAtById: {} });
 }
 
@@ -150,6 +152,54 @@ it("maps only Active when Chief of Staff and Simmer pins appear above its single
     );
   }
 });
+
+it.each([
+  { input: "controller", shelf: "active", target: "active" },
+  { input: "keyboard", shelf: "active", target: "active" },
+  { input: "controller", shelf: "chiefOfStaff", target: "chief" },
+  { input: "keyboard", shelf: "chiefOfStaff", target: "chief" },
+])(
+  "clears selection and anchors $input navigation to $shelf, preserving it for vacant slots",
+  async ({ input, shelf, target }) => {
+    setup();
+    fixture.threads = [thread("active"), thread("chief", { pinnedAt: "2026-10-22T00:00:00Z" })];
+    useUiStateStore.setState({
+      sidebarPinnedSections: [
+        {
+          id: "chief",
+          name: "Chief of Staff",
+          collapsed: false,
+          threadKeys: ["test-environment:chief"],
+        },
+      ],
+    });
+    fixture.bindings = compileResolvedKeybindingsConfig([
+      { key: "alt+1", command: shelf === "active" ? "thread.active.1" : "thread.chiefOfStaff.1" },
+    ]);
+    const device = bridge();
+    using _bridge = stubGlobal("desktopBridge", device);
+    await using screen = await render(<ControllerThreadCoordinator />);
+    await act(() => {
+      useThreadSelectionStore.getState().toggleThread("test-environment:old-a");
+      useThreadSelectionStore.getState().toggleThread("test-environment:old-b");
+      for (const listener of device.listeners) listener("thread.active.6");
+    });
+    expect(useThreadSelectionStore.getState().selectedThreadKeys.size).toBe(2);
+    expect(useThreadSelectionStore.getState().anchorThreadKey).toBe("test-environment:old-b");
+    await act(() => {
+      if (input === "keyboard") {
+        window.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "1", altKey: true, cancelable: true }),
+        );
+      } else {
+        for (const listener of device.listeners) listener(`thread.${shelf}.1`);
+      }
+    });
+    expect(screen.router!.state.location.pathname).toBe(`/test-environment/${target}`);
+    expect(useThreadSelectionStore.getState().selectedThreadKeys.size).toBe(0);
+    expect(useThreadSelectionStore.getState().anchorThreadKey).toBe(`test-environment:${target}`);
+  },
+);
 
 it("uses the sidebar's published scope and order for both keyboard navigation and LEDs without compacting holes", async () => {
   setup();
