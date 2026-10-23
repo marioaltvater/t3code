@@ -4750,7 +4750,11 @@ export default function Sidebar() {
       const pinnedIndex = threadPinnedIndexFromCommand(command ?? "");
       if (pinnedIndex !== null) {
         const target = pinnedThreads[pinnedIndex];
-        if (target) navigateToThread(scopeThreadRef(target.environmentId, target.id));
+        if (target) {
+          event.preventDefault();
+          event.stopPropagation();
+          navigateToThread(scopeThreadRef(target.environmentId, target.id));
+        }
         return;
       }
       const jumpIndex = threadJumpIndexFromCommand(command ?? "");
