@@ -11,7 +11,7 @@ type Capture = {
   accepted: boolean;
   cancelled: boolean;
   sessionId: string | null;
-  deadline: ReturnType<typeof setTimeout>;
+  acceptanceDeadline: ReturnType<typeof setTimeout> | null;
   releaseTimer: ReturnType<typeof setTimeout> | null;
 };
 
@@ -36,7 +36,7 @@ export function makeControllerDictation(
         });
       // A failed transcription keeps its tokenized audio/result on disk for recovery.
       current.cancelled = true;
-      clearTimeout(current.deadline);
+      if (current.acceptanceDeadline) clearTimeout(current.acceptanceDeadline);
       if (current.releaseTimer) clearTimeout(current.releaseTimer);
       if (capture === current) capture = null;
       if (current.sessionId) {
@@ -56,7 +56,7 @@ export function makeControllerDictation(
     current.cancelled = true;
     current.pressed = false;
     if (ready) emit({ type: "microphone", captureId: current.id, pressed: false });
-    clearTimeout(current.deadline);
+    if (current.acceptanceDeadline) clearTimeout(current.acceptanceDeadline);
     if (current.releaseTimer) clearTimeout(current.releaseTimer);
     if (capture === current) capture = null;
     return enqueue(current, async () => {
@@ -68,7 +68,7 @@ export function makeControllerDictation(
     if (current.stopping || current.cancelled) return;
     current.stopping = true;
     current.pressed = false;
-    clearTimeout(current.deadline);
+    if (current.acceptanceDeadline) clearTimeout(current.acceptanceDeadline);
     if (current.releaseTimer) clearTimeout(current.releaseTimer);
     current.releaseTimer = null;
     if (ready) emit({ type: "microphone", captureId: current.id, pressed: false });
@@ -130,7 +130,7 @@ export function makeControllerDictation(
         accepted: false,
         cancelled: false,
         sessionId: null,
-        deadline: setTimeout(() => stop(current), 60_000),
+        acceptanceDeadline: setTimeout(() => stop(current), 60_000),
         releaseTimer: null,
       };
       capture = current;
@@ -149,6 +149,9 @@ export function makeControllerDictation(
       )
         return queue;
       current.accepted = true;
+      // Only bound the renderer handshake; speech continues until an explicit stop or cancellation.
+      if (current.acceptanceDeadline) clearTimeout(current.acceptanceDeadline);
+      current.acceptanceDeadline = null;
       return enqueue(current, async () => {
         const started = await run(["start", "--owner", `t3-k0-${current.id}`, "--json"]);
         if (typeof started.session_id !== "string" || !/^[a-f0-9]{32}$/.test(started.session_id)) {

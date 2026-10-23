@@ -301,7 +301,7 @@ it("does not deliver an obsolete transcription after renderer reload and reactiv
   }
 });
 
-it("stops a held recording at the duration limit and ignores a later physical release", async () => {
+it("keeps a held recording past 30 minutes until physical release", async () => {
   vi.useFakeTimers();
   try {
     const events: DesktopControllerEvent[] = [];
@@ -309,17 +309,23 @@ it("stops a held recording at the duration limit and ignores a later physical re
       args[0] === "start"
         ? { session_id: TOKEN }
         : args[0] === "result"
-          ? { text: "Finished at limit" }
+          ? { text: "Long held recording" }
           : {},
     );
     const capture = makeControllerDictation(run, (event) => events.push(event));
     capture.setReady(true);
     capture.press();
     await capture.accept(events[0]!.captureId);
-    await vi.advanceTimersByTimeAsync(60_000);
+    await vi.advanceTimersByTimeAsync(30 * 60_000);
+    expect(run.mock.calls.map(([args]) => args[0])).toEqual(["start"]);
+    expect(events).toEqual([
+      { type: "microphone", captureId: events[0]!.captureId, pressed: true },
+    ]);
+    capture.release();
+    await vi.advanceTimersByTimeAsync(300);
     await capture.idle();
     expect(run.mock.calls.filter(([args]) => args[0] === "stop")).toHaveLength(1);
-    expect(events.at(-1)).toMatchObject({ type: "dictation", text: "Finished at limit" });
+    expect(events.at(-1)).toMatchObject({ type: "dictation", text: "Long held recording" });
     capture.release();
     expect(run.mock.calls.filter(([args]) => args[0] === "stop")).toHaveLength(1);
   } finally {
@@ -327,7 +333,7 @@ it("stops a held recording at the duration limit and ignores a later physical re
   }
 });
 
-it("stops a latched recording at the 60 second duration limit", async () => {
+it("keeps a latched recording past 30 minutes until the next press", async () => {
   vi.useFakeTimers();
   try {
     const events: DesktopControllerEvent[] = [];
@@ -335,7 +341,7 @@ it("stops a latched recording at the 60 second duration limit", async () => {
       args[0] === "start"
         ? { session_id: TOKEN }
         : args[0] === "result"
-          ? { text: "Latched limit" }
+          ? { text: "Long hands-free recording" }
           : {},
     );
     const capture = makeControllerDictation(run, (event) => events.push(event));
@@ -347,16 +353,63 @@ it("stops a latched recording at the 60 second duration limit", async () => {
     await vi.advanceTimersByTimeAsync(100);
     capture.press();
     capture.release();
-    await vi.advanceTimersByTimeAsync(59_900);
+    await vi.advanceTimersByTimeAsync(30 * 60_000);
+    expect(run.mock.calls.map(([args]) => args[0])).toEqual(["start"]);
+    expect(events).toEqual([{ type: "microphone", captureId: id, pressed: true }]);
+    capture.press();
+    capture.release();
     await capture.idle();
     expect(run.mock.calls.map(([args]) => args[0])).toEqual(["start", "stop", "result"]);
     expect(events.at(-1)).toMatchObject({
       type: "dictation",
       captureId: id,
-      text: "Latched limit",
+      text: "Long hands-free recording",
     });
     capture.release();
     expect(run.mock.calls.filter(([args]) => args[0] === "stop")).toHaveLength(1);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("expires an unaccepted capture without starting a recorder", async () => {
+  vi.useFakeTimers();
+  try {
+    const events: DesktopControllerEvent[] = [];
+    const run = vi.fn(async () => ({ session_id: TOKEN }));
+    const capture = makeControllerDictation(run, (event) => events.push(event));
+    capture.setReady(true);
+    capture.press();
+    const id = events[0]!.captureId;
+    await vi.advanceTimersByTimeAsync(60_000);
+    await capture.accept(id);
+    await capture.idle();
+    expect(run).not.toHaveBeenCalled();
+    expect(events.at(-1)).toEqual({ type: "microphone", captureId: id, pressed: false });
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("cancels a long hands-free recording on disconnect without delivering text", async () => {
+  vi.useFakeTimers();
+  try {
+    const events: DesktopControllerEvent[] = [];
+    const run = vi.fn(async (args: string[]) => (args[0] === "start" ? { session_id: TOKEN } : {}));
+    const capture = makeControllerDictation(run, (event) => events.push(event));
+    capture.setReady(true);
+    capture.press();
+    const id = events[0]!.captureId;
+    await capture.accept(id);
+    capture.release();
+    capture.press();
+    capture.release();
+    await vi.advanceTimersByTimeAsync(30 * 60_000);
+    expect(run.mock.calls.map(([args]) => args[0])).toEqual(["start"]);
+    capture.setReady(false);
+    await capture.idle();
+    expect(run.mock.calls.at(-1)?.[0]).toEqual(["cancel", TOKEN, "--json"]);
+    expect(events.some((event) => event.type === "dictation")).toBe(false);
   } finally {
     vi.useRealTimers();
   }
