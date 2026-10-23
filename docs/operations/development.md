@@ -10,8 +10,11 @@ vp i
 vp run dev
 ```
 
-Open the pairing URL printed by the dev runner. The bare origin does not authenticate
-a new browser.
+Open the web URL printed by the dev runner. Web development automatically pairs new browsers,
+so another browser window or profile can open the bare origin without a pairing token.
+Anyone who can reach that dev URL gets a normal session with the standard client permissions.
+Set `T3CODE_DEV_AUTO_PAIR=false` to test manual pairing; then open the printed pairing URL.
+Desktop and non-development servers still require their normal authentication.
 
 Prefer a container? See [Dev container](../internals/devcontainer.md) for VS Code and Codespaces setup.
 
@@ -38,8 +41,9 @@ different preference when needed.
 ### Sharing and remote debugging
 
 `vp run dev --share` publishes the web port over the machine's tailnet and prints a pairing URL
-for that origin. Give the tester the complete URL, including its token. The dev runner removes
-its mapping on exit.
+for that origin. With automatic dev pairing, testers can open the HTTPS origin directly. If
+`T3CODE_DEV_AUTO_PAIR=false`, give the tester the complete pairing URL, including its token.
+The dev runner removes its mapping on exit.
 
 Leave `VITE_HTTP_URL` and `VITE_WS_URL` unset. Vite proxies the backend through the browser's
 origin so the same build works over localhost and remote connections.
@@ -62,7 +66,8 @@ The workarounds live in the [web entry](../../apps/web/src/bootstrap.ts),
 
 #### Reusable dev credential
 
-Use this only on a hostname where you trust every service. Browsers send cookies to all ports
+When automatic dev pairing is disabled, a reusable credential can retain authentication across
+worktrees. Use this only on a hostname where you trust every service. Browsers send cookies to all ports
 on that hostname. Any service you visit there can receive the reusable admin credential,
 including services unrelated to T3 Code. If you run untrusted services on that hostname, keep
 normal per-environment pairing instead.
