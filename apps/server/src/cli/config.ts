@@ -314,6 +314,10 @@ export const resolveServerConfig = Effect.fn("config.resolveServerConfig")(funct
   );
   const devAuthToken =
     mode === "web" && devUrl !== undefined ? yield* DevAuthTokenConfig : undefined;
+  const devAutoPair =
+    mode === "web" && devUrl !== undefined
+      ? yield* Config.Boolean("T3CODE_DEV_AUTO_PAIR").pipe(Config.withDefault(true))
+      : false;
   const explicitBaseDir = resolveOptionPrecedence(
     normalizedFlags.baseDir,
     Option.fromUndefinedOr(env.t3Home),
@@ -465,6 +469,7 @@ export const resolveServerConfig = Effect.fn("config.resolveServerConfig")(funct
     host,
     staticDir,
     devUrl,
+    devAutoPair,
     ...(devAuthToken === undefined ? {} : { devAuthToken }),
     devAllowedOrigins: env.devAllowedOrigins,
     noBrowser,

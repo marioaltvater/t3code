@@ -25,7 +25,6 @@ import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import { identity } from "effect/Function";
 import * as Layer from "effect/Layer";
 import * as Cookies from "effect/http/Cookies";
 import * as HttpEffect from "effect/http/HttpEffect";
@@ -274,6 +273,18 @@ export const layer = HttpApiBuilder.group(
             yield* annotateEnvironmentRequest(args.endpoint.name);
             const request = yield* HttpServerRequest.HttpServerRequest;
             const result = yield* serverAuth.getSessionState(request);
+            if (!result.authenticated) {
+              const paired = yield* serverAuth.autoPairBrowserSession(request);
+              if (paired !== undefined) {
+                yield* appendSessionCookie(
+                  sessions.cookieName,
+                  paired.sessionToken,
+                  paired.response.expiresAt,
+                );
+                yield* appendCredentialResponseHeaders;
+                return { ...paired.response, auth: result.auth };
+              }
+            }
             const credential = EnvironmentAuth.selectRequestCredential(
               request,
               sessions.cookieName,

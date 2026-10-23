@@ -92,6 +92,12 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
     otlpLogsExport: DEFAULT_SIGNAL_EXPORT,
     otelEnvironment: OtelEnvironment.none,
     devAllowedOrigins: [],
+    devAutoPair: false,
+    desktopTelemetryFd: undefined,
+    desktopTelemetryControlFd: undefined,
+    desktopBrowserFd: undefined,
+    desktopBrowserControlFd: undefined,
+    resourceMonitorPath: undefined,
   } as const;
 
   const openBootstrapFd = Effect.fn(function* (payload: DesktopBackendBootstrapValue) {
@@ -247,6 +253,24 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
       }
       expect(Redacted.value(web.devAuthToken)).toBe("reusable-dev-auth-token-that-is-long-enough");
       expect(desktop.devAuthToken).toBeUndefined();
+      expect(web.devAutoPair).toBe(true);
+      expect(desktop.devAutoPair).toBe(false);
+      const staticWeb = yield* resolveServerConfig(
+        { ...flags, devUrl: Option.none() },
+        Option.none(),
+      ).pipe(Effect.provide(Layer.mergeAll(layerConfig, NetService.layer)));
+      expect(staticWeb.devAutoPair).toBe(false);
+      const manualPairing = yield* resolveServerConfig(flags, Option.none()).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            ConfigProvider.layer(
+              ConfigProvider.fromEnv({ env: { T3CODE_DEV_AUTO_PAIR: "false" } }),
+            ),
+            NetService.layer,
+          ),
+        ),
+      );
+      expect(manualPairing.devAutoPair).toBe(false);
     }),
   );
 
@@ -425,6 +449,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         host: "127.0.0.1",
         staticDir: undefined,
         devUrl: new URL("http://127.0.0.1:4173"),
+        devAutoPair: true,
         noBrowser: true,
         startupPresentation: "browser",
         desktopBootstrapToken: undefined,
@@ -498,6 +523,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         host: "127.0.0.1",
         staticDir: undefined,
         devUrl: new URL("http://127.0.0.1:4173"),
+        devAutoPair: true,
         noBrowser: false,
         startupPresentation: "browser",
         desktopBootstrapToken: "desktop-bootstrap-token",
@@ -740,6 +766,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         host: "127.0.0.1",
         staticDir: undefined,
         devUrl: new URL("http://127.0.0.1:4173"),
+        devAutoPair: true,
         noBrowser: true,
         startupPresentation: "browser",
         desktopBootstrapToken: "desktop-token",

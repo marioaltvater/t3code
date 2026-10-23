@@ -42,6 +42,7 @@ const layerConfig = Layer.effect(
       ...config,
       mode: "web",
       devUrl: new URL("http://127.0.0.1:5173"),
+      devAutoPair: true,
       devAuthToken: Redacted.make(DEV_TOKEN),
     } satisfies ServerConfig.ServerConfig["Service"];
   }),
@@ -98,6 +99,28 @@ it.effect("sets the selected browser session cookies through the HTTP route", ()
       ),
       ([environmentA, environmentB]) =>
         Effect.tryPromise(async () => {
+          const freshBrowser = await environmentA.handler(
+            new Request("http://127.0.0.1/api/auth/session"),
+            requestContext,
+          );
+          expect(freshBrowser.status).toBe(200);
+          expect(await freshBrowser.json()).toMatchObject({
+            authenticated: true,
+            sessionMethod: "browser-session-cookie",
+          });
+          expect(freshBrowser.headers.get("cache-control")).toBe("no-store");
+          const automaticCookie = freshBrowser.headers.getSetCookie()[0];
+          expect(automaticCookie).toMatch(/^t3_session_/);
+          expect(automaticCookie).toContain("HttpOnly");
+          const returningBrowser = await environmentA.handler(
+            new Request("http://127.0.0.1/api/auth/session", {
+              headers: { cookie: automaticCookie?.split(";", 1)[0] ?? "" },
+            }),
+            requestContext,
+          );
+          expect(await returningBrowser.json()).toMatchObject({ authenticated: true });
+          expect(returningBrowser.headers.getSetCookie()).toHaveLength(0);
+
           const devResponse = await environmentA.handler(
             postJson("/api/auth/browser-session", { credential: DEV_TOKEN }),
             requestContext,

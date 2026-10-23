@@ -5,6 +5,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
+import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import * as ServerConfig from "../config.ts";
@@ -75,6 +76,95 @@ const requestMetadata = {
 };
 
 it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
+  it.effect("automatically pairs fresh dev browsers with ordinary scoped sessions", () =>
+    Effect.gen(function* () {
+      const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
+      const sessions = yield* SessionStore.SessionStore;
+      const paired = yield* serverAuth.autoPairBrowserSession(
+        HttpServerRequest.fromWeb(new Request("http://127.0.0.1:5173/api/auth/session")),
+      );
+      expect(paired).toBeDefined();
+      if (paired === undefined) return yield* Effect.die("Expected automatic dev pairing.");
+      const request = makeCookieRequest(sessions.cookieName, paired.sessionToken);
+      expect(paired.response).toMatchObject({
+        authenticated: true,
+        sessionMethod: "browser-session-cookie",
+        ...authScopeResponse(AuthStandardClientScopes),
+      });
+      expect((yield* serverAuth.authenticateHttpRequest(request)).scopes).toEqual(
+        AuthStandardClientScopes,
+      );
+      expect((yield* serverAuth.authenticateWebSocketUpgrade(request)).scopes).toEqual(
+        AuthStandardClientScopes,
+      );
+      expect(yield* serverAuth.autoPairBrowserSession(request)).toBeUndefined();
+
+      const pairing = yield* serverAuth.issuePairingCredential({ scopes: ["orchestration:read"] });
+      const scoped = yield* serverAuth.createBrowserSession(pairing.credential, requestMetadata);
+      const scopedRequest = makeCookieRequest(sessions.cookieName, scoped.sessionToken);
+      expect(yield* serverAuth.autoPairBrowserSession(scopedRequest)).toBeUndefined();
+      expect((yield* serverAuth.authenticateHttpRequest(scopedRequest)).scopes).toEqual([
+        "orchestration:read",
+      ]);
+    }).pipe(
+      Effect.provide(
+        layerEnvironmentAuth({
+          mode: "web",
+          devUrl: new URL("http://127.0.0.1:5173"),
+          devAutoPair: true,
+        }),
+      ),
+    ),
+  );
+
+  it.effect.each([
+    { mode: "desktop", devUrl: new URL("http://127.0.0.1:5173"), devAutoPair: true },
+    { mode: "web", devUrl: undefined, devAutoPair: true },
+    { mode: "web", devUrl: new URL("http://127.0.0.1:5173"), devAutoPair: false },
+  ] as const)(
+    "requires pairing for mode=$mode, devUrl=$devUrl, devAutoPair=$devAutoPair",
+    (overrides) =>
+      Effect.gen(function* () {
+        const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
+        const request = HttpServerRequest.fromWeb(
+          new Request("http://127.0.0.1:5173/api/auth/session"),
+        );
+        expect(yield* serverAuth.autoPairBrowserSession(request)).toBeUndefined();
+        expect(yield* serverAuth.getSessionState(request)).toMatchObject({
+          authenticated: false,
+        });
+      }).pipe(Effect.provide(layerEnvironmentAuth(overrides))),
+  );
+
+  it.effect("does not auto pair rejected credentials or requests from another site", () =>
+    Effect.gen(function* () {
+      const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
+      const sessions = yield* SessionStore.SessionStore;
+      for (const headers of [
+        { authorization: "Bearer rejected-token" },
+        { authorization: "Basic rejected-token" },
+        { cookie: `${sessions.cookieName}=rejected-token` },
+        { origin: "https://another-app.example" },
+        { "sec-fetch-site": "cross-site" },
+        { "sec-fetch-site": "same-site" },
+      ]) {
+        const request = HttpServerRequest.fromWeb(
+          new Request("http://127.0.0.1:5173/api/auth/session", { headers }),
+        );
+        expect(yield* serverAuth.autoPairBrowserSession(request)).toBeUndefined();
+        expect(yield* serverAuth.getSessionState(request)).toMatchObject({ authenticated: false });
+      }
+    }).pipe(
+      Effect.provide(
+        layerEnvironmentAuth({
+          mode: "web",
+          devUrl: new URL("http://127.0.0.1:5173"),
+          devAutoPair: true,
+        }),
+      ),
+    ),
+  );
+
   it.effect("uses the reusable dev cookie without overriding a normal scoped cookie", () =>
     Effect.gen(function* () {
       const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
