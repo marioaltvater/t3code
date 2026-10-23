@@ -96,10 +96,13 @@ vi.mock("../sidebarProjectGrouping", () => ({
   buildPhysicalToLogicalProjectKeyMap: () => new Map(),
 }));
 vi.mock("../uiStateStore", () => ({
-  useUiStateStore: (select: (store: unknown) => unknown) =>
-    select({
-      markThreadUnread: () => recordEffect("mark-unread"),
-    }),
+  useUiStateStore: Object.assign(
+    (select: (store: unknown) => unknown) =>
+      select({
+        markThreadUnread: () => recordEffect("mark-unread"),
+      }),
+    { getState: () => ({ threadPrBadgeHiddenById: {} }) },
+  ),
 }));
 vi.mock("../components/ui/toast", () => ({
   stackedThreadToast: (toast: unknown) => toast,
