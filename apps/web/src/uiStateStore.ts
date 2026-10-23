@@ -33,6 +33,7 @@ export interface PersistedUiState {
   projectExpandedById?: Record<string, boolean>;
   projectOrder?: string[];
   threadLastVisitedAtById?: Record<string, string>;
+  threadPrBadgeHiddenById?: Record<string, boolean>;
   collapsedProjectCwds?: string[];
   expandedProjectCwds?: string[];
   projectOrderCwds?: string[];
@@ -53,6 +54,7 @@ export interface UiProjectState {
 
 export interface UiThreadState {
   threadLastVisitedAtById: Record<string, string>;
+  threadPrBadgeHiddenById: Record<string, boolean>;
   threadChangedFilesExpandedById: Record<string, Record<string, boolean>>;
 }
 
@@ -77,6 +79,7 @@ const initialState: UiState = {
   sidebarPinnedSections: [],
   sidebarCompactSections: { snoozed: true, settled: true },
   threadLastVisitedAtById: {},
+  threadPrBadgeHiddenById: {},
   threadChangedFilesExpandedById: {},
   defaultAdvertisedEndpointKey: null,
   pullRequestMergeMethod: "merge",
@@ -217,6 +220,7 @@ export function parsePersistedState(parsed: PersistedUiState): UiState {
     projectExpandedById,
     projectOrder,
     threadLastVisitedAtById: sanitizeTimestampRecord(parsed.threadLastVisitedAtById),
+    threadPrBadgeHiddenById: sanitizeBooleanRecord(parsed.threadPrBadgeHiddenById),
     threadChangedFilesExpandedById:
       parsed.threadChangedFilesExpansionVersion === THREAD_CHANGED_FILES_EXPANSION_VERSION
         ? sanitizePersistedThreadChangedFilesExpanded(parsed.threadChangedFilesExpandedById)
@@ -304,6 +308,7 @@ export function persistState(state: UiState): void {
         projectExpandedById,
         projectOrder: state.projectOrder,
         threadLastVisitedAtById: state.threadLastVisitedAtById,
+        threadPrBadgeHiddenById: state.threadPrBadgeHiddenById,
         defaultAdvertisedEndpointKey: state.defaultAdvertisedEndpointKey,
         sidebarProjectScopeKey: state.sidebarProjectScopeKey,
         sidebarPinnedSections: state.sidebarPinnedSections,
@@ -521,6 +526,17 @@ export function setSidebarSectionCompact(
   };
 }
 
+export function setThreadPrBadgeHidden(
+  state: UiState,
+  threadKey: string,
+  hidden: boolean,
+): UiState {
+  return {
+    ...state,
+    threadPrBadgeHiddenById: { ...state.threadPrBadgeHiddenById, [threadKey]: hidden },
+  };
+}
+
 export function toggleSidebarPinnedSection(state: UiState, id: string): UiState {
   if (!state.sidebarPinnedSections.some((section) => section.id === id)) {
     return state;
@@ -641,6 +657,7 @@ interface UiStateStore extends UiState {
   moveThreadsToPinnedSection: (threadKeys: readonly string[], sectionId: string | null) => void;
   toggleSidebarPinnedSection: (id: string) => void;
   setSidebarSectionCompact: (sectionKey: string, compact: boolean) => void;
+  setThreadPrBadgeHidden: (threadKey: string, hidden: boolean) => void;
   moveSidebarPinnedSection: (id: string, direction: "up" | "down") => void;
   markThreadVisited: (threadId: string, visitedAt: string) => void;
   markThreadUnread: (threadId: string, latestTurnCompletedAt: string | null | undefined) => void;
@@ -687,6 +704,8 @@ export const useUiStateStore = create<UiStateStore>((set, get) => ({
   toggleSidebarPinnedSection: (id) => set((state) => toggleSidebarPinnedSection(state, id)),
   setSidebarSectionCompact: (sectionKey, compact) =>
     set((state) => setSidebarSectionCompact(state, sectionKey, compact)),
+  setThreadPrBadgeHidden: (threadKey, hidden) =>
+    set((state) => setThreadPrBadgeHidden(state, threadKey, hidden)),
   moveSidebarPinnedSection: (id, direction) =>
     set((state) => moveSidebarPinnedSection(state, id, direction)),
   markThreadVisited: (threadId, visitedAt) =>

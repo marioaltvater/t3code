@@ -40,6 +40,7 @@ import {
 } from "../state/entities";
 import { usePrimaryEnvironmentId } from "../state/environments";
 import { readLocalApi } from "../localApi";
+import { useUiStateStore } from "../uiStateStore";
 import {
   deriveLogicalProjectKeyFromSettings,
   derivePhysicalProjectKey,
@@ -141,6 +142,8 @@ export function useThreadActionMenu(input: {
         isPinned: thread.pinnedAt != null,
         isSettled: supports.settlement && thread.settledOverride === "settled",
         autoSettleEnabled: thread.autoSettleDisabledAt == null,
+        prBadgeHidden:
+          useUiStateStore.getState().threadPrBadgeHiddenById[scopedThreadKey(threadRef)] === true,
         isSnoozed: supports.snooze && effectiveSnoozed(thread, { now: now.toISOString() }),
         canSnoozeNow: canSnooze(thread, { now: now.toISOString() }),
         isRegeneratingTitle,
@@ -189,6 +192,12 @@ export function useThreadActionMenu(input: {
         }
       };
       switch (action) {
+        case "pr-badge:visible":
+        case "pr-badge:hidden":
+          useUiStateStore
+            .getState()
+            .setThreadPrBadgeHidden(scopedThreadKey(threadRef), action === "pr-badge:hidden");
+          return;
         case "project-settings": {
           const project = projects.find(
             (candidate) =>
