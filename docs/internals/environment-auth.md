@@ -85,6 +85,15 @@ transaction](../../apps/server/src/persistence/AuthSessions.ts); a failed
 replacement must leave the old credential usable. Pairing and browser sessions
 do not follow this replacement rule.
 
+### Development browser pairing
+
+Web development servers automatically issue an ordinary browser session when the session
+endpoint receives a request without credentials from the app's own origin. This is enabled
+only with a dev web URL in web mode; `T3CODE_DEV_AUTO_PAIR=false` restores manual pairing.
+Explicit credentials, including invalid or restricted ones, are never replaced. Cross-site
+and other same-site browser origins cannot trigger automatic pairing. Anyone who can open
+the dev origin can obtain the standard client grant, including over a shared tailnet URL.
+
 ### Reusable dev credential
 
 Web development environments can accept one `T3CODE_DEV_AUTH_TOKEN` across

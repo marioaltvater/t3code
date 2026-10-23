@@ -44,6 +44,7 @@ import * as SessionStore from "./SessionStore.ts";
 import { REUSABLE_DEV_SESSION_EXPIRES_AT, resolveReusableDevAuth } from "./ReusableDevAuth.ts";
 import { verifyRequestDpopProof } from "./dpop.ts";
 import { DESKTOP_RENDERER_ORIGINS } from "../httpCors.ts";
+import { deriveAuthClientMetadata } from "./utils.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 
 const DEFAULT_SESSION_SUBJECT = "cli-issued-session";
@@ -469,6 +470,9 @@ export class EnvironmentAuth extends Context.Service<
     readonly getSessionState: (
       request: HttpServerRequest.HttpServerRequest,
     ) => Effect.Effect<AuthSessionState, ServerAuthInternalError>;
+    readonly autoPairBrowserSession: (
+      request: HttpServerRequest.HttpServerRequest,
+    ) => Effect.Effect<BootstrapExchangeResult | undefined, ServerAuthInternalError>;
     readonly createBrowserSession: (
       credential: string,
       requestMetadata: AuthClientMetadata,
@@ -857,6 +861,42 @@ export const make = Effect.gen(function* () {
       ),
       Effect.withSpan("EnvironmentAuth.getSessionState"),
     );
+
+  const autoPairBrowserSession = Effect.fn("EnvironmentAuth.autoPairBrowserSession")(function* (
+    request: HttpServerRequest.HttpServerRequest,
+  ) {
+    const fetchSite = request.headers["sec-fetch-site"];
+    if (
+      config.mode !== "web" ||
+      config.devUrl === undefined ||
+      config.devAutoPair !== true ||
+      request.headers.authorization !== undefined ||
+      resolveRequestCredential(request) !== undefined ||
+      (fetchSite !== undefined && fetchSite !== "same-origin" && fetchSite !== "none") ||
+      !isBrowserOriginAllowed(request, trustedBrowserOrigins)
+    ) {
+      return undefined;
+    }
+
+    // Keep dev browsers on the ordinary cookie/session path, including scope checks and sockets.
+    const session = yield* sessions
+      .issue({
+        method: "browser-session-cookie",
+        subject: "dev-auto-pair",
+        scopes: AuthStandardClientScopes,
+        client: deriveAuthClientMetadata({ request }),
+      })
+      .pipe(Effect.mapError((cause) => new ServerAuthAuthenticatedSessionIssueError({ cause })));
+    return {
+      response: {
+        authenticated: true,
+        ...authScopeResponse(session.scopes),
+        sessionMethod: session.method,
+        expiresAt: DateTime.toUtc(session.expiresAt),
+      },
+      sessionToken: session.token,
+    } satisfies BootstrapExchangeResult;
+  });
 
   const createBrowserSession: EnvironmentAuth["Service"]["createBrowserSession"] = Effect.fn(
     "EnvironmentAuth.createBrowserSession",
@@ -1346,6 +1386,7 @@ export const make = Effect.gen(function* () {
     getDescriptor: () =>
       Effect.succeed(descriptor).pipe(Effect.withSpan("EnvironmentAuth.getDescriptor")),
     getSessionState,
+    autoPairBrowserSession,
     createBrowserSession,
     exchangeBootstrapCredentialForAccessToken,
     createPairingLink,

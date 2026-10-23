@@ -44,6 +44,7 @@ import {
   type Thread,
 } from "../types";
 import { makeThreadFixture, type ThreadFixtureOverrides } from "../test-fixtures";
+import { completeSidebarRouteReveal, pendingSidebarRouteReveal } from "./sidebar/routeReveal";
 
 const localEnvironmentId = EnvironmentId.make("environment-local");
 
@@ -1083,6 +1084,27 @@ describe("Working shelf (beta)", () => {
   });
 
   describe("dragging", () => {
+    it("never drops into the Working shelf, and keeps it out of the inbox order", () => {
+      const input = {
+        activeKey: "p1",
+        pinnedOrder: ["p1"],
+        activeOrder: ["a1", "a2"],
+        pinnedSectionIds: [],
+        pinnedSectionIdByThreadKey: new Map<string, string>(),
+      };
+      expect(resolveSidebarDestinationTarget({ ...input, overId: "w1" })).toBeNull();
+      expect(
+        resolveSidebarDestinationTarget({ ...input, overId: "sidebar-destination:working" }),
+      ).toBeNull();
+      expect(
+        resolveSidebarDestinationTarget({ ...input, overId: sidebarDestinationId("active") }),
+      ).toEqual({
+        section: "active",
+        pinnedOrder: ["p1"],
+        activeOrder: ["a1", "a2", "p1"],
+      });
+    });
+
     it.each(["pinned", "active", "settled"] as const)(
       "does not move a Working thread into %s when its reference drag ends in the sidebar",
       (section) => {
@@ -1483,5 +1505,26 @@ describe("compact source section reordering", () => {
 
   it("keeps chronological shelves outside manual reordering", () => {
     expect(resolveSidebarSourceTarget({ ...input, section: "settled" })).toBeNull();
+  });
+});
+
+describe("pendingSidebarRouteReveal", () => {
+  it("keeps a revealed thread settled across a mount that reads no route params", () => {
+    const reveal = { observedKey: null, pendingKey: null };
+    expect(pendingSidebarRouteReveal(reveal, "env:a1")).toBe("env:a1");
+    completeSidebarRouteReveal(reveal);
+
+    // Back from Settings: location commits before the thread match does.
+    expect(pendingSidebarRouteReveal(reveal, null)).toBeNull();
+    expect(pendingSidebarRouteReveal(reveal, "env:a1")).toBeNull();
+
+    expect(pendingSidebarRouteReveal(reveal, "env:b1")).toBe("env:b1");
+  });
+
+  it("keeps a pending reveal through a render without route params", () => {
+    const reveal = { observedKey: null, pendingKey: null };
+    pendingSidebarRouteReveal(reveal, "env:a1");
+    expect(pendingSidebarRouteReveal(reveal, null)).toBeNull();
+    expect(pendingSidebarRouteReveal(reveal, "env:a1")).toBe("env:a1");
   });
 });

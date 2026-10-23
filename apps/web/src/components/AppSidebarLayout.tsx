@@ -60,6 +60,7 @@ import {
   sortPinnedThreadsForSidebar,
 } from "./Sidebar.logic";
 import { stackedThreadToast, toastManager } from "./ui/toast";
+import type { SidebarRouteReveal } from "./sidebar/routeReveal";
 import {
   clampThreadSidebarWidth,
   resolveInitialThreadSidebarWidth,
@@ -158,12 +159,12 @@ function SidebarControl() {
         return;
       }
       if (
-        isRichTextBoldShortcut(event) &&
+        isRichTextBoldShortcut(event, window.getSelection()) &&
         event.target instanceof HTMLElement &&
         event.target.closest('[data-composer-rich-text="true"]')
       ) {
-        // The rich-text composer claims Mod+B for bold; the toggle stays
-        // available everywhere else, including the plain-text composer.
+        // The rich-text composer claims Mod+B only to bold selected text;
+        // the toggle stays available everywhere else.
         return;
       }
       if (
@@ -402,6 +403,10 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const legacySidebarEnabled = useLegacySidebarEnabled();
+  const [sidebarRouteReveal] = useState<SidebarRouteReveal>(() => ({
+    observedKey: null,
+    pendingKey: null,
+  }));
   const { active: panelAnimationsActive, durationMs: panelAnimationDurationMs } =
     usePanelAnimationSettings();
   useThreadVisitedMigration();
@@ -506,9 +511,9 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
               <SettingsSidebarNav pathname={pathname} />
             </>
           ) : legacySidebarEnabled ? (
-            <LegacyThreadSidebar />
+            <LegacyThreadSidebar routeReveal={sidebarRouteReveal} />
           ) : (
-            <ThreadSidebar />
+            <ThreadSidebar routeReveal={sidebarRouteReveal} />
           )}
           <SidebarRail onDoubleClick={resetSidebarWidth} />
         </Sidebar>

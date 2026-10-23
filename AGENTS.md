@@ -81,8 +81,9 @@ The most common defect in this repo is a change that works on the path you teste
 - Setup runs in the background. While `.t3/setup-running` names a live PID, wait for it and do not run `vp i`. It ends with `.t3/setup-done` or `.t3/setup-failed` (with the error tail). With no marker at all, setup never ran here, so run `vp i` yourself.
 - `vp run dev` starts server and web. In a worktree, state defaults to that worktree's gitignored `.t3`, which deliberately outranks an ambient `T3CODE_HOME` so you cannot land on shared state by accident. An explicit `--home-dir` still wins.
 - Ports derive from the worktree path and are stable across restarts, but read the real ones from the `[dev-runner]` line since occupied ports shift.
-- Sharing over the tailnet is three steps: run `vp run dev --share` in the background, wait for the `pairingUrl:` line in its output, then give that full URL to an unpaired browser. Do not wire up `tailscale serve` by hand, open the URL yourself, or consume the user's pairing link. A browser with the reusable dev cookie can use the bare origin. If a normal one-time token was consumed, mint a fresh one with `node apps/server/src/bin.ts pair`. It carries standard scopes, while the startup URL carries admin scopes needed for Connections settings.
-- To reuse web dev auth across worktrees, configure one fixed `T3CODE_DEV_AUTH_TOKEN` in the main checkout's gitignored `.env`. The `t3.json` setup links that file into worktrees. Never commit or publish the token or a startup URL. See [Reusable dev credential](docs/operations/development.md#reusable-dev-credential).
+- **Personal fork default: feature review previews pair automatically.** Keep `T3CODE_DEV_AUTO_PAIR=true` in the main checkout's gitignored `.env`; the `t3.json` setup links it into new worktrees. Preserve automatic pairing through feature branches and upstream merges. Before starting a preview from an older branch, ensure it includes the dev automatic-pairing implementation; an environment variable alone cannot add it. Use `T3CODE_DEV_AUTO_PAIR=false` only for an explicitly requested manual-auth test, scoped to that command.
+- For review, start `vp run dev` (or `vp run dev --share` for the tailnet) and give Mario the bare web origin printed by the runner. A fresh browser profile must authenticate without entering a token or opening a pairing link. If the pairing screen appears, fix the preview's source/configuration and restart only the server you own before handing it back. Leave `tailscale serve` management to the dev runner. See [development setup](docs/operations/development.md).
+- Automatic pairing grants standard client permissions in web dev mode. For a flow requiring administrative pairing or when explicitly testing manual auth, use the printed startup pairing URL privately. Reusable `T3CODE_DEV_AUTH_TOKEN` setup is an optional fallback, not the feature-review default; see [Reusable dev credential](docs/operations/development.md#reusable-dev-credential). Never commit or publish credentials or startup pairing URLs.
 - Stop what you started, by the PID you tracked. See rule 1.
 - Need a second checkout? `git worktree add` it next to this worktree, not in `/tmp`. Remove it when done.
 
@@ -100,7 +101,7 @@ An empty database is a bad test. Seed your worktree's `.t3` with a copy of real 
 
 - Before you push, run `vp run check:changed`. It runs CI's fast checks for changed files: format, lint, knip, typecheck of affected packages and dependents, and tests beside changes. CI still runs the full test suites.
 - While you iterate, run `vp test run <files>`. For big files, add `-t "<name>"`.
-- Do not use `npx tsc`. Use `vp run typecheck`; it uses tsc-rs, which is 3x faster.
+- Use `vp run typecheck`, not `npx tsc`; it caches per package. Both run tsc-rs (`typescript` is the `@tsc-rs/typescript` drop-in).
 - Run `node -e` snippets from `apps/server` or the owning package. `effect` does not resolve from the repo root.
 - Test meaningful logic or observable behavior. Do not render components to static markup to assert props or attributes, or add tests that merely assert callback wiring or mirror the implementation.
 - **Do not run repo-wide checks.** No `vp check`, no `vp run -r test`, no `vp run -r typecheck` unless I ask. CI owns the full suite.
@@ -153,6 +154,7 @@ source history available locally before retrying.
 ## Pull requests
 
 - Never make a PR unless the developer explicitly asks you to do so.
+- If `origin` is git.cafe, follow [GitCafe mirror](docs/operations/development.md#gitcafe-mirror-optional): use `cafe` for existing PRs, issues, comments and labels, but push and open PRs on GitHub, where CI runs.
 - Conventional commit titles, plain language: `fix(web): new threads no longer spike CPU`.
 - Body: the problem in a sentence or two, then how you fixed it. End with the model and harness that did the work.
 - UI changes need before/after images. Motion or timing needs a short video.

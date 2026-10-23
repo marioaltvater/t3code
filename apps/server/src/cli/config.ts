@@ -314,6 +314,10 @@ export const resolveServerConfig = Effect.fn("config.resolveServerConfig")(funct
   );
   const devAuthToken =
     mode === "web" && devUrl !== undefined ? yield* DevAuthTokenConfig : undefined;
+  const devAutoPair =
+    mode === "web" && devUrl !== undefined
+      ? yield* Config.Boolean("T3CODE_DEV_AUTO_PAIR").pipe(Config.withDefault(true))
+      : false;
   const explicitBaseDir = resolveOptionPrecedence(
     normalizedFlags.baseDir,
     Option.fromUndefinedOr(env.t3Home),
@@ -424,22 +428,28 @@ export const resolveServerConfig = Effect.fn("config.resolveServerConfig")(funct
     otel,
     "traces",
     { url: env.otlpTracesUrl, export: signalExport },
-    bootstrap?.otlpTracesUrl,
-    persistedObservabilitySettings.otlpTracesUrl,
+    {
+      bootstrapUrl: bootstrap?.otlpTracesUrl,
+      settingsUrl: persistedObservabilitySettings.otlpTracesUrl,
+    },
   );
   const metrics = OtelEnvironment.resolveSignalEndpoint(
     otel,
     "metrics",
     { url: env.otlpMetricsUrl, export: signalExport },
-    bootstrap?.otlpMetricsUrl,
-    persistedObservabilitySettings.otlpMetricsUrl,
+    {
+      bootstrapUrl: bootstrap?.otlpMetricsUrl,
+      settingsUrl: persistedObservabilitySettings.otlpMetricsUrl,
+    },
   );
   const logs = OtelEnvironment.resolveSignalEndpoint(
     otel,
     "logs",
     { url: env.otlpLogsUrl, export: signalExport },
-    bootstrap?.otlpLogsUrl,
-    persistedObservabilitySettings.otlpLogsUrl,
+    {
+      bootstrapUrl: bootstrap?.otlpLogsUrl,
+      settingsUrl: persistedObservabilitySettings.otlpLogsUrl,
+    },
   );
 
   const config: ServerConfig.ServerConfig["Service"] = {
@@ -455,6 +465,12 @@ export const resolveServerConfig = Effect.fn("config.resolveServerConfig")(funct
     otlpTracesExport: traces?.export ?? signalExport,
     otlpMetricsExport: metrics?.export ?? signalExport,
     otlpLogsExport: logs?.export ?? signalExport,
+    ...(traces !== undefined ? { otlpTracesSource: traces.source } : {}),
+    ...(traces?.variable !== undefined ? { otlpTracesVariable: traces.variable } : {}),
+    ...(metrics !== undefined ? { otlpMetricsSource: metrics.source } : {}),
+    ...(metrics?.variable !== undefined ? { otlpMetricsVariable: metrics.variable } : {}),
+    ...(logs !== undefined ? { otlpLogsSource: logs.source } : {}),
+    ...(logs?.variable !== undefined ? { otlpLogsVariable: logs.variable } : {}),
     otelEnvironment: otel,
     mode,
     port,
@@ -465,6 +481,7 @@ export const resolveServerConfig = Effect.fn("config.resolveServerConfig")(funct
     host,
     staticDir,
     devUrl,
+    devAutoPair,
     ...(devAuthToken === undefined ? {} : { devAuthToken }),
     devAllowedOrigins: env.devAllowedOrigins,
     noBrowser,

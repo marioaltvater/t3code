@@ -29,6 +29,21 @@ import { resolveServerConfig } from "./config.ts";
 const deriveExplicitServerPaths = (baseDir: string, devUrl: URL | undefined) =>
   deriveServerPaths(baseDir, devUrl, { baseDirIsExplicit: true });
 
+const minimalDesktopFlags = (baseDir: string) => ({
+  mode: Option.some("desktop" as const),
+  port: Option.some(4888),
+  host: Option.none<string>(),
+  baseDir: Option.some(baseDir),
+  cwd: Option.none<string>(),
+  devUrl: Option.none<URL>(),
+  noBrowser: Option.none<boolean>(),
+  bootstrapFd: Option.none<number>(),
+  autoBootstrapProjectFromCwd: Option.none<boolean>(),
+  logWebSocketEvents: Option.none<boolean>(),
+  tailscaleServeEnabled: Option.none<boolean>(),
+  tailscaleServePort: Option.none<number>(),
+});
+
 const encodeDesktopBootstrap = Schema.encodeEffect(Schema.fromJsonString(DesktopBackendBootstrap));
 const encodeUnknownJson = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
 
@@ -77,6 +92,12 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
     otlpLogsExport: DEFAULT_SIGNAL_EXPORT,
     otelEnvironment: OtelEnvironment.none,
     devAllowedOrigins: [],
+    devAutoPair: false,
+    desktopTelemetryFd: undefined,
+    desktopTelemetryControlFd: undefined,
+    desktopBrowserFd: undefined,
+    desktopBrowserControlFd: undefined,
+    resourceMonitorPath: undefined,
   } as const;
 
   const openBootstrapFd = Effect.fn(function* (payload: DesktopBackendBootstrapValue) {
@@ -232,6 +253,24 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
       }
       expect(Redacted.value(web.devAuthToken)).toBe("reusable-dev-auth-token-that-is-long-enough");
       expect(desktop.devAuthToken).toBeUndefined();
+      expect(web.devAutoPair).toBe(true);
+      expect(desktop.devAutoPair).toBe(false);
+      const staticWeb = yield* resolveServerConfig(
+        { ...flags, devUrl: Option.none() },
+        Option.none(),
+      ).pipe(Effect.provide(Layer.mergeAll(layerConfig, NetService.layer)));
+      expect(staticWeb.devAutoPair).toBe(false);
+      const manualPairing = yield* resolveServerConfig(flags, Option.none()).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            ConfigProvider.layer(
+              ConfigProvider.fromEnv({ env: { T3CODE_DEV_AUTO_PAIR: "false" } }),
+            ),
+            NetService.layer,
+          ),
+        ),
+      );
+      expect(manualPairing.devAutoPair).toBe(false);
     }),
   );
 
@@ -340,6 +379,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         host: "127.0.0.1",
         staticDir: undefined,
         devUrl: new URL("http://127.0.0.1:4173"),
+        devAutoPair: true,
         noBrowser: false,
         startupPresentation: "browser",
         desktopBootstrapToken: "desktop-bootstrap-token",
@@ -418,6 +458,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         host: "127.0.0.1",
         staticDir: undefined,
         devUrl: new URL("http://127.0.0.1:4173"),
+        devAutoPair: true,
         noBrowser: true,
         startupPresentation: "browser",
         desktopBootstrapToken: "desktop-token",
@@ -425,6 +466,77 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         logWebSocketEvents: true,
         tailscaleServeEnabled: false,
         tailscaleServePort: 443,
+      });
+    }),
+  );
+
+  it.effect("reports the desktop bootstrap as the source of endpoints it supplied", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const baseDir = yield* fs.makeTempDirectoryScoped({
+        prefix: "t3-cli-config-otlp-bootstrap-",
+      });
+      const fd = yield* openBootstrapFd(
+        makeDesktopBootstrap({
+          otlpTracesUrl: "http://localhost:4318/v1/traces",
+          otlpMetricsUrl: "http://localhost:4318/v1/metrics",
+          otlpLogsUrl: "http://localhost:4318/v1/logs",
+        }),
+      );
+
+      const resolved = yield* resolveServerConfig(
+        { ...minimalDesktopFlags(baseDir), bootstrapFd: Option.some(fd) },
+        Option.none(),
+      ).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} })),
+            NetService.layer,
+          ),
+        ),
+      );
+
+      expect(resolved).toMatchObject({
+        otlpTracesUrl: "http://localhost:4318/v1/traces",
+        otlpTracesSource: "bootstrap",
+        otlpMetricsSource: "bootstrap",
+        otlpLogsSource: "bootstrap",
+      });
+    }),
+  );
+
+  it.effect("reports saved settings as the source of endpoints read from settings.json", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-cli-config-otlp-settings-" });
+      const derivedPaths = yield* deriveExplicitServerPaths(baseDir, undefined);
+      yield* fs.makeDirectory(path.dirname(derivedPaths.settingsPath), { recursive: true });
+      yield* fs.writeFileString(
+        derivedPaths.settingsPath,
+        `${JSON.stringify({
+          observability: {
+            otlpTracesUrl: "http://localhost:4318/v1/traces",
+            otlpMetricsUrl: "http://localhost:4318/v1/metrics",
+            otlpLogsUrl: "http://localhost:4318/v1/logs",
+          },
+        })}\n`,
+      );
+
+      const resolved = yield* resolveServerConfig(minimalDesktopFlags(baseDir), Option.none()).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} })),
+            NetService.layer,
+          ),
+        ),
+      );
+
+      expect(resolved).toMatchObject({
+        otlpTracesUrl: "http://localhost:4318/v1/traces",
+        otlpTracesSource: "settings",
+        otlpMetricsSource: "settings",
+        otlpLogsSource: "settings",
       });
     }),
   );
@@ -712,6 +824,11 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         });
         expect(resolved.otlpLogsUrl).toBe("http://settings:4318/v1/logs");
         expect(resolved.otlpLogsExport.headers).toEqual({ "x-key": "secret" });
+        expect(resolved).toMatchObject({
+          otlpTracesVariable: "T3CODE_OTLP_TRACES_URL",
+          otlpMetricsVariable: "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT",
+        });
+        expect(resolved.otlpLogsVariable).toBeUndefined();
       }),
   );
 

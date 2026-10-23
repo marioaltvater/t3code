@@ -1171,10 +1171,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
           ) : topStatus.icon === "done" ? (
             <CircleCheckIcon aria-hidden className="size-4 shrink-0" />
           ) : null}
-          {/* Keep ticking durations outside the live region so screen readers
-              announce status changes without announcing every second. */}
+          {/* Keep ticking durations outside the live region. The open thread
+              announces its own status, so its sidebar row stays quiet. */}
           <span
-            role="status"
+            role={props.isRouteThread ? undefined : "status"}
             className={variant === "slim" && topStatus.label === "Working" ? "sr-only" : undefined}
           >
             {topStatus.label}
