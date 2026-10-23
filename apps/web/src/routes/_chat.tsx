@@ -202,6 +202,34 @@ function ChatRouteGlobalShortcuts() {
     terminalOpen,
   ]);
 
+  useEffect(
+    () =>
+      window.desktopBridge?.onMenuAction((action) => {
+        if (action === "chat.newLocal") {
+          void startNewThreadFromContext({
+            activeDraftThread,
+            activeThread: activeThread ?? undefined,
+            defaultProjectRef,
+            handleNewThread,
+          });
+        } else if (action === "chat.newWithoutProject") {
+          const environmentId = scratchEnvironmentId(
+            activeThread?.environmentId ?? activeDraftThread?.environmentId ?? primaryEnvironmentId,
+          );
+          if (environmentId !== null) void startScratchThread(environmentId);
+        }
+      }),
+    [
+      activeDraftThread,
+      activeThread,
+      defaultProjectRef,
+      handleNewThread,
+      primaryEnvironmentId,
+      scratchEnvironmentId,
+      startScratchThread,
+    ],
+  );
+
   return null;
 }
 

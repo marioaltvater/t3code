@@ -361,6 +361,24 @@ export function buildKeybindingCommandOptions(
 }
 
 export function commandLabel(command: KeybindingCommand): string {
+  if (command === "composer.submit") return "Composer: Submit Prompt";
+  if (command === "composer.focus") return "Composer: Focus Composer";
+  if (command === "chat.scrollUp") return "Chat: Scroll Timeline Up";
+  if (command === "chat.scrollDown") return "Chat: Scroll Timeline Down";
+  if (command === "chat.previousTurn") return "Chat: Previous User Turn";
+  if (command === "chat.nextTurn") return "Chat: Next User Turn";
+  if (command.startsWith("thread.pinned.")) {
+    return `Thread: Open Pinned Thread ${command.slice("thread.pinned.".length)}`;
+  }
+  if (command.startsWith("thread.active.")) {
+    return `Thread: Open Active Thread ${command.slice("thread.active.".length)}`;
+  }
+  if (command.startsWith("thread.chiefOfStaff.")) {
+    return `Thread: Open First Section Thread ${command.slice("thread.chiefOfStaff.".length)}`;
+  }
+  if (command === "open-settings") return "Open Settings";
+  if (command === "settings.toggle") return "Toggle Settings";
+  if (command === "diff.toggleLatestTurn") return "Diff: Toggle Latest Turn";
   if (command === "composer.sendAlternate") return "Composer: Opposite Queue or Steer Action";
   if (command === "composer.sendBackground") return "Composer: Start in Background";
   if (command === "composer.sendAndNewThread") return "Composer: Send and Start New Thread";

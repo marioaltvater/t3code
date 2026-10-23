@@ -1,8 +1,8 @@
 import {
+  ProviderInstanceId,
   type ModelCapabilities,
   type ModelSelection,
   type ProviderDriverKind,
-  type ProviderInstanceId,
   type ProviderOptionSelection,
   type ScopedThreadRef,
   type ServerProviderModel,
@@ -21,6 +21,7 @@ import { getProviderModelCapabilities } from "../../providerModels";
 import type { ComposerControlSize } from "./ComposerControl";
 import {
   getReasoningTraitStep,
+  getReasoningTraitSnapshot,
   shouldRenderTraitsControls,
   TraitsMenuContent,
   TraitsPicker,
@@ -28,8 +29,11 @@ import {
 
 export type ComposerProviderStateInput = {
   provider: ProviderDriverKind;
+  instanceId?: ProviderInstanceId;
   model: string;
   models: ReadonlyArray<ServerProviderModel>;
+  reportedModelSelection?: ModelSelection | null | undefined;
+  prompt?: string | undefined;
   promptInjectionState?: ComposerPromptInjectionState;
   modelOptions: ReadonlyArray<ProviderOptionSelection> | null | undefined;
   planModeEnabled: boolean;
@@ -45,6 +49,26 @@ export type ComposerProviderState = {
   composerSurfaceClassName?: string;
   modelPickerIconClassName?: string;
 };
+
+export function getComposerEffortSnapshot(input: ComposerProviderStateInput) {
+  const { selections } = resolveComposerOptionSelections(
+    input.models,
+    input.model,
+    input.provider,
+    input.modelOptions,
+    input.planModeEnabled,
+  );
+  return getReasoningTraitSnapshot({
+    provider: input.provider,
+    instanceId: input.instanceId ?? ProviderInstanceId.make("legacy"),
+    model: input.model,
+    models: input.models,
+    modelOptions: selections,
+    reportedModelSelection: input.reportedModelSelection,
+    prompt: input.prompt ?? "",
+    planModeEnabled: input.planModeEnabled,
+  });
+}
 
 type TraitsRenderInput = {
   provider: ProviderDriverKind;

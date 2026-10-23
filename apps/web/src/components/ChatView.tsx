@@ -177,7 +177,7 @@ import {
 import { AsyncResult } from "effect/reactivity";
 import { isElectron } from "../env";
 import { readLocalApi } from "../localApi";
-import { useDiffPanelStore } from "../diffPanelStore";
+import { selectLatestTurnDiff, useDiffPanelStore } from "../diffPanelStore";
 import { useActiveThreadRef } from "../hooks/useActiveThreadRef";
 import {
   type ComposerSubmissionIntent,
@@ -529,6 +529,7 @@ import {
 } from "./ChatView.logic";
 import { useLocalStorage } from "~/hooks/useLocalStorage";
 import { useComposerHandleContext } from "../composerHandleContext";
+import { publishControllerEffort, publishControllerSecondary } from "./desktop/controllerUiState";
 import {
   awaitAttachmentUploads,
   getUploadedAttachments,
@@ -1785,6 +1786,29 @@ export default function ChatView(props: ChatViewProps) {
       threadPanelPresentation,
     ),
   );
+  useEffect(() => {
+    publishControllerSecondary({
+      terminalOpen: Boolean(terminalUiState.terminalOpen),
+      browserOpen: previewPanelOpen,
+      pinOpen: activeThreadShell?.pinnedAt != null,
+      infoOpen: threadPanelOpen,
+      diffOpen,
+    });
+    return () =>
+      publishControllerSecondary({
+        terminalOpen: false,
+        browserOpen: false,
+        pinOpen: false,
+        infoOpen: false,
+        diffOpen: false,
+      });
+  }, [
+    activeThreadShell?.pinnedAt,
+    diffOpen,
+    previewPanelOpen,
+    terminalUiState.terminalOpen,
+    threadPanelOpen,
+  ]);
 
   useEffect(() => {
     if (!activeThreadRef || !previewSessionsReady) return;
@@ -3250,6 +3274,31 @@ export default function ChatView(props: ChatViewProps) {
     }
   };
   const onToggleDiffStable = useStableCallback(onToggleDiff);
+
+  const onOpenTurnDiff = (runId: RunId, filePath?: string) => {
+    if (!isServerThread || !activeThreadRef) return;
+    const diffOpen =
+      selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, activeThreadRef) === "diff";
+    explicitDiffOpenRef.current = diffOpen ? null : activeThreadRef;
+    useDiffPanelStore.getState().selectTurn(activeThreadRef, runId, filePath);
+    useRightPanelStore.getState().open(activeThreadRef, "diff");
+    onDiffPanelOpen?.();
+  };
+  const onOpenTurnDiffStable = useStableCallback(onOpenTurnDiff);
+  const onToggleLatestTurnDiffStable = useStableCallback(() => {
+    if (!isServerThread || !activeThreadRef) return;
+    const panels = useRightPanelStore.getState();
+    if (selectActiveRightPanel(panels.byThreadKey, activeThreadRef) === "diff") {
+      panels.toggle(activeThreadRef, "diff");
+      return;
+    }
+    const latestTurn = selectLatestTurnDiff(turnDiffSummaries);
+    if (!latestTurn) {
+      toastManager.add({ type: "info", title: "No turn diff is available yet" });
+      return;
+    }
+    onOpenTurnDiffStable(latestTurn.runId);
+  });
 
   const needsLoadBalancing = automaticEnvironment && !draftThread?.loadBalancedEnvironmentId;
   const loadBalancingCandidates = needsLoadBalancing
@@ -5778,7 +5827,7 @@ export default function ChatView(props: ChatViewProps) {
       if (!event.repeat) composerRef.current?.openControl(command);
     }) satisfies ChatShortcutHandler;
   useChatShortcuts({
-    enabled: activeThreadId !== null,
+    enabled: activeThreadId !== null || routeKind === "draft",
     keybindings,
     scriptKeybindings,
     getShortcutContext: getShortcutContextStable,
@@ -5789,6 +5838,20 @@ export default function ChatView(props: ChatViewProps) {
       focusComposerStable();
     },
     commands: {
+      "composer.focus": ({ event }) => {
+        if (!event.repeat) focusComposerStable();
+      },
+      "composer.submit": ({ event }) => {
+        if (!event.repeat) composerRef.current?.submit();
+      },
+      "chat.scrollUp": () => {
+        const timeline = getTimelineScrollableNode();
+        if (timeline) timeline.scrollBy({ top: -timeline.clientHeight * 0.8 });
+      },
+      "chat.scrollDown": () => {
+        const timeline = getTimelineScrollableNode();
+        if (timeline) timeline.scrollBy({ top: timeline.clientHeight * 0.8 });
+      },
       "thread.copyReference": ({ event }) => {
         if (!event.repeat) copyActiveThreadReferenceStable();
       },
@@ -5856,6 +5919,7 @@ export default function ChatView(props: ChatViewProps) {
         createNewTerminalStable();
       },
       "diff.toggle": () => onToggleDiffStable(),
+      "diff.toggleLatestTurn": () => onToggleLatestTurnDiffStable(),
       "modelPicker.toggle": ({ event }) => {
         if (!event.repeat) composerRef.current?.toggleModelPicker();
       },
@@ -5905,12 +5969,57 @@ export default function ChatView(props: ChatViewProps) {
   });
 
   // A focused desktop browser page forwards these chords as menu actions.
-  useEffect(() => {
-    return window.desktopBridge?.onMenuAction((action) => {
-      if (action === "rightPanel.toggle") toggleRightPanelStable();
-      else if (action === "rightPanel.toggleMaximized") toggleRightPanelMaximizedStable();
-    });
-  }, [toggleRightPanelStable, toggleRightPanelMaximizedStable]);
+  const onDesktopMenuAction = useStableCallback((action: string) => {
+    if (action === "preview.toggle") togglePreviewPanelStable();
+    else if (action === "rightPanel.toggle") toggleRightPanelStable();
+    else if (action === "rightPanel.toggleMaximized") toggleRightPanelMaximizedStable();
+    else if (action === "threadPanel.toggle") toggleThreadPanelStable();
+    else if (action === "terminal.toggle") {
+      if (!terminalUiState.terminalOpen && !canReadTerminal && !canOperateTerminal) return;
+      toggleTerminalVisibilityStable();
+    } else if (action === "diff.toggle") onToggleDiffStable();
+    else if (action === "diff.toggleLatestTurn") onToggleLatestTurnDiffStable();
+    else if (action === "modelPicker.toggle") composerRef.current?.toggleModelPicker();
+    else if (action === "composer.increaseEffort") composerRef.current?.stepReasoningEffort(1);
+    else if (action === "composer.decreaseEffort") composerRef.current?.stepReasoningEffort(-1);
+    else if (action === "composer.focus") focusComposerStable();
+    else if (action === "composer.submit") {
+      composerRef.current?.submit();
+    } else if (action === "chat.scrollUp" || action === "chat.scrollDown") {
+      const timeline = getTimelineScrollableNode();
+      if (timeline)
+        timeline.scrollBy({
+          top: (action === "chat.scrollUp" ? -1 : 1) * timeline.clientHeight * 0.8,
+        });
+    } else if (action === "thread.stop") {
+      if (canInterruptRunningThread) void onInterruptStable();
+    } else if (action === "thread.settle") {
+      if (
+        !readEnvironmentScope(environmentId, AuthOrchestrationOperateScope) ||
+        !isServerThread ||
+        !activeThreadRef ||
+        !supportsSettlement ||
+        activeThreadSettled
+      )
+        return;
+      if (settleAndAdvance(activeThreadRef)) return;
+      void settleThread(activeThreadRef).then(toastPinFailure("Failed to settle thread"));
+    } else if (action === "thread.pin") {
+      if (
+        readEnvironmentScope(environmentId, AuthOrchestrationOperateScope) &&
+        isServerThread &&
+        activeThreadRef &&
+        supportsPinning
+      ) {
+        void (
+          activeThreadPinned ? confirmAndUnpinThread(activeThreadRef) : pinThread(activeThreadRef)
+        ).then(
+          toastPinFailure(activeThreadPinned ? "Failed to unpin thread" : "Failed to pin thread"),
+        );
+      }
+    }
+  });
+  useEffect(() => window.desktopBridge?.onMenuAction(onDesktopMenuAction), [onDesktopMenuAction]);
 
   // Paste-to-focus: the resting composer blurs on a click into the timeline,
   // so a paste that follows has no editable target and would be dropped.
@@ -7904,16 +8013,6 @@ export default function ChatView(props: ChatViewProps) {
     openExpandedImagePreview(routeThreadKey, preview);
   };
   const onExpandTimelineImageStable = useStableCallback(onExpandTimelineImage);
-  const onOpenTurnDiff = (runId: RunId, filePath?: string) => {
-    if (!isServerThread || !activeThreadRef) return;
-    const diffOpen =
-      selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, activeThreadRef) === "diff";
-    explicitDiffOpenRef.current = diffOpen ? null : activeThreadRef;
-    useDiffPanelStore.getState().selectTurn(activeThreadRef, runId, filePath);
-    useRightPanelStore.getState().open(activeThreadRef, "diff");
-    onDiffPanelOpen?.();
-  };
-  const onOpenTurnDiffStable = useStableCallback(onOpenTurnDiff);
   const onTimelineRollbackCheckpoint = (input: {
     readonly checkpointId: string;
     readonly scopeId: string;
@@ -8207,6 +8306,7 @@ export default function ChatView(props: ChatViewProps) {
             </div>
             <div className="relative flex min-h-0 flex-1 flex-col bg-background">
               <MessagesTimeline
+                getShortcutContext={getShortcutContextStable}
                 citationRequest={paintOnlyDisplayedTimeline ? null : citationRequest}
                 citationHistoryLoading={threadDetailLoading}
                 {...(!paintOnlyDisplayedTimeline
@@ -8429,6 +8529,7 @@ export default function ChatView(props: ChatViewProps) {
                           ) : null}
                           {!composerMounted ? null : (
                             <ChatComposer
+                              onControllerEffortChange={publishControllerEffort}
                               canOperateThread={canOperateThread}
                               reportedModelSelection={reportedModelSelection}
                               multipleModelSelections={multipleModelSelections}
