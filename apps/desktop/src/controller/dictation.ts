@@ -2,7 +2,7 @@
 // @effect-diagnostics cryptoRandomUUID:off -- Capture IDs are generated in the native callback adapter, outside Effect services.
 import type { DesktopControllerEvent } from "@t3tools/contracts";
 
-type SessionReply = { session_id?: string; text?: string };
+type SessionReply = { session_id?: string; text?: string; duration?: number };
 type Capture = {
   id: string;
   pressed: boolean;
@@ -18,7 +18,7 @@ type Capture = {
 const DOUBLE_TAP_WINDOW_MS = 300;
 
 export function makeControllerDictation(
-  run: (args: string[]) => Promise<SessionReply>,
+  run: (args: string[], timeoutMs?: number) => Promise<SessionReply>,
   emit: (event: DesktopControllerEvent) => void,
 ) {
   let capture: Capture | null = null;
@@ -78,9 +78,18 @@ export function makeControllerDictation(
     }
     void enqueue(current, async () => {
       if (!current.sessionId || current.cancelled) return;
-      await run(["stop", current.sessionId, "--json"]);
+      const stopped = await run(["stop", current.sessionId, "--json"]);
       if (current.cancelled) return;
-      const result = await run(["result", current.sessionId, "--json"]);
+      // Inference work grows with saved audio; retain the existing allowance for short clips.
+      const audioMs =
+        typeof stopped.duration === "number" &&
+        Number.isFinite(stopped.duration) &&
+        stopped.duration > 0
+          ? stopped.duration * 1_000
+          : 0;
+      // Node timers above this ceiling overflow to an immediate timeout.
+      const timeoutMs = Math.min(2_147_483_647, 180_000 + Math.ceil(audioMs));
+      const result = await run(["result", current.sessionId, "--json"], timeoutMs);
       if (!current.cancelled && ready && typeof result.text === "string") {
         if (delivered.size >= 16) delivered.delete(delivered.keys().next().value!);
         delivered.set(current.id, current.sessionId);

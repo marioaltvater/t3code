@@ -414,3 +414,88 @@ it("cancels a long hands-free recording on disconnect without delivering text", 
     vi.useRealTimers();
   }
 });
+
+it("delivers a long clip whose transcription takes more than three minutes", async () => {
+  vi.useFakeTimers();
+  try {
+    const events: DesktopControllerEvent[] = [];
+    const result = Promise.withResolvers<{ text: string }>();
+    let resultTimeoutMs: number | undefined;
+    const run = vi.fn(async (args: string[], timeoutMs?: number) => {
+      if (args[0] === "start") return { session_id: TOKEN };
+      if (args[0] === "stop") return { duration: 600 };
+      if (args[0] !== "result") return {};
+      resultTimeoutMs = timeoutMs;
+      return result.promise;
+    });
+    const capture = makeControllerDictation(run, (event) => events.push(event));
+    capture.setReady(true);
+    capture.press();
+    await capture.accept(events[0]!.captureId);
+    await vi.advanceTimersByTimeAsync(600_000);
+    capture.release();
+    await vi.advanceTimersByTimeAsync(300);
+    await vi.advanceTimersByTimeAsync(185_000);
+    expect(resultTimeoutMs).toBeGreaterThan(185_000);
+    expect(events.some((event) => event.type === "error")).toBe(false);
+    result.resolve({ text: "A complete long story" });
+    await capture.idle();
+    expect(events.at(-1)).toMatchObject({ type: "dictation", text: "A complete long story" });
+    expect(run.mock.calls.map(([args]) => args[0])).toEqual(["start", "stop", "result"]);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it.each([undefined, -1, Number.NaN, Number.POSITIVE_INFINITY])(
+  "keeps the fallback transcription timeout for an invalid duration %s",
+  async (duration) => {
+    vi.useFakeTimers();
+    try {
+      const events: DesktopControllerEvent[] = [];
+      const run = vi.fn(async (args: string[], _timeoutMs?: number) =>
+        args[0] === "start"
+          ? { session_id: TOKEN }
+          : args[0] === "stop"
+            ? duration === undefined
+              ? {}
+              : { duration }
+            : { text: "Recorded" },
+      );
+      const capture = makeControllerDictation(run, (event) => events.push(event));
+      capture.setReady(true);
+      capture.press();
+      await capture.accept(events[0]!.captureId);
+      capture.release();
+      await vi.advanceTimersByTimeAsync(300);
+      await capture.idle();
+      expect(run.mock.calls.find(([args]) => args[0] === "result")?.[1]).toBe(180_000);
+    } finally {
+      vi.useRealTimers();
+    }
+  },
+);
+
+it("clamps very large audio durations to Node's maximum timer interval", async () => {
+  vi.useFakeTimers();
+  try {
+    const events: DesktopControllerEvent[] = [];
+    const run = vi.fn(async (args: string[], _timeoutMs?: number) =>
+      args[0] === "start"
+        ? { session_id: TOKEN }
+        : args[0] === "stop"
+          ? { duration: Number.MAX_VALUE }
+          : { text: "Recorded" },
+    );
+    const capture = makeControllerDictation(run, (event) => events.push(event));
+    capture.setReady(true);
+    capture.press();
+    await capture.accept(events[0]!.captureId);
+    capture.release();
+    await vi.advanceTimersByTimeAsync(300);
+    await capture.idle();
+    expect(run.mock.calls.find(([args]) => args[0] === "result")?.[1]).toBe(2_147_483_647);
+  } finally {
+    vi.useRealTimers();
+  }
+});

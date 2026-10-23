@@ -47,23 +47,29 @@ export function startLinuxK0Controller(options: {
     lastWarning = message;
   };
   const dictation = makeControllerDictation(
-    async (args) => {
+    async (args, timeoutMs) => {
       const executable =
         process.env.T3CODE_WHISPER_CURSOR ??
         NodePath.join(NodeOS.homedir(), ".local/bin/whisper-cursor");
       const { stdout } = await execFileAsync(executable, ["session", ...args], {
-        timeout: args[0] === "result" ? 180_000 : 15_000,
+        timeout: timeoutMs ?? 15_000,
         maxBuffer: 2 * 1024 * 1024,
         encoding: "utf8",
       });
       const result: unknown = JSON.parse(stdout);
       if (typeof result !== "object" || result === null)
         throw new Error("Invalid Whisper Cursor response");
-      const value = result as { session_id?: unknown; text?: unknown; error?: unknown };
+      const value = result as {
+        session_id?: unknown;
+        text?: unknown;
+        error?: unknown;
+        duration?: unknown;
+      };
       if (typeof value.error === "string") throw new Error(value.error);
       return {
         ...(typeof value.session_id === "string" ? { session_id: value.session_id } : {}),
         ...(typeof value.text === "string" ? { text: value.text } : {}),
+        ...(typeof value.duration === "number" ? { duration: value.duration } : {}),
       };
     },
     (event) => {
