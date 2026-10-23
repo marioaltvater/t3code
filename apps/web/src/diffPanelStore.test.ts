@@ -1,14 +1,48 @@
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { EnvironmentId, ThreadId, RunId } from "@t3tools/contracts";
+import { EnvironmentId, ThreadId, RunId, CheckpointRef } from "@t3tools/contracts";
+import type { ThreadCheckpointSummary } from "@t3tools/client-runtime/state/thread-checkpoints";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import {
   selectThreadDiffPanelSelection,
+  selectLatestTurnDiff,
   useDiffPanelSessionStore,
   useDiffPanelStore,
 } from "./diffPanelStore";
 
 const THREAD_REF = scopeThreadRef(EnvironmentId.make("environment-1"), ThreadId.make("thread-1"));
+
+function checkpointSummary(
+  runId: string,
+  checkpointTurnCount: number,
+  completedAt: string,
+  files: ThreadCheckpointSummary["files"] = [],
+): ThreadCheckpointSummary {
+  return {
+    runId: RunId.make(runId),
+    checkpointTurnCount,
+    completedAt,
+    checkpointRef: CheckpointRef.make(`refs/t3/checkpoints/${runId}`),
+    status: "ready",
+    files,
+    assistantMessageId: null,
+  };
+}
+
+it("selects the latest turn even when an earlier turn has changes and the latest has none", () => {
+  const older = checkpointSummary("older", 1, "2026-10-21T11:00:00Z", [
+    { path: "app.ts", kind: "modified", additions: 3, deletions: 1 },
+  ]);
+  const latest = checkpointSummary("latest", 2, "2026-10-21T10:00:00Z");
+  expect(selectLatestTurnDiff([latest, older])).toBe(latest);
+});
+
+it("uses the newest checkpoint for the same turn and leaves an empty history unavailable", () => {
+  const older = checkpointSummary("older", 2, "2026-10-21T10:00:00Z");
+  const latest = checkpointSummary("latest", 2, "2026-10-21T11:00:00Z");
+  expect(selectLatestTurnDiff([latest, older])).toBe(latest);
+  expect(selectLatestTurnDiff([])).toBeUndefined();
+});
 
 describe("diffPanelStore", () => {
   beforeEach(() => {

@@ -37,6 +37,9 @@ import {
 } from "@t3tools/contracts";
 import { parseScopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { useAtomValue } from "@effect/atom-react";
+import { primaryServerKeybindingsAtom } from "../../state/server";
+import { resolveChatShortcutCommand, type ShortcutMatchContext } from "../../keybindings";
+import { isCommandPaletteOpen } from "../../commandPaletteBus";
 import { environmentThreadDetails } from "../../state/threads";
 import { resolveUserMessagePresentation } from "@t3tools/client-runtime/user-message";
 import { Link } from "@tanstack/react-router";
@@ -62,6 +65,13 @@ import {
 import type { WorkflowOpening } from "@t3tools/client-runtime/state/subagentRuntime";
 import { observeResize } from "~/lib/observeResize";
 import { useStableCallback } from "~/hooks/useStableCallback";
+import {
+  clearTimelineTurnCursor,
+  createTimelineTurnNavigationState,
+  isTimelineTurnScrollInFlight,
+  navigateTimelineTurn,
+  resetTimelineTurnNavigation,
+} from "./timelineTurnNavigation";
 
 const NOOP_USE_ARTIFACT_TEMPLATE = () => {};
 const NOOP_OPEN_ATTACHMENT = (_attachment: ChatFileAttachment) => {};
@@ -514,6 +524,7 @@ interface MessagesTimelineProps {
    * the user drifts near the bottom.
    */
   liveFollowEnabled: boolean;
+  getShortcutContext: (target: EventTarget | null) => ShortcutMatchContext;
   onContentOverflowChange?: (overflows: boolean) => void;
   onToolOutputCollapsedAtEnd?: () => void;
   onManualNavigation: () => void;
@@ -549,6 +560,7 @@ export function MessagesTimeline(props: MessagesTimelineProps) {
 }
 
 const ConversationTimeline = memo(function ConversationTimeline({
+  getShortcutContext,
   citationRequest = null,
   citationHistoryLoading = false,
   onCiteAssistantText,
@@ -620,6 +632,17 @@ const ConversationTimeline = memo(function ConversationTimeline({
   loadEarlier = null,
 }: MessagesTimelineProps) {
   const listIdentityKey = displayThreadKey ?? routeThreadKey;
+  const turnNavigationRef = useRef(createTimelineTurnNavigationState(listIdentityKey));
+  const resetTurnNavigation = useStableCallback(() => {
+    resetTimelineTurnNavigation(turnNavigationRef.current, listIdentityKey);
+  });
+  const handleManualNavigation = useStableCallback(() => {
+    resetTurnNavigation();
+    onManualNavigation();
+  });
+  useLayoutEffect(() => {
+    resetTimelineTurnNavigation(turnNavigationRef.current, listIdentityKey);
+  }, [listIdentityKey]);
   // The remembered position is a snapshot taken when the list identity changes;
   // scrolling keeps rewriting the stored entry, which must not move the restore.
   const [listState, setListState] = useState(() => timelineListStateFor(listIdentityKey));
@@ -871,6 +894,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
   const runs = useStableHandoffRuns(runsProp);
   const minimapItems = deriveTimelineMinimapItems(rows);
   const minimapRowIndices = minimapItems.map((item) => item.rowIndex);
+  const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   // Preserve initialScrollAtEnd's measured target until the list is reused
   // for another thread; scrollToEnd would replace it with an estimated offset.
   const listOpenedOnRef = useRef<{
@@ -914,7 +938,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
     };
     const cancelForNavigation = () => {
       cancelRestoration();
-      onManualNavigation();
+      handleManualNavigation();
     };
     const onScrollKey = (event: globalThis.KeyboardEvent) => {
       if (
@@ -932,7 +956,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
     viewport?.ownerDocument.addEventListener("keydown", onScrollKey);
     const position = rememberedPosition;
     const index = position ? rows.findIndex((row) => row.id === position.rowId) : -1;
-    if (position?.atEnd === false) onManualNavigation();
+    if (position?.atEnd === false) handleManualNavigation();
     if (cancelPositionRestoreRef) cancelPositionRestoreRef.current = cancelRestoration;
     const scrolling =
       position?.atEnd === false
@@ -1005,7 +1029,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
     cancelPositionRestoreRef,
     listIdentityKey,
     listRef,
-    onManualNavigation,
+    handleManualNavigation,
     rememberedPosition,
     restoringThreadPosition,
     rows,
@@ -1040,7 +1064,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
         })
       ).get(entryId),
     onExpandTurn: expandCitedRun,
-    onManualNavigation,
+    onManualNavigation: handleManualNavigation,
   });
   const [findListReady, setFindListReady] = useState(false);
   const handleListLoad = () => {
@@ -1066,6 +1090,106 @@ const ConversationTimeline = memo(function ConversationTimeline({
         };
   const [minimapHitStripWidth, setMinimapHitStripWidth] = useState(0);
   const [minimapCurrentIndex, setMinimapCurrentIndex] = useState<number | null>(null);
+  const stepUserTurn = useStableCallback((direction: -1 | 1) => {
+    if (minimapItems.length === 0) return;
+    const list = listRef.current;
+    if (!list) return;
+
+    const state = list.getState();
+    if (state.data !== rows) return;
+    const firstBufferedIndex = state.startBuffered;
+    const firstBufferedRow =
+      firstBufferedIndex == null ? undefined : state.elementAtIndex(firstBufferedIndex);
+    const firstBufferedTop =
+      firstBufferedIndex == null ? undefined : state.positionAtIndex(firstBufferedIndex);
+    const viewport = list.getScrollableNode();
+    const scroll =
+      firstBufferedRow && firstBufferedTop !== undefined
+        ? firstBufferedTop +
+          viewport.getBoundingClientRect().top -
+          firstBufferedRow.getBoundingClientRect().top
+        : state.scroll;
+    const visibleRange = resolveTimelineMinimapVisibleRange({ ...state, scroll });
+    const visibleCurrentIndex = resolveTimelineMinimapCurrentIndex({
+      visibleStart: visibleRange.start,
+      visibleEnd: visibleRange.end,
+      rowIndices: minimapRowIndices,
+    });
+    const isAtEnd = resolveTimelineIsAtEnd({ ...state, scroll }) === true;
+    const currentIndex = isAtEnd
+      ? minimapItems.length - 1
+      : (visibleCurrentIndex ?? minimapCurrentIndex);
+    navigateTimelineTurn({
+      state: turnNavigationRef.current,
+      identity: listIdentityKey,
+      items: minimapItems,
+      currentIndex,
+      isAtEnd,
+      direction,
+      beforeNavigate: onManualNavigation,
+      scrollToIndex: (rowIndex) =>
+        list.scrollToIndex({
+          index: rowIndex,
+          animated: !prefersReducedMotion,
+          viewOffset: 24,
+        }),
+    });
+  });
+  useEffect(() => {
+    if (!timelineViewportElement) return;
+    const viewport = listRef.current?.getScrollableNode();
+    if (!viewport) return;
+    const clearOnScrollIntent = () => resetTurnNavigation();
+    const clearOnPointerDown = (event: PointerEvent) => {
+      // A pointer on the viewport itself can start a scrollbar drag.
+      if (event.target === viewport) clearOnScrollIntent();
+    };
+    const clearOnScrollKey = (event: globalThis.KeyboardEvent) => {
+      if (
+        event.defaultPrevented ||
+        !["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(event.key) ||
+        (event.target instanceof Element &&
+          event.target.closest("input, textarea, [contenteditable=true]"))
+      ) {
+        return;
+      }
+      clearOnScrollIntent();
+    };
+    viewport.addEventListener("wheel", clearOnScrollIntent, { passive: true });
+    viewport.addEventListener("touchmove", clearOnScrollIntent, { passive: true });
+    viewport.addEventListener("pointerdown", clearOnPointerDown, { passive: true });
+    viewport.addEventListener("keydown", clearOnScrollKey);
+    return () => {
+      viewport.removeEventListener("wheel", clearOnScrollIntent);
+      viewport.removeEventListener("touchmove", clearOnScrollIntent);
+      viewport.removeEventListener("pointerdown", clearOnPointerDown);
+      viewport.removeEventListener("keydown", clearOnScrollKey);
+    };
+  }, [listRef, resetTurnNavigation, timelineViewportElement]);
+  useEffect(() => {
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented || isCommandPaletteOpen()) return;
+      const context = getShortcutContext(event.target);
+      if (context.modelPickerOpen) return;
+      const command = resolveChatShortcutCommand(event, keybindings, [], {
+        context,
+      });
+      if (command === "chat.previousTurn" || command === "chat.nextTurn") {
+        event.preventDefault();
+        event.stopPropagation();
+        stepUserTurn(command === "chat.previousTurn" ? -1 : 1);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    const unsubscribe = window.desktopBridge?.onMenuAction((action) => {
+      if (action === "chat.previousTurn") stepUserTurn(-1);
+      if (action === "chat.nextTurn") stepUserTurn(1);
+    });
+    return () => {
+      window.removeEventListener("keydown", onKeyDown, true);
+      unsubscribe?.();
+    };
+  }, [getShortcutContext, keybindings, stepUserTurn]);
   const handleAnchorReady = (info: { anchorIndex: number | undefined }) => {
     if (anchorMessageId !== null && info.anchorIndex !== undefined) {
       onAnchorReady(anchorMessageId, info.anchorIndex);
@@ -1183,6 +1307,9 @@ const ConversationTimeline = memo(function ConversationTimeline({
   };
 
   const handleScroll = () => {
+    if (!isTimelineTurnScrollInFlight(turnNavigationRef.current, listIdentityKey)) {
+      clearTimelineTurnCursor(turnNavigationRef.current, listIdentityKey);
+    }
     const state = listRef.current?.getState?.();
     if (restoringThreadPosition || state?.data !== rows) return;
     const isAtEnd = resolveTimelineIsAtEnd(state);
@@ -1567,7 +1694,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
             stripMap={minimapStripMap}
             onWheel={forwardMinimapWheel}
             onSelect={(item) => {
-              onManualNavigation();
+              handleManualNavigation();
               void listRef.current?.scrollToIndex({
                 index: item.rowIndex,
                 animated: !window.matchMedia("(prefers-reduced-motion: reduce)").matches,

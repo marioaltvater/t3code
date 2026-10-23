@@ -33,6 +33,7 @@ import {
   terminalNavigationShortcutData,
   threadJumpCommandForIndex,
   threadJumpIndexFromCommand,
+  threadPinnedIndexFromCommand,
   threadTraversalDirectionFromCommand,
   type ShortcutEventLike,
 } from "./keybindings";
@@ -561,6 +562,11 @@ describe("thread navigation helpers", () => {
     assert.strictEqual(threadJumpIndexFromCommand("thread.jump.1"), 0);
     assert.strictEqual(threadJumpIndexFromCommand("thread.jump.3"), 2);
     assert.isNull(threadJumpIndexFromCommand("thread.next"));
+    assert.isNull(threadJumpIndexFromCommand("thread.pinned.1"));
+    assert.strictEqual(threadPinnedIndexFromCommand("thread.pinned.1"), 0);
+    assert.strictEqual(threadPinnedIndexFromCommand("thread.pinned.6"), 5);
+    assert.isNull(threadPinnedIndexFromCommand("thread.pinned.7"));
+    assert.isNull(threadPinnedIndexFromCommand("thread.jump.1"));
   });
 
   it("maps traversal commands to directions", () => {

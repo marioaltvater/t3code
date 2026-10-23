@@ -9,6 +9,7 @@ import {
 import { getProviderOptionDescriptors } from "@t3tools/shared/model";
 import { getProviderModelCapabilities } from "../../providerModels";
 import {
+  getComposerEffortSnapshot,
   getComposerPromptInjectionState,
   getComposerProviderState,
   getComposerReasoningStep,
@@ -69,6 +70,115 @@ const ULTRATHINK_FRAME_CLASSES = {
   composerSurfaceClassName: "shadow-[0_0_0_1px_rgba(255,255,255,0.07)_inset]",
   modelPickerIconClassName: "ultrathink-chroma",
 } as const;
+
+describe("controller reasoning feedback", () => {
+  const options = [
+    { id: "low", label: "Low" },
+    { id: "medium", label: "Medium", isDefault: true },
+    { id: "high", label: "High" },
+  ];
+  const snapshot = (value?: string) =>
+    getComposerEffortSnapshot({
+      provider: PROVIDER,
+      instanceId: ProviderInstanceId.make("codex"),
+      model: MODEL,
+      models: modelWith([
+        booleanDescriptor("fastMode", true),
+        selectDescriptor("reasoningEffort", options),
+      ]),
+      modelOptions: value ? selections(["reasoningEffort", value]) : undefined,
+      planModeEnabled: false,
+    });
+
+  it("uses the selected model descriptor's default and explicit effort", () => {
+    expect(snapshot()).toEqual({
+      effortIndex: 1,
+      effortCount: 3,
+      canLowerEffort: true,
+      canRaiseEffort: true,
+    });
+    expect(snapshot("low")).toEqual({
+      effortIndex: 0,
+      effortCount: 3,
+      canLowerEffort: false,
+      canRaiseEffort: true,
+    });
+    expect(snapshot("high")).toEqual({
+      effortIndex: 2,
+      effortCount: 3,
+      canLowerEffort: true,
+      canRaiseEffort: false,
+    });
+  });
+
+  it("uses the reasoning descriptor after context window and the provider-reported effort", () => {
+    const instanceId = ProviderInstanceId.make("codex");
+    expect(
+      getComposerEffortSnapshot({
+        provider: PROVIDER,
+        instanceId,
+        model: MODEL,
+        models: modelWith([
+          selectDescriptor("contextWindow", [
+            { id: "200k", label: "200k", isDefault: true },
+            { id: "1m", label: "1M" },
+          ]),
+          selectDescriptor("reasoningEffort", options),
+        ]),
+        modelOptions: undefined,
+        reportedModelSelection: {
+          instanceId,
+          model: MODEL,
+          options: selections(["reasoningEffort", "high"]),
+        },
+        prompt: "Fix the bug",
+        planModeEnabled: false,
+      }),
+    ).toEqual({
+      effortIndex: 2,
+      effortCount: 3,
+      canLowerEffort: true,
+      canRaiseEffort: false,
+    });
+  });
+
+  it("stops at the highest level and keeps Ultrathink at its selected level", () => {
+    const ultrathinkOptions = [
+      { id: "medium", label: "Medium", isDefault: true },
+      { id: "high", label: "High" },
+      { id: "ultrathink", label: "Ultrathink" },
+    ];
+    const models = modelWith([selectDescriptor("effort", ultrathinkOptions, ["ultrathink"])]);
+    expect(
+      getComposerEffortSnapshot({
+        provider: ProviderDriverKind.make("claudeAgent"),
+        instanceId: ProviderInstanceId.make("claudeAgent"),
+        model: MODEL,
+        models,
+        modelOptions: selections(["effort", "high"]),
+        prompt: "Ultrathink:\nFix the bug",
+        planModeEnabled: false,
+      }),
+    ).toEqual({
+      effortIndex: 2,
+      effortCount: 3,
+      canLowerEffort: true,
+      canRaiseEffort: false,
+    });
+  });
+
+  it("has no effort indication for models with only boolean options", () => {
+    expect(
+      getComposerEffortSnapshot({
+        provider: PROVIDER,
+        model: MODEL,
+        models: modelWith([booleanDescriptor("fastMode", true)]),
+        modelOptions: undefined,
+        planModeEnabled: false,
+      }),
+    ).toEqual({ effortIndex: null, effortCount: 0, canLowerEffort: false, canRaiseEffort: false });
+  });
+});
 
 describe("getComposerProviderState", () => {
   it("derives a stable prompt injection state for ordinary prompt edits", () => {
@@ -527,7 +637,7 @@ describe("getComposerReasoningStep", () => {
     });
   }
 
-  it("walks the catalog order, wrapping at both ends and keeping the other traits", () => {
+  it("walks the catalog order directionally and keeps the other traits", () => {
     const models = modelWith([
       selectDescriptor("contextWindow", [
         { id: "200k", label: "200k", isDefault: true },
@@ -536,9 +646,7 @@ describe("getComposerReasoningStep", () => {
       selectDescriptor("reasoningEffort", LEVELS),
     ]);
     for (const [from, direction, to] of [
-      ["low", -1, "high"],
       ["low", 1, "medium"],
-      ["high", 1, "low"],
       ["high", -1, "medium"],
     ] as const) {
       expect(
@@ -554,6 +662,15 @@ describe("getComposerReasoningStep", () => {
         modelOptions: selections(["contextWindow", "1m"], ["reasoningEffort", to]),
       });
     }
+  });
+
+  it("does nothing when decreasing the lowest level or increasing the highest", () => {
+    expect(
+      step({ modelOptions: selections(["reasoningEffort", "low"]), direction: -1 }),
+    ).toBeNull();
+    expect(
+      step({ modelOptions: selections(["reasoningEffort", "high"]), direction: 1 }),
+    ).toBeNull();
   });
 
   it("adds and strips the Ultrathink prefix while the caret stays on the same character", () => {
@@ -595,11 +712,7 @@ describe("getComposerReasoningStep", () => {
   it("skips Ultrathink for slash commands and does nothing when the prompt locks it", () => {
     expect(
       step({ ...CLAUDE, prompt: "/review", modelOptions: selections(["effort", "high"]) }),
-    ).toStrictEqual({
-      prompt: "/review",
-      cursor: 0,
-      modelOptions: selections(["effort", "medium"]),
-    });
+    ).toBeNull();
     for (const [prompt, direction] of [
       ["Please ultrathink harder", 1],
       ["Ultrathink:\nPlease ultrathink harder", -1],
@@ -636,7 +749,7 @@ describe("getComposerReasoningStep", () => {
       options: selections(["reasoningEffort", "high"]),
     };
     for (const { label, modelOptions, reportedModelSelection, to } of [
-      { label: "reported", modelOptions: undefined, reportedModelSelection: reported, to: "low" },
+      { label: "reported", modelOptions: undefined, reportedModelSelection: reported, to: null },
       {
         label: "other instance",
         modelOptions: undefined,
@@ -667,7 +780,7 @@ describe("getComposerReasoningStep", () => {
       },
     ]) {
       expect(step({ modelOptions, reportedModelSelection })?.modelOptions, label).toStrictEqual(
-        selections(["reasoningEffort", to]),
+        to === null ? undefined : selections(["reasoningEffort", to]),
       );
     }
   });

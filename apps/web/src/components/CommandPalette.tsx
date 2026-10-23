@@ -148,7 +148,7 @@ import {
   isUnsupportedWindowsProjectPath,
   resolveProjectPathForDispatch,
 } from "../lib/projectPaths";
-import { onOpenCommandPalette } from "../commandPaletteBus";
+import { isCommandPaletteOpen, onOpenCommandPalette } from "../commandPaletteBus";
 import { isPreviewFocused } from "../lib/previewFocus";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import {
@@ -621,6 +621,14 @@ export function CommandPalette({ children }: { children: ReactNode }) {
         }
       }),
     [openAddProject, openNewThreadIn, setOpen],
+  );
+
+  useEffect(
+    () =>
+      window.desktopBridge?.onMenuAction((action) => {
+        if (action === "commandPalette.toggle") setOpen(!isCommandPaletteOpen());
+      }),
+    [setOpen],
   );
 
   return (

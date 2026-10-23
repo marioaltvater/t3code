@@ -319,6 +319,7 @@ import {
 } from "./composerSlashCommandSearch";
 import {
   getComposerPromptInjectionState,
+  getComposerEffortSnapshot,
   getComposerProviderState,
   getComposerReasoningStep,
   renderProviderTraitsMenuContent,
@@ -1435,6 +1436,7 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
 });
 
 export interface ChatComposerHandle {
+  submit: () => void;
   focusAtEnd: () => void;
   focusAt: (cursor: number) => void;
   restoreAfterTimelineReachedEnd: () => void;
@@ -1535,6 +1537,9 @@ export interface ChatComposerProps {
   keepFullHistory: boolean;
   onToggleKeepFullHistory: () => void;
   onUsageLimitsCommand?: (() => void) | undefined;
+  onControllerEffortChange?:
+    | ((effort: ReturnType<typeof getComposerEffortSnapshot>) => void)
+    | undefined;
   environmentUnavailable: {
     readonly label: string;
     readonly connection: EnvironmentConnectionPresentation;
@@ -2378,6 +2383,41 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   });
 
   const selectedPromptEffort = composerProviderState.promptEffort;
+  const onControllerEffortChange = props.onControllerEffortChange;
+  useEffect(
+    () => () =>
+      onControllerEffortChange?.({
+        effortIndex: null,
+        effortCount: 0,
+        canLowerEffort: false,
+        canRaiseEffort: false,
+      }),
+    [onControllerEffortChange],
+  );
+  useEffect(() => {
+    onControllerEffortChange?.(
+      getComposerEffortSnapshot({
+        provider: selectedProvider,
+        instanceId: selectedInstanceId,
+        model: selectedModel,
+        models: selectedProviderModels,
+        modelOptions: composerModelOptions?.[selectedInstanceId],
+        reportedModelSelection,
+        prompt,
+        planModeEnabled: settings.planModeEnabled,
+      }),
+    );
+  }, [
+    composerModelOptions,
+    onControllerEffortChange,
+    prompt,
+    reportedModelSelection,
+    selectedInstanceId,
+    selectedModel,
+    selectedProvider,
+    selectedProviderModels,
+    settings.planModeEnabled,
+  ]);
   const selectedModelOptionsForDispatch = composerProviderState.modelOptionsForDispatch;
   const { enabled: planModeUiEnabled, interactionMode } = resolveComposerInteractionMode({
     planModeEnabled: settings.planModeEnabled,
@@ -6111,6 +6151,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   useImperativeHandle(
     composerRef,
     () => ({
+      submit: () => submitComposerStable(),
       focusAtEnd: () => {
         composerEditorRef.current?.focusAtEnd();
       },
@@ -6359,6 +6400,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       composerPreviewAnnotations,
       composerReviewComments,
       focusComposer,
+      submitComposerStable,
       environmentId,
       primaryEnvironmentId,
       isConnecting,

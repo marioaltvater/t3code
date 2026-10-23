@@ -24,7 +24,12 @@ import { EnvironmentMachineIcon } from "./EnvironmentMachineIcon";
 import { ProjectFavicon } from "./ProjectFavicon";
 import { useAtomValue } from "@effect/atom-react";
 import { autoAnimate } from "@formkit/auto-animate";
-import React, { useEffect, useEffectEvent, memo, useRef, useState } from "react";
+import React, { useEffect, useEffectEvent, useLayoutEffect, memo, useRef, useState } from "react";
+import { publishControllerThreadTargets } from "./desktop/controllerUiState";
+import { resolveControllerThreadTargets } from "./desktop/controllerThreadTargets";
+import { partitionSidebarThreads } from "./Sidebar.threadPartition";
+import { controllerSnoozeWakeDelay } from "./desktop/ControllerLightingCoordinator.logic";
+import { environmentServerConfigsAtom } from "../state/server";
 import { cn } from "~/lib/utils";
 import { useShallow } from "zustand/react/shallow";
 import {
@@ -117,6 +122,7 @@ import {
   shouldShowThreadJumpHintsForModifiers,
   threadJumpCommandForIndex,
   threadJumpIndexFromCommand,
+  threadPinnedIndexFromCommand,
   threadTraversalDirectionFromCommand,
 } from "../keybindings";
 import { isModelPickerOpen } from "../modelPickerVisibility";
@@ -198,6 +204,7 @@ import {
   orderItemsByPreferredIds,
   shouldClearThreadSelectionOnMouseDown,
   sortProjectsForSidebar,
+  sortPinnedThreadsForSidebar,
   useSidebarRowSubscriptionLease,
   useThreadJumpHintVisibility,
   ThreadStatusPill,
@@ -3139,6 +3146,12 @@ function useSortedLegacySidebarProjects(input: {
   };
 }
 
+function resolveLegacyPinnedThreads(threads: readonly SidebarThreadSummary[]) {
+  return sortPinnedThreadsForSidebar(
+    filterSidebarV2VisibleThreads(threads, null).filter((thread) => thread.pinnedAt != null),
+  );
+}
+
 function useLegacySidebarThreads(input: {
   sortedProjects: readonly SidebarProjectSnapshot[];
   physicalToLogicalKey: ReadonlyMap<string, string>;
@@ -3236,6 +3249,12 @@ function useLegacySidebarThreads(input: {
     },
   );
   return {
+    controllerOrderedThreads: sortedProjects.flatMap((project) =>
+      sortThreads(
+        filterSidebarV2VisibleThreads(threadsByProjectKey.get(project.projectKey) ?? [], null),
+        sidebarThreadSortOrder,
+      ),
+    ),
     sidebarThreadByKey,
     activeRouteProjectKey,
     visibleSidebarThreadKeys,
@@ -3295,6 +3314,7 @@ export default function LegacySidebar() {
   });
   const {
     sidebarThreadByKey,
+    controllerOrderedThreads,
     activeRouteProjectKey,
     visibleSidebarThreadKeys,
     threadJumpCommandByKey,
@@ -3309,6 +3329,43 @@ export default function LegacySidebar() {
     sidebarThreadPreviewCount,
     expandedThreadListsByProject,
   });
+  const controllerConfigs = useAtomValue(environmentServerConfigsAtom);
+  const controllerWorkingShelfEnabled = useClientSettings((s) => s.sidebarWorkingShelfEnabled);
+  const controllerPinnedSections = useUiStateStore((s) => s.sidebarPinnedSections);
+  const [controllerWakeTime, setControllerWakeTime] = useState(() => Date.now());
+  useEffect(() => {
+    const delay = controllerSnoozeWakeDelay(
+      [...sidebarThreadByKey.values()],
+      Math.max(controllerWakeTime, Date.now()),
+    );
+    if (delay === null) return;
+    const timer = window.setTimeout(() => setControllerWakeTime(Date.now()), delay);
+    return () => window.clearTimeout(timer);
+  }, [sidebarThreadByKey, controllerWakeTime]);
+  const controllerPartition = partitionSidebarThreads({
+    threads: [...sidebarThreadByKey.values()],
+    scopedProjectKeys: null,
+    serverConfigs: controllerConfigs,
+    optimisticDrop: null,
+    workingShelfEnabled: controllerWorkingShelfEnabled,
+    clockKey: String(controllerWakeTime),
+  });
+  const controllerActiveKeys = new Set(
+    controllerPartition.activeThreads.map((thread) =>
+      scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
+    ),
+  );
+  const controllerTargets = resolveControllerThreadTargets({
+    activeThreads: controllerOrderedThreads.filter((thread) =>
+      controllerActiveKeys.has(scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id))),
+    ),
+    pinnedThreads: controllerPartition.pinnedThreads,
+    pinnedSections: controllerPinnedSections,
+  });
+  useLayoutEffect(() => {
+    publishControllerThreadTargets(controllerTargets);
+  }, [controllerTargets]);
+  useLayoutEffect(() => () => publishControllerThreadTargets(null), []);
   const newThreadShortcutLabelOptions = {
     platform,
     context: {
@@ -3453,6 +3510,17 @@ export default function LegacySidebar() {
       return;
     }
 
+    const pinnedIndex = threadPinnedIndexFromCommand(command ?? "");
+    if (pinnedIndex !== null) {
+      const target = resolveLegacyPinnedThreads([...sidebarThreadByKey.values()])[pinnedIndex];
+      if (target) {
+        event.preventDefault();
+        event.stopPropagation();
+        navigateToThread(scopeThreadRef(target.environmentId, target.id));
+      }
+      return;
+    }
+
     const jumpIndex = threadJumpIndexFromCommand(command ?? "");
     if (jumpIndex === null) {
       return;
@@ -3478,6 +3546,40 @@ export default function LegacySidebar() {
       window.removeEventListener("keydown", handleWindowKeyDown);
     };
   }, []);
+  useEffect(
+    () =>
+      window.desktopBridge?.onMenuAction((action) => {
+        const direction = threadTraversalDirectionFromCommand(action);
+        if (direction !== null) {
+          const targetKey = resolveAdjacentThreadId({
+            threadIds: orderedSidebarThreadKeys,
+            currentThreadId: routeThreadKey,
+            direction,
+          });
+          const target = targetKey ? sidebarThreadByKey.get(targetKey) : undefined;
+          if (target) navigateToThread(scopeThreadRef(target.environmentId, target.id));
+          return;
+        }
+        const pinnedIndex = threadPinnedIndexFromCommand(action);
+        const pinnedThreads = resolveLegacyPinnedThreads([...sidebarThreadByKey.values()]);
+        const jumpIndex = threadJumpIndexFromCommand(action);
+        const targetKey = jumpIndex === null ? undefined : threadJumpThreadKeys[jumpIndex];
+        const target =
+          pinnedIndex !== null
+            ? pinnedThreads[pinnedIndex]
+            : targetKey
+              ? sidebarThreadByKey.get(targetKey)
+              : undefined;
+        if (target) navigateToThread(scopeThreadRef(target.environmentId, target.id));
+      }),
+    [
+      navigateToThread,
+      orderedSidebarThreadKeys,
+      routeThreadKey,
+      sidebarThreadByKey,
+      threadJumpThreadKeys,
+    ],
+  );
 
   useEffect(() => {
     const onMouseDown = (event: globalThis.MouseEvent) => {
