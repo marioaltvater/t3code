@@ -22,6 +22,7 @@ import {
   setProjectExpanded,
   setSidebarProjectScopeKey,
   setThreadChangedFilesExpanded,
+  setThreadPrBadgeHidden,
   toggleSidebarPinnedSection,
   setSidebarSectionCompact,
   type UiState,
@@ -35,6 +36,7 @@ function makeUiState(overrides: Partial<UiState> = {}): UiState {
     sidebarPinnedSections: [],
     sidebarCompactSections: { snoozed: true, settled: true },
     threadLastVisitedAtById: {},
+    threadPrBadgeHiddenById: {},
     threadChangedFilesExpandedById: {},
     defaultAdvertisedEndpointKey: null,
     pullRequestMergeMethod: "merge",
@@ -43,6 +45,29 @@ function makeUiState(overrides: Partial<UiState> = {}): UiState {
 }
 
 describe("uiStateStore pure functions", () => {
+  it("hides and restores one thread without affecting the same ID in another environment", () => {
+    const initial = makeUiState();
+    const hidden = setThreadPrBadgeHidden(initial, "env-a:thread-1", true);
+    expect(hidden.threadPrBadgeHiddenById["env-a:thread-1"]).toBe(true);
+    expect(hidden.threadPrBadgeHiddenById["env-b:thread-1"]).toBeUndefined();
+    const otherHidden = setThreadPrBadgeHidden(hidden, "env-b:thread-1", true);
+    const restored = setThreadPrBadgeHidden(otherHidden, "env-a:thread-1", false);
+    expect(restored.threadPrBadgeHiddenById).toEqual({
+      "env-a:thread-1": false,
+      "env-b:thread-1": true,
+    });
+  });
+
+  it("defaults sidebar PR badges to visible and sanitizes saved choices", () => {
+    expect(parsePersistedState({}).threadPrBadgeHiddenById).toEqual({});
+    const saved = JSON.parse('{"env-a:thread-1":true,"env-b:thread-1":false,"bad":"true","":true}');
+    expect(parsePersistedState({ threadPrBadgeHiddenById: saved }).threadPrBadgeHiddenById).toEqual(
+      {
+        "env-a:thread-1": true,
+        "env-b:thread-1": false,
+      },
+    );
+  });
   it("stores server timestamps without moving visit state backwards", () => {
     const threadId = ThreadId.make("thread-1");
     const initialState = makeUiState();
@@ -305,6 +330,7 @@ describe("parsePersistedState", () => {
       sidebarPinnedSections: [],
       sidebarCompactSections: { snoozed: true, settled: true },
       pullRequestMergeMethod: "merge",
+      threadPrBadgeHiddenById: {},
       threadChangedFilesExpandedById: {
         "environment:thread-1": {
           "turn-1": false,
@@ -559,6 +585,7 @@ describe("uiStateStore persistence", () => {
       sidebarPinnedSections: [],
       sidebarCompactSections: { snoozed: true, settled: true },
       threadChangedFilesExpansionVersion: 2,
+      threadPrBadgeHiddenById: {},
       threadChangedFilesExpandedById: {
         "environment:thread-1": {
           "turn-1": false,
@@ -582,6 +609,17 @@ describe("uiStateStore persistence", () => {
     expect(parsePersistedState(persisted).sidebarProjectScopeKey).toBe(
       "github.com/pingdotgg/t3code",
     );
+  });
+
+  it("restores per-environment sidebar PR choices across reloads", () => {
+    const hidden = setThreadPrBadgeHidden(makeUiState(), "env-a:thread-1", true);
+    const state = setThreadPrBadgeHidden(hidden, "env-b:thread-1", false);
+    persistState(state);
+    const persisted = JSON.parse(localStorageStub.getItem(PERSISTED_STATE_KEY) ?? "{}");
+    expect(parsePersistedState(persisted).threadPrBadgeHiddenById).toEqual({
+      "env-a:thread-1": true,
+      "env-b:thread-1": false,
+    });
   });
 
   it("round-trips section order, names, disconnected membership, collapse, and compact choices", () => {

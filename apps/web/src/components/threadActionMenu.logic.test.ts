@@ -13,6 +13,7 @@ const baseState: ThreadActionMenuState = {
   isPinned: false,
   isSettled: false,
   autoSettleEnabled: true,
+  prBadgeHidden: false,
   isSnoozed: false,
   canSnoozeNow: true,
   isRegeneratingTitle: false,
@@ -84,6 +85,7 @@ describe("buildThreadActionMenuItems", () => {
     expect(denied.filter((item) => !item.disabled).map((item) => item.id)).toEqual([
       "new-thread-on-branch",
       "mark-unread",
+      "pr-badge",
       "copy",
       "project-settings",
     ]);
@@ -103,7 +105,15 @@ describe("buildThreadActionMenuItems", () => {
           titleRegeneration: false,
         },
       }),
-    ).toEqual(["rename", "mark-unread", "copy", "project-settings", "archive", "delete"]);
+    ).toEqual([
+      "rename",
+      "mark-unread",
+      "pr-badge",
+      "copy",
+      "project-settings",
+      "archive",
+      "delete",
+    ]);
   });
 
   it("groups project settings with utility actions before archive", () => {
@@ -170,6 +180,29 @@ describe("buildThreadActionMenuItems", () => {
       ids({ ...baseState, supports: { ...baseState.supports, autoSettleOptOut: false } }),
     ).not.toContain("auto-settle");
   });
+
+  it.each([false, true])(
+    "offers both sidebar PR choices to read-only clients (hidden: %s)",
+    (hidden) => {
+      const items = buildThreadActionMenuItems({
+        ...baseState,
+        canOperate: false,
+        prBadgeHidden: hidden,
+      });
+      const index = items.findIndex((item) => item.id === "pr-badge");
+      expect(items[index - 1]?.id).toBe("auto-settle");
+      expect(items[index + 1]?.id).toBe("copy");
+      expect(items[index]).toMatchObject({
+        label: "Pull requests",
+        children: [
+          { id: "pr-badge:visible", label: "Show", checked: !hidden },
+          { id: "pr-badge:hidden", label: "Hide", checked: hidden },
+        ],
+      });
+      expect(items[index]?.disabled).not.toBe(true);
+      expect(items[index]?.children?.every((item) => !item.disabled)).toBe(true);
+    },
+  );
 
   it("disables snooze when the thread cannot snooze, keeping presets visible", () => {
     const snooze = buildThreadActionMenuItems({ ...baseState, canSnoozeNow: false }).find(

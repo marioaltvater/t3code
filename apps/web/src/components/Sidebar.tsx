@@ -1691,6 +1691,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   const { leaseLiveStatus, rowRef } = useSidebarRowSubscriptionLease(props.isActive);
   const isRegeneratingTitle = thread.titleRegeneration != null;
   const localLastVisitedAt = useUiStateStore((state) => state.threadLastVisitedAtById[threadKey]);
+  const prBadgeHidden = useUiStateStore(
+    (state) => state.threadPrBadgeHiddenById[threadKey] === true,
+  );
   const lastVisitedAt = resolveThreadLastVisitedAt(thread.lastVisitedAt, localLastVisitedAt);
   const isSelected = useThreadSelectionStore((state) => state.selectedThreadKeys.has(threadKey));
   const openPrLink = useOpenPrLink();
@@ -2119,7 +2122,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     if (!props.isRouteThread) onThreadActivate(threadRef);
   };
   const prBadge =
-    prBadgeShape?.kind === "stack" || pr || currentLinkedPr ? (
+    !prBadgeHidden && (prBadgeShape?.kind === "stack" || pr || currentLinkedPr) ? (
       <ThreadPullRequestBadgeControl
         render={<InlineButton />}
         badge={prBadgeShape}
@@ -4609,6 +4612,8 @@ export default function Sidebar() {
                 isPinned,
                 isSettled,
                 autoSettleEnabled: thread.autoSettleDisabledAt == null,
+                prBadgeHidden:
+                  useUiStateStore.getState().threadPrBadgeHiddenById[threadKey] === true,
                 isSnoozed,
                 canSnoozeNow: canSnooze(thread, { now: new Date().toISOString() }),
                 isRegeneratingTitle,
@@ -4639,6 +4644,12 @@ export default function Sidebar() {
           return;
         }
         switch (clicked.value) {
+          case "pr-badge:visible":
+          case "pr-badge:hidden":
+            useUiStateStore
+              .getState()
+              .setThreadPrBadgeHidden(threadKey, clicked.value === "pr-badge:hidden");
+            return;
           case "filter-by-project":
             if (threadProjectGroup) {
               setProjectScopeKey(

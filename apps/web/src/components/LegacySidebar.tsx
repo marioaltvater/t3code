@@ -98,6 +98,7 @@ import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../termina
 import { useThreadRunningTerminalIds } from "../state/terminalSessions";
 import { useThreadDiscoveredPorts } from "../portDiscoveryState";
 import { openDiscoveredPort } from "./preview/openDiscoveredPort";
+import { buildThreadPrBadgeMenuItem } from "./threadActionMenu.logic";
 import { useAtomCommand } from "../state/use-atom-command";
 import {
   ORCHESTRATION_OPERATE_DENIED_MESSAGE,
@@ -414,6 +415,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   }, [isFileDragOver]);
   const { leaseLiveStatus, rowRef } = useSidebarRowSubscriptionLease(isActive);
   const localLastVisitedAt = useUiStateStore((state) => state.threadLastVisitedAtById[threadKey]);
+  const prBadgeHidden = useUiStateStore(
+    (state) => state.threadPrBadgeHiddenById[threadKey] === true,
+  );
   const lastVisitedAt = resolveThreadLastVisitedAt(thread.lastVisitedAt, localLastVisitedAt);
   const isSelected = useThreadSelectionStore((state) => state.selectedThreadKeys.has(threadKey));
   const runningTerminalIds = useThreadRunningTerminalIds({
@@ -685,7 +689,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         onContextMenu={handleRowContextMenu}
       >
         <div className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
-          {prStatus && pr && (
+          {!prBadgeHidden && prStatus && pr && (
             <Tooltip>
               <TooltipTrigger
                 render={
@@ -711,7 +715,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               </TooltipPopup>
             </Tooltip>
           )}
-          {!pr && currentLinkedPr ? (
+          {!prBadgeHidden && !pr && currentLinkedPr ? (
             <a
               href={currentLinkedPr.url}
               target="_blank"
@@ -2155,6 +2159,9 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
             : []),
           { id: "rename", label: "Rename thread", disabled: !canOperateThread },
           { id: "mark-unread", label: "Mark unread" },
+          buildThreadPrBadgeMenuItem(
+            useUiStateStore.getState().threadPrBadgeHiddenById[threadKey] === true,
+          ),
           { id: "copy-path", label: "Copy Path" },
           { id: "copy-thread-id", label: "Copy Thread ID" },
           { id: "project-settings", label: "Project settings" },
@@ -2207,6 +2214,10 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
 
       if (clicked === "mark-unread") {
         markThreadUnread(threadRef);
+        return;
+      }
+      if (clicked === "pr-badge:visible" || clicked === "pr-badge:hidden") {
+        useUiStateStore.getState().setThreadPrBadgeHidden(threadKey, clicked === "pr-badge:hidden");
         return;
       }
       if (clicked === "copy-path") {
