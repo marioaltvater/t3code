@@ -8,7 +8,7 @@ import { afterEach, expect, it, vi } from "vite-plus/test";
 import { handleSidebarSectionRequest } from "./sidebarSectionClient";
 import {
   parsePersistedState,
-  persistState,
+  flushUiStatePersistence,
   PERSISTED_STATE_KEY,
   useUiStateStore,
 } from "./uiStateStore";
@@ -35,7 +35,7 @@ function setup() {
       ],
     }),
   );
-  persistState(useUiStateStore.getState());
+  flushUiStatePersistence();
   return storage;
 }
 const identity = {
@@ -161,5 +161,43 @@ it.each(["sections", "preferences"])(
     ).toThrow(new SidebarSectionError({ reason: "stale_client_state", outcomeUnknown: false }));
     expect(useUiStateStore.getState()).toBe(before);
     expect(storage.get(PERSISTED_STATE_KEY)).toBe(raw);
+  },
+);
+
+it.each(["sections", "preferences"])(
+  "does not overwrite another tab's newer %s after successful assignment",
+  (change) => {
+    vi.useFakeTimers();
+    try {
+      const storage = setup();
+      const assigned = handleSidebarSectionRequest(
+        event({
+          type: "assign",
+          requestId: "assign-before-other-tab",
+          threadId: ThreadId.make("research"),
+          sectionId: "talos",
+          expectedSectionId: null,
+        }),
+      );
+      expect(assigned.sections[1]?.threadIds).toEqual(["b", "c", "research"]);
+      const newer = JSON.parse(storage.get(PERSISTED_STATE_KEY)!);
+      if (change === "sections")
+        newer.sidebarPinnedSections.push({
+          id: "loomia",
+          name: "Loomia",
+          collapsed: false,
+          threadKeys: ["other:new"],
+        });
+      else newer.pullRequestMergeMethod = "squash";
+      const raw = JSON.stringify(newer);
+      storage.set(PERSISTED_STATE_KEY, raw);
+      vi.advanceTimersByTime(1000);
+      expect(storage.get(PERSISTED_STATE_KEY)).toBe(raw);
+      // The same drain is used at unload; it must not replay the completed assignment either.
+      flushUiStatePersistence();
+      expect(storage.get(PERSISTED_STATE_KEY)).toBe(raw);
+    } finally {
+      vi.useRealTimers();
+    }
   },
 );

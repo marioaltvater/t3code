@@ -304,6 +304,10 @@ export function persistState(state: UiState): void {
 
 const debouncedPersistState = new Debouncer(persistState, { wait: 500 });
 
+export function flushUiStatePersistence(): void {
+  debouncedPersistState.flush();
+}
+
 export function markThreadVisited(state: UiState, threadId: string, visitedAt: string): UiState {
   const visitedAtMs = Date.parse(visitedAt);
   if (!Number.isFinite(visitedAtMs)) {

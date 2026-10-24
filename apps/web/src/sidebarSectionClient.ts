@@ -11,7 +11,7 @@ import {
 import {
   PERSISTED_STATE_KEY,
   parsePersistedState,
-  persistState,
+  flushUiStatePersistence,
   useUiStateStore,
 } from "./uiStateStore";
 
@@ -49,7 +49,7 @@ export function handleSidebarSectionRequest(event: SidebarSectionEvent): Sidebar
       throw new SidebarSectionError({ reason: "membership_conflict", outcomeUnknown: false });
     state.moveThreadsToPinnedSection([key], request.sectionId);
     const updated = useUiStateStore.getState();
-    persistState(updated);
+    flushUiStatePersistence();
     // The normal writer tolerates storage errors for UI use. An agent receipt must prove durability.
     try {
       const persisted: unknown = JSON.parse(
