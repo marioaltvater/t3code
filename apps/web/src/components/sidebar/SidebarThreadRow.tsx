@@ -386,7 +386,7 @@ function SnoozeMenuButton(props: {
                   aria-label="Snooze thread"
                   onClick={(event) => event.stopPropagation()}
                   onDoubleClick={(event) => event.stopPropagation()}
-                  className="inline-flex h-full cursor-pointer items-center gap-0.5 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground hover:text-foreground"
+                  className="inline-flex h-full cursor-pointer items-center gap-0.5 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
                 />
               }
             />
