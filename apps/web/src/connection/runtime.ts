@@ -8,6 +8,7 @@ import { PullRequestDiffLoader } from "@t3tools/client-runtime/state/pull-reques
 import * as Layer from "effect/Layer";
 import { Atom } from "effect/reactivity";
 
+import * as SidebarSections from "../rpc/sidebarSections";
 import * as Runtime from "../lib/runtime";
 import * as BackgroundActivityReporter from "../lib/backgroundActivityReporter";
 import * as ConnectionPlatform from "./platform";
@@ -46,9 +47,10 @@ const layerProvidedClientConnection = layerSnapshotLoader.pipe(
   ),
 );
 
-const layerConnection = BackgroundActivityReporter.layer.pipe(
-  Layer.provideMerge(layerProvidedClientConnection),
-);
+const layerConnection = Layer.mergeAll(
+  BackgroundActivityReporter.layer,
+  SidebarSections.layer,
+).pipe(Layer.provideMerge(layerProvidedClientConnection));
 
 export const connectionAtomRuntime: Atom.AtomRuntime<
   Layer.Success<ConnectionLayerSource>,

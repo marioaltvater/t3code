@@ -1,3 +1,5 @@
+import { SectionsToolkit } from "./toolkits/sections/tools.ts";
+import * as SectionsHandlers from "./toolkits/sections/handlers.ts";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -1069,6 +1071,7 @@ export const layer = Layer.mergeAll(
   layerPreviewToolkit,
   layerOrchestratorToolkit,
   layerThreadToolkit,
+  toolkitRegistration(SectionsToolkit, SectionsHandlers.layer),
   layerAttachmentToolkit,
   layerProjectRegistration,
   layerEnvironmentToolkit,

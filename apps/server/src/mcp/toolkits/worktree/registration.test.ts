@@ -1,3 +1,4 @@
+import * as SidebarSections from "../../../sidebar/SidebarSections.ts";
 import * as Orchestrator from "../../../orchestration-v2/Orchestrator.ts";
 import * as ProjectionStore from "../../../orchestration-v2/ProjectionStore.ts";
 import * as DeviceService from "../../../device/DeviceService.ts";
@@ -82,7 +83,7 @@ const ToolsListPayload = Schema.fromJsonString(
 );
 const decodeToolsListPayload = Schema.decodeUnknownEffect(ToolsListPayload);
 
-it.effect("production mcp layer lists worktree tools over http", () =>
+it.effect("production mcp layer lists worktree and exact-client section tools over http", () =>
   Effect.scoped(
     Effect.gen(function* () {
       const layerRoutes = McpHttpServer.layer.pipe(Layer.provide(McpSessionRegistry.layer));
@@ -96,6 +97,7 @@ it.effect("production mcp layer lists worktree tools over http", () =>
           }),
         ),
         Layer.provide(PreviewAutomationBroker.layer),
+        Layer.provide(Layer.mock(SidebarSections.SidebarSections)({})),
         Layer.provide(PreviewBrowser.layer),
         Layer.provide(layerStubServices),
         Layer.build,
@@ -143,6 +145,9 @@ it.effect("production mcp layer lists worktree tools over http", () =>
       expect(toolNames).toContain("t3_worktree_status");
       expect(toolNames).toContain("preview_status");
       expect(toolNames).toContain("delegate_task");
+      expect(toolNames).toContain("t3_section_clients");
+      expect(toolNames).toContain("t3_sections_list");
+      expect(toolNames).toContain("t3_thread_assign_section");
 
       const handoff = tools.find((tool) => tool.name === "t3_worktree_handoff");
       expect(handoff?.annotations?.readOnlyHint).toBe(false);

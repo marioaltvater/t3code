@@ -524,3 +524,12 @@ it.effect("denies manual cleanup before the handler without settings permission"
     expect(handled).toBe(false);
   }).pipe(Effect.scoped),
 );
+
+it("requires operate scope for the exact-client section bridge", () => {
+  expect(requiredScopeForRpcMethod(WS_METHODS.sidebarSectionsConnect)).toBe(
+    AuthOrchestrationOperateScope,
+  );
+  expect(requiredScopeForRpcMethod(WS_METHODS.sidebarSectionsRespond)).toBe(
+    AuthOrchestrationOperateScope,
+  );
+});

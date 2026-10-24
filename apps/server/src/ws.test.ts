@@ -1,3 +1,4 @@
+import * as SidebarSections from "./sidebar/SidebarSections.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import {
@@ -623,6 +624,7 @@ it.effect(
             {},
             yield* PreviewAutomationBroker.PreviewAutomationBroker,
             yield* ServerBrowser.ServerBrowser,
+            yield* SidebarSections.SidebarSections,
           ).pipe(Layer.provide(configRpcServices)),
         ),
       );
@@ -685,6 +687,7 @@ it.effect(
           Layer.fresh(layerConfigSources),
           Layer.mock(PreviewAutomationBroker.PreviewAutomationBroker)({}),
           Layer.mock(ServerBrowser.ServerBrowser)({}),
+          Layer.mock(SidebarSections.SidebarSections)({}),
         ),
       ),
       Effect.scoped,

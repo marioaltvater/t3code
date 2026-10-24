@@ -1,4 +1,10 @@
 import {
+  SidebarClientRegistration,
+  SidebarSectionEvent,
+  SidebarSectionResponse,
+  SidebarSectionError,
+} from "./sidebarSections.ts";
+import {
   OrchestrationV2SearchThreadError,
   OrchestrationV2SearchThreadInput,
   OrchestrationV2SearchThreadResult,
@@ -571,6 +577,8 @@ export const WS_METHODS = {
   worktreeSetupCancel: "worktreeSetup.cancel",
   subscribeTerminalEvents: "subscribeTerminalEvents",
   subscribeTerminalMetadata: "subscribeTerminalMetadata",
+  sidebarSectionsConnect: "sidebarSections.connect",
+  sidebarSectionsRespond: "sidebarSections.respond",
   subscribePreviewEvents: "subscribePreviewEvents",
   subscribeDiscoveredLocalServers: "subscribeDiscoveredLocalServers",
   subscribeDeviceState: "subscribeDeviceState",
@@ -1777,6 +1785,17 @@ export const WsSubscribeServerConfigRpc = Rpc.make(WS_METHODS.subscribeServerCon
   stream: true,
 });
 
+const WsSidebarSectionsConnectRpc = Rpc.make(WS_METHODS.sidebarSectionsConnect, {
+  payload: SidebarClientRegistration,
+  success: SidebarSectionEvent,
+  error: Schema.Union([SidebarSectionError, EnvironmentAuthorizationError]),
+  stream: true,
+});
+const WsSidebarSectionsRespondRpc = Rpc.make(WS_METHODS.sidebarSectionsRespond, {
+  payload: SidebarSectionResponse,
+  error: Schema.Union([SidebarSectionError, EnvironmentAuthorizationError]),
+});
+
 const WsSubscribeServerLifecycleRpc = Rpc.make(WS_METHODS.subscribeServerLifecycle, {
   payload: Schema.Struct({}),
   success: ServerLifecycleStreamEvent,
@@ -2059,6 +2078,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsSubscribeDeviceStateRpc,
   WsSubscribeServerConfigRpc,
   WsSubscribeServerLifecycleRpc,
+  WsSidebarSectionsConnectRpc,
+  WsSidebarSectionsRespondRpc,
   WsSubscribeAuthAccessRpc,
   WsSubscribeBackgroundPolicyRpc,
   WsSubscribeResourceTelemetryRpc,
