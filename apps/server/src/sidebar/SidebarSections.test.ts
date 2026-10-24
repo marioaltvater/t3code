@@ -6,6 +6,7 @@ import {
   ThreadId,
   type SidebarSectionEvent,
   type OrchestrationV2ThreadShell,
+  type OrchestrationV2ServerCommand,
 } from "@t3tools/contracts";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -25,7 +26,7 @@ const registration = { environmentId, clientId: "desktop", surface: "desktop" as
 const target = { environmentId, clientId: "desktop" };
 const setup = Effect.gen(function* () {
   let pinned = false;
-  const commands: string[] = [];
+  const commands: OrchestrationV2ServerCommand[] = [];
   const thread = () =>
     ({
       id: threadId,
@@ -48,7 +49,7 @@ const setup = Effect.gen(function* () {
               getThreadShell: () => Effect.sync(thread),
               dispatch: (command) =>
                 Effect.sync(() => {
-                  commands.push(command.type);
+                  commands.push(command);
                   pinned = true;
                   return { sequence: 1, storedEvents: [] };
                 }),
@@ -95,13 +96,13 @@ it.effect("routes list/assign/readback to the exact connection and pins only onc
       expect(assigned.sections[1]?.threadIds).toEqual([threadId]);
       expect(operations).toEqual(["list", "assign", "list"]);
       yield* service.assign({ ...target, threadId, sectionId: "talos" });
-      expect(commands).toEqual(["thread.pin"]);
+      expect(commands).toMatchObject([{ type: "thread.pin", onlyIfActive: true }]);
       const conflict = yield* service
         .assign({ ...target, threadId, sectionId: "chief" })
         .pipe(Effect.flip);
       expect(conflict.reason).toBe("membership_conflict");
       yield* service.assign({ ...target, threadId, sectionId: null, mode: "move" });
-      expect(commands).toEqual(["thread.pin"]);
+      expect(commands).toMatchObject([{ type: "thread.pin", onlyIfActive: true }]);
     }),
   ),
 );

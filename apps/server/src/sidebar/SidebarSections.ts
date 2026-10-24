@@ -222,6 +222,7 @@ const make = Effect.gen(function* () {
       yield* threads
         .dispatch({
           type: "thread.pin",
+          onlyIfActive: true,
           threadId: input.threadId,
           commandId: CommandId.make(yield* crypto.randomUUIDv4().pipe(Effect.orDie)),
         })

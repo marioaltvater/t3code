@@ -43,6 +43,7 @@ export const SidebarSectionErrorReason = Schema.Literals([
   "section_not_found",
   "membership_conflict",
   "persistence_failed",
+  "stale_client_state",
   "readback_failed",
   "thread_unavailable",
 ]);

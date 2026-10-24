@@ -2761,6 +2761,18 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         cause: `Thread ${command.threadId} is archived.`,
       });
     }
+    // Agent section assignment must not revive a thread whose lifecycle changed after its read.
+    if (
+      command.type === "thread.pin" &&
+      command.onlyIfActive === true &&
+      (thread.snoozedUntil !== null || thread.settledOverride === "settled")
+    ) {
+      return yield* new OrchestratorDispatchError({
+        commandId: command.commandId,
+        commandType: command.type,
+        cause: `Thread ${command.threadId} is not active and cannot be pinned.`,
+      });
+    }
     // Only pinned threads have a slot in the arranged order. Rejecting
     // (rather than silently pinning) keeps a raced reorder-after-unpin from
     // resurrecting a pin the user just cleared.

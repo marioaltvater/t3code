@@ -1231,3 +1231,92 @@ it.effect("explicit settle clears snooze atomically and stays idempotent after r
     assert.deepInclude((yield* projections.getThreadProjection(threadId)).thread, active);
   }).pipe(Effect.provide(layerTest)),
 );
+
+it.effect.each(["thread.snooze", "thread.settle", "thread.archive"] as const)(
+  "guarded pin preserves a %s committed after the caller's availability read",
+  (type) =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const projections = yield* ProjectionStore.ProjectionStoreV2;
+      const threadId = ThreadId.make(`thread:guarded-pin:${type}`);
+      yield* orchestrator.dispatch({
+        type: "thread.create",
+        commandId: CommandId.make(`create:${type}`),
+        threadId,
+        projectId: ProjectId.make("project:guarded-pin"),
+        title: "Research",
+        modelSelection,
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        branch: null,
+        worktreePath: null,
+        createdBy: "agent",
+        creationSource: "mcp",
+      });
+      const available = yield* projections.getThreadShell(threadId);
+      assert.isNull(available?.snoozedUntil);
+      assert.isNull(available?.pinnedAt);
+      const commandId = CommandId.make(`lifecycle:${type}`);
+      if (type === "thread.snooze") {
+        yield* orchestrator.dispatch({
+          type,
+          commandId,
+          threadId,
+          snoozedUntil: DateTime.formatIso(DateTime.add(yield* DateTime.now, { hours: 1 })),
+        });
+      } else yield* orchestrator.dispatch({ type, commandId, threadId });
+      const before = yield* projections.getThread(threadId);
+      const sequence = yield* orchestrator.getThreadEventSequence(threadId);
+      const refused = yield* orchestrator
+        .dispatch({
+          type: "thread.pin",
+          commandId: CommandId.make(`guarded-pin:${type}`),
+          threadId,
+          onlyIfActive: true,
+        })
+        .pipe(Effect.flip);
+      assert.equal(refused._tag, "OrchestratorDispatchError");
+      assert.deepEqual(yield* projections.getThread(threadId), before);
+      assert.equal(yield* orchestrator.getThreadEventSequence(threadId), sequence);
+      if (type !== "thread.archive") {
+        yield* orchestrator.dispatch({
+          type: "thread.pin",
+          commandId: CommandId.make(`manual-pin:${type}`),
+          threadId,
+        });
+        const manual = yield* projections.getThread(threadId);
+        assert.isNotNull(manual.pinnedAt);
+        assert.isNull(manual.snoozedUntil);
+        assert.notEqual(manual.settledOverride, "settled");
+      }
+    }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect("guarded pin still pins an active thread", () =>
+  Effect.gen(function* () {
+    const orchestrator = yield* Orchestrator.OrchestratorV2;
+    const projections = yield* ProjectionStore.ProjectionStoreV2;
+    const threadId = ThreadId.make("thread:guarded-pin:active");
+    yield* orchestrator.dispatch({
+      type: "thread.create",
+      commandId: CommandId.make("create:guarded-active"),
+      threadId,
+      projectId: ProjectId.make("project:guarded-pin"),
+      title: "Research",
+      modelSelection,
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      branch: null,
+      worktreePath: null,
+      createdBy: "agent",
+      creationSource: "mcp",
+    });
+    yield* orchestrator.dispatch({
+      type: "thread.pin",
+      commandId: CommandId.make("pin:guarded-active"),
+      threadId,
+      onlyIfActive: true,
+    });
+    assert.isNotNull((yield* projections.getThread(threadId)).pinnedAt);
+  }).pipe(Effect.provide(layerTest)),
+);

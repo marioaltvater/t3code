@@ -1,5 +1,4 @@
 import { EnvironmentRegistry } from "@t3tools/client-runtime/connection";
-import { subscribeDynamic } from "@t3tools/client-runtime/rpc";
 import { createEnvironmentRpcCommand, runAtomCommand } from "@t3tools/client-runtime/state/runtime";
 import { SidebarSectionError, WS_METHODS } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
@@ -11,6 +10,7 @@ import { connectionAtomRuntime } from "../connection/runtime";
 import { getClientId } from "../lib/backgroundActivityReporter";
 import { handleSidebarSectionRequest } from "../sidebarSectionClient";
 import { appAtomRegistry } from "./atomRegistry";
+import { subscribeSidebarSections } from "./sidebarSectionsSubscription";
 
 const isSidebarSectionError = Schema.is(SidebarSectionError);
 
@@ -33,19 +33,10 @@ export const layer = Layer.effectDiscard(
           ids.map((environmentId) =>
             registry.followStream(
               environmentId,
-              subscribeDynamic(WS_METHODS.sidebarSectionsConnect, (session) =>
-                session.initialConfig.pipe(
-                  Effect.flatMap((config) =>
-                    config.environment.capabilities.sidebarSections === true
-                      ? Effect.succeed({
-                          environmentId,
-                          clientId,
-                          surface: window.desktopBridge ? ("desktop" as const) : ("web" as const),
-                        })
-                      : Effect.never,
-                  ),
-                  Effect.catch(() => Effect.never),
-                ),
+              subscribeSidebarSections(
+                environmentId,
+                clientId,
+                window.desktopBridge ? "desktop" : "web",
               ).pipe(
                 Stream.mapEffect((event) =>
                   Effect.promise(async () => {

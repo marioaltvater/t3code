@@ -8,12 +8,34 @@ import {
   type SidebarSectionEvent,
   type SidebarSectionsSnapshot,
 } from "@t3tools/contracts";
-import { PERSISTED_STATE_KEY, persistState, useUiStateStore } from "./uiStateStore";
+import {
+  PERSISTED_STATE_KEY,
+  parsePersistedState,
+  persistState,
+  useUiStateStore,
+} from "./uiStateStore";
 
 export function handleSidebarSectionRequest(event: SidebarSectionEvent): SidebarSectionsSnapshot {
   const { request, ...identity } = event;
   const state = useUiStateStore.getState();
   if (request.type === "assign") {
+    // Another tab can persist changes without updating this connection's cached store.
+    // Reject before mutating: even the normal debounced writer would otherwise erase them.
+    let persisted;
+    try {
+      persisted = parsePersistedState(
+        JSON.parse(window.localStorage.getItem(PERSISTED_STATE_KEY) ?? "{}"),
+      );
+    } catch {
+      throw new SidebarSectionError({ reason: "persistence_failed", outcomeUnknown: false });
+    }
+    if (
+      Object.entries(persisted).some(
+        ([key, value]) =>
+          JSON.stringify(value) !== JSON.stringify(state[key as keyof typeof persisted]),
+      )
+    )
+      throw new SidebarSectionError({ reason: "stale_client_state", outcomeUnknown: false });
     if (
       request.sectionId !== null &&
       !state.sidebarPinnedSections.some((section) => section.id === request.sectionId)

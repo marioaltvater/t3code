@@ -2651,6 +2651,7 @@ export const OrchestrationV2Command = Schema.Union([
     commandId: CommandId,
     threadId: ThreadId,
     orderKey: Schema.optional(TrimmedNonEmptyString),
+    onlyIfActive: Schema.optional(Schema.Boolean),
   }),
   Schema.Struct({
     type: Schema.Literal("thread.unpin"),

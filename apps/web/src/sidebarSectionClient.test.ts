@@ -6,7 +6,12 @@ import {
 } from "@t3tools/contracts";
 import { afterEach, expect, it, vi } from "vite-plus/test";
 import { handleSidebarSectionRequest } from "./sidebarSectionClient";
-import { parsePersistedState, PERSISTED_STATE_KEY, useUiStateStore } from "./uiStateStore";
+import {
+  parsePersistedState,
+  persistState,
+  PERSISTED_STATE_KEY,
+  useUiStateStore,
+} from "./uiStateStore";
 
 function setup() {
   const storage = new Map<string, string>();
@@ -30,6 +35,7 @@ function setup() {
       ],
     }),
   );
+  persistState(useUiStateStore.getState());
   return storage;
 }
 const identity = {
@@ -125,3 +131,35 @@ it("never claims persistence when browser storage fails", () => {
     ),
   ).toThrow(new SidebarSectionError({ reason: "persistence_failed", outcomeUnknown: true }));
 });
+
+it.each(["sections", "preferences"])(
+  "rejects a tab with stale persisted %s before any mutation",
+  (change) => {
+    const storage = setup();
+    const before = useUiStateStore.getState();
+    const newer = JSON.parse(storage.get(PERSISTED_STATE_KEY)!);
+    if (change === "sections")
+      newer.sidebarPinnedSections.push({
+        id: "loomia",
+        name: "Loomia",
+        collapsed: false,
+        threadKeys: ["other:new"],
+      });
+    else newer.pullRequestMergeMethod = "squash";
+    const raw = JSON.stringify(newer);
+    storage.set(PERSISTED_STATE_KEY, raw);
+    expect(() =>
+      handleSidebarSectionRequest(
+        event({
+          type: "assign",
+          requestId: "stale",
+          threadId: ThreadId.make("research"),
+          sectionId: "talos",
+          expectedSectionId: null,
+        }),
+      ),
+    ).toThrow(new SidebarSectionError({ reason: "stale_client_state", outcomeUnknown: false }));
+    expect(useUiStateStore.getState()).toBe(before);
+    expect(storage.get(PERSISTED_STATE_KEY)).toBe(raw);
+  },
+);
