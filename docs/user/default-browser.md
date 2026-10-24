@@ -15,3 +15,13 @@ HTML files you open from Finder open the same way. [Prompt links](prompt-links.m
 app.t3.codes open in the app as a draft.
 
 A link that launches T3 Code waits until the app has connected to its environment, then opens.
+
+## Keep pages with a thread
+
+Right-click a browser tab and choose **Pin page to thread**, or use the browser's More menu.
+The page appears under **Pinned pages** in the thread details panel. Select it to return to an
+open tab or reopen it using its saved browser profile. Closing a tab keeps its pin; use
+**Unpin** to remove it.
+
+Pins are saved on this client, separately for each thread and environment. They survive app
+restarts but do not sync to other devices.
