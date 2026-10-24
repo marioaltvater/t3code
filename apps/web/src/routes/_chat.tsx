@@ -22,7 +22,6 @@ import { isPreviewFocused } from "../lib/previewFocus";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import { isEditableFocused } from "../lib/editableFocus";
 import { isModelPickerOpen } from "../modelPickerVisibility";
-import { undoLatestThreadAction } from "../hooks/showThreadUndoNotice";
 import { resolveShortcutCommand } from "../keybindings";
 import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
 import { selectActiveRightPanel, useRightPanelStore } from "../rightPanelStore";
@@ -80,15 +79,6 @@ function ChatRouteGlobalShortcuts() {
       });
 
       if (isCommandPaletteOpen()) {
-        return;
-      }
-
-      if (command === "thread.undo") {
-        if (event.repeat || isModelPickerOpen()) return;
-        if (undoLatestThreadAction()) {
-          event.preventDefault();
-          event.stopPropagation();
-        }
         return;
       }
 
@@ -201,6 +191,34 @@ function ChatRouteGlobalShortcuts() {
     legacySidebarEnabled,
     terminalOpen,
   ]);
+
+  useEffect(
+    () =>
+      window.desktopBridge?.onMenuAction((action) => {
+        if (action === "chat.newLocal") {
+          void startNewThreadFromContext({
+            activeDraftThread,
+            activeThread: activeThread ?? undefined,
+            defaultProjectRef,
+            handleNewThread,
+          });
+        } else if (action === "chat.newWithoutProject") {
+          const environmentId = scratchEnvironmentId(
+            activeThread?.environmentId ?? activeDraftThread?.environmentId ?? primaryEnvironmentId,
+          );
+          if (environmentId !== null) void startScratchThread(environmentId);
+        }
+      }),
+    [
+      activeDraftThread,
+      activeThread,
+      defaultProjectRef,
+      handleNewThread,
+      primaryEnvironmentId,
+      scratchEnvironmentId,
+      startScratchThread,
+    ],
+  );
 
   return null;
 }

@@ -12,11 +12,13 @@ export interface TimelineMinimapItem {
   readonly assistantText: string | null;
 }
 
+const TIMELINE_MINIMAP_MAX_ITEMS = 40;
+
 export function deriveTimelineMinimapItems(
   rows: ReadonlyArray<MessagesTimelineRow>,
 ): TimelineMinimapItem[] {
   const items: TimelineMinimapItem[] = [];
-  for (let index = 0; index < rows.length; index += 1) {
+  for (let index = rows.length - 1; index >= 0; index -= 1) {
     const row = rows[index];
     if (row?.kind !== "message" || row.message.role !== "user") {
       continue;
@@ -28,8 +30,11 @@ export function deriveTimelineMinimapItems(
       userText: row.message.text,
       assistantText: resolveFinalAssistantTextForTurn(rows, index),
     });
+    if (items.length === TIMELINE_MINIMAP_MAX_ITEMS) {
+      break;
+    }
   }
-  return items;
+  return items.toReversed();
 }
 
 function resolveFinalAssistantTextForTurn(

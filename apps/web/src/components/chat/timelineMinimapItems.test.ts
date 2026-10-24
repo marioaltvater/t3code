@@ -29,6 +29,35 @@ function rows(
 }
 
 describe("timeline minimap previews", () => {
+  it("keeps only the latest 40 turns with their original jump targets and responses", () => {
+    const source = rows(
+      Array.from({ length: 200 }, (_, index) => [
+        ["user", `Prompt ${index}`] as const,
+        ["assistant", `Answer ${index}`] as const,
+      ]).flat(),
+    );
+    const items = deriveTimelineMinimapItems(source);
+
+    expect(items).toHaveLength(40);
+    expect(items.map((item) => item.userText)).toEqual(
+      Array.from({ length: 40 }, (_, index) => `Prompt ${160 + index}`),
+    );
+    for (const [index, item] of items.entries()) {
+      expect(item.rowIndex).toBe((160 + index) * 2);
+      expect(source[item.rowIndex]?.id).toBe(item.id);
+      expect(item.assistantText).toBe(`Answer ${160 + index}`);
+    }
+
+    const updated = deriveTimelineMinimapItems([...source, ...rows([["user", "Newest prompt"]])]);
+    expect(updated).toHaveLength(40);
+    expect(updated[0]?.userText).toBe("Prompt 161");
+    expect(updated.at(-1)).toMatchObject({
+      rowIndex: source.length,
+      userText: "Newest prompt",
+      assistantText: null,
+    });
+  });
+
   it("previews the last assistant response before the next prompt and retains jump targets", () => {
     const source = rows([
       ["user", "  Inspect\n this  "],

@@ -24,6 +24,8 @@ function setup() {
   });
   useUiStateStore.setState(
     parsePersistedState({
+      sidebarCompactSections: { active: true, "pinned-section:chief": true },
+      threadPrBadgeHiddenById: { "env:a": true },
       sidebarPinnedSections: [
         {
           id: "chief",
@@ -73,6 +75,13 @@ it("assigns one scoped thread, persists it, and is idempotent after reload", () 
   expect(result.sections[1]?.threadIds).toEqual(["b", "c", "research"]);
   const saved = JSON.parse(storage.get(PERSISTED_STATE_KEY)!);
   expect(saved.sidebarPinnedSections[0].threadKeys).toEqual(["env:a", "other:research"]);
+  expect(saved.sidebarCompactSections).toEqual({
+    snoozed: true,
+    settled: true,
+    active: true,
+    "pinned-section:chief": true,
+  });
+  expect(saved.threadPrBadgeHiddenById).toEqual({ "env:a": true });
   useUiStateStore.setState(parsePersistedState(saved));
   expect(
     handleSidebarSectionRequest({
@@ -132,7 +141,7 @@ it("never claims persistence when browser storage fails", () => {
   ).toThrow(new SidebarSectionError({ reason: "persistence_failed", outcomeUnknown: true }));
 });
 
-it.each(["sections", "preferences"])(
+it.each(["sections", "preferences", "compact preferences"])(
   "rejects a tab with stale persisted %s before any mutation",
   (change) => {
     const storage = setup();
@@ -145,6 +154,7 @@ it.each(["sections", "preferences"])(
         collapsed: false,
         threadKeys: ["other:new"],
       });
+    else if (change === "compact preferences") newer.sidebarCompactSections.active = false;
     else newer.pullRequestMergeMethod = "squash";
     const raw = JSON.stringify(newer);
     storage.set(PERSISTED_STATE_KEY, raw);
@@ -164,7 +174,7 @@ it.each(["sections", "preferences"])(
   },
 );
 
-it.each(["sections", "preferences"])(
+it.each(["sections", "preferences", "compact preferences"])(
   "does not overwrite another tab's newer %s after successful assignment",
   (change) => {
     vi.useFakeTimers();
@@ -188,6 +198,7 @@ it.each(["sections", "preferences"])(
           collapsed: false,
           threadKeys: ["other:new"],
         });
+      else if (change === "compact preferences") newer.sidebarCompactSections.active = false;
       else newer.pullRequestMergeMethod = "squash";
       const raw = JSON.stringify(newer);
       storage.set(PERSISTED_STATE_KEY, raw);

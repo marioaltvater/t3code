@@ -1,8 +1,6 @@
 import type { ProjectId } from "@t3tools/contracts";
 import type { SidebarProjectSortOrder, SidebarThreadSortOrder } from "@t3tools/contracts/settings";
 import type { EnvironmentThreadShell } from "./models.ts";
-import * as Arr from "effect/Array";
-import * as Order from "effect/Order";
 
 export interface ThreadSortInput {
   readonly createdAt: string;
@@ -113,7 +111,7 @@ export function getThreadSortTimestamp(
   return getLatestUserMessageTimestamp(thread);
 }
 
-export function activeThreadAnchorTimestampMs(thread: {
+function activeThreadAnchorTimestampMs(thread: {
   readonly createdAt: string;
   readonly unsettledAt?: string | null | undefined;
 }): number {
@@ -293,6 +291,38 @@ export function sortPinnedThreadsByOrderKey<
       timestamps.get(right)! - timestamps.get(left)! || identityTiebreak(left, right),
   );
   return [...keyed, ...keyless];
+}
+
+// Keyless pins sort after every keyed pin; preserve that tail before appending a key.
+export function planPinnedAppendOrder<
+  T extends {
+    readonly id: string;
+    readonly createdAt: string;
+    readonly pinnedAt?: string | null | undefined;
+    readonly pinOrderKey?: string | null | undefined;
+    readonly environmentId?: string | undefined;
+  },
+>(
+  threads: readonly T[],
+): {
+  readonly legacyKeys: ReadonlyArray<{ readonly thread: T; readonly orderKey: string }>;
+  readonly orderKey: string;
+} | null {
+  const pinned = sortPinnedThreadsByOrderKey(threads.filter((thread) => thread.pinnedAt != null));
+  let lastKey: string | null = null;
+  for (const thread of pinned) {
+    if (thread.pinOrderKey != null) lastKey = thread.pinOrderKey;
+  }
+  const legacyKeys: Array<{ thread: T; orderKey: string }> = [];
+  for (const thread of pinned) {
+    if (thread.pinOrderKey != null) continue;
+    const orderKey = pinOrderKeyBetween(lastKey, null);
+    if (orderKey === null) return null;
+    legacyKeys.push({ thread, orderKey });
+    lastKey = orderKey;
+  }
+  const orderKey = pinOrderKeyBetween(lastKey, null);
+  return orderKey === null ? null : { legacyKeys, orderKey };
 }
 
 export function sortActiveThreadsByOrderKey<

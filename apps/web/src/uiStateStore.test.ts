@@ -1,22 +1,27 @@
-import { ProjectId, ThreadId } from "@t3tools/contracts";
+import { ThreadId } from "@t3tools/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import {
   createSidebarPinnedSection,
-  moveThreadsToPinnedSection,
+  deleteSidebarPinnedSection,
   legacyProjectCwdPreferenceKey,
+  MAX_SIDEBAR_PINNED_SECTIONS,
+  MAX_SIDEBAR_SECTION_NAME_LENGTH,
   markThreadUnread,
   markThreadVisited,
+  moveSidebarPinnedSection,
+  moveThreadsToPinnedSection,
   parsePersistedState,
   PERSISTED_STATE_KEY,
   type PersistedUiState,
   persistState,
+  renameSidebarPinnedSection,
   reorderProjects,
   resolveProjectExpanded,
-  setDefaultAdvertisedEndpointKey,
   setProjectExpanded,
-  setSidebarProjectScopeKey,
-  setThreadChangedFilesExpanded,
+  setThreadPrBadgeHidden,
+  toggleSidebarPinnedSection,
+  setSidebarSectionCompact,
   type UiState,
 } from "./uiStateStore";
 
@@ -26,7 +31,9 @@ function makeUiState(overrides: Partial<UiState> = {}): UiState {
     projectOrder: [],
     sidebarProjectScopeKey: null,
     sidebarPinnedSections: [],
+    sidebarCompactSections: { snoozed: true, settled: true },
     threadLastVisitedAtById: {},
+    threadPrBadgeHiddenById: {},
     threadChangedFilesExpandedById: {},
     defaultAdvertisedEndpointKey: null,
     pullRequestMergeMethod: "merge",
@@ -35,6 +42,29 @@ function makeUiState(overrides: Partial<UiState> = {}): UiState {
 }
 
 describe("uiStateStore pure functions", () => {
+  it("hides and restores one thread without affecting the same ID in another environment", () => {
+    const initial = makeUiState();
+    const hidden = setThreadPrBadgeHidden(initial, "env-a:thread-1", true);
+    expect(hidden.threadPrBadgeHiddenById["env-a:thread-1"]).toBe(true);
+    expect(hidden.threadPrBadgeHiddenById["env-b:thread-1"]).toBeUndefined();
+    const otherHidden = setThreadPrBadgeHidden(hidden, "env-b:thread-1", true);
+    const restored = setThreadPrBadgeHidden(otherHidden, "env-a:thread-1", false);
+    expect(restored.threadPrBadgeHiddenById).toEqual({
+      "env-a:thread-1": false,
+      "env-b:thread-1": true,
+    });
+  });
+
+  it("defaults sidebar PR badges to visible and sanitizes saved choices", () => {
+    expect(parsePersistedState({}).threadPrBadgeHiddenById).toEqual({});
+    const saved = JSON.parse('{"env-a:thread-1":true,"env-b:thread-1":false,"bad":"true","":true}');
+    expect(parsePersistedState({ threadPrBadgeHiddenById: saved }).threadPrBadgeHiddenById).toEqual(
+      {
+        "env-a:thread-1": true,
+        "env-b:thread-1": false,
+      },
+    );
+  });
   it("stores server timestamps without moving visit state backwards", () => {
     const threadId = ThreadId.make("thread-1");
     const initialState = makeUiState();
@@ -87,17 +117,6 @@ describe("uiStateStore pure functions", () => {
     expect(setProjectExpanded(next, keys, false)).toBe(next);
   });
 
-  it("reorders from the current atom-derived project order", () => {
-    const project1 = ProjectId.make("project-1");
-    const project2 = ProjectId.make("project-2");
-    const project3 = ProjectId.make("project-3");
-    const currentOrder = [project1, project2, project3];
-
-    const next = reorderProjects(makeUiState(), currentOrder, [project1], [project3]);
-
-    expect(next.projectOrder).toEqual([project2, project3, project1]);
-  });
-
   it("moves grouped project members together", () => {
     const keyALocal = "env-local:proj-a";
     const keyARemote = "env-remote:proj-a";
@@ -109,59 +128,98 @@ describe("uiStateStore pure functions", () => {
 
     expect(next.projectOrder).toEqual([keyB, keyC, keyALocal, keyARemote]);
   });
-
-  it("does not reorder missing or identical groups", () => {
-    const currentOrder = ["env-local:proj-a", "env-local:proj-b"];
-    const state = makeUiState();
-
-    expect(reorderProjects(state, currentOrder, ["env-local:missing"], ["env-local:proj-b"])).toBe(
-      state,
-    );
-    expect(reorderProjects(state, currentOrder, ["env-local:proj-a"], ["env-local:proj-a"])).toBe(
-      state,
-    );
-  });
-
-  it("stores explicit changed-file expansion choices", () => {
-    const threadId = ThreadId.make("thread-1");
-    const collapsed = setThreadChangedFilesExpanded(makeUiState(), threadId, "turn-1", false);
-
-    expect(collapsed.threadChangedFilesExpandedById).toEqual({
-      [threadId]: {
-        "turn-1": false,
-      },
-    });
-    expect(
-      setThreadChangedFilesExpanded(collapsed, threadId, "turn-1", true)
-        .threadChangedFilesExpandedById,
-    ).toEqual({
-      [threadId]: {
-        "turn-1": true,
-      },
-    });
-  });
-
-  it("stores the endpoint preference by stable key", () => {
-    const next = setDefaultAdvertisedEndpointKey(makeUiState(), "desktop-core:lan:http");
-
-    expect(next.defaultAdvertisedEndpointKey).toBe("desktop-core:lan:http");
-    expect(setDefaultAdvertisedEndpointKey(next, "desktop-core:lan:http")).toBe(next);
-    expect(setDefaultAdvertisedEndpointKey(next, "")).toMatchObject({
-      defaultAdvertisedEndpointKey: null,
-    });
-  });
-
-  it("stores the sidebar project scope and resets it to all projects", () => {
-    const scoped = setSidebarProjectScopeKey(makeUiState(), "github.com/pingdotgg/t3code");
-
-    expect(scoped.sidebarProjectScopeKey).toBe("github.com/pingdotgg/t3code");
-    expect(setSidebarProjectScopeKey(scoped, "github.com/pingdotgg/t3code")).toBe(scoped);
-    expect(setSidebarProjectScopeKey(scoped, null).sidebarProjectScopeKey).toBeNull();
-    expect(setSidebarProjectScopeKey(scoped, "").sidebarProjectScopeKey).toBeNull();
-  });
 });
 
 describe("parsePersistedState", () => {
+  it("keeps compact defaults and ignores malformed or deleted section preferences", () => {
+    expect(parsePersistedState({}).sidebarCompactSections).toEqual({
+      snoozed: true,
+      settled: true,
+    });
+    const parsed = parsePersistedState({
+      sidebarPinnedSections: [
+        { id: "research", name: "Research", threadKeys: [], collapsed: false },
+      ],
+      sidebarCompactSections: {
+        pinned: true,
+        active: true,
+        settled: false,
+        "pinned-section:research": true,
+        "pinned-section:deleted": true,
+        working: "yes",
+      },
+    } as unknown as PersistedUiState);
+    expect(parsed.sidebarCompactSections).toEqual({
+      pinned: true,
+      active: true,
+      snoozed: true,
+      settled: false,
+      "pinned-section:research": true,
+    });
+  });
+
+  it("defaults missing and malformed pinned sections to empty", () => {
+    expect(parsePersistedState({}).sidebarPinnedSections).toEqual([]);
+    expect(
+      parsePersistedState({ sidebarPinnedSections: {} } as unknown as PersistedUiState)
+        .sidebarPinnedSections,
+    ).toEqual([]);
+  });
+
+  it("sanitizes sections with first-wins identity, names, and thread membership", () => {
+    const parsed = parsePersistedState({
+      sidebarPinnedSections: [
+        null,
+        7,
+        { id: " ", name: "Invalid", threadKeys: ["ignored"] },
+        { id: "blank-name", name: "  " },
+        {
+          id: "first",
+          name: " Work ",
+          threadKeys: ["env-a:t1", "env-a:t1", "", 7],
+          collapsed: true,
+        },
+        { id: "first", name: "Duplicate ID", threadKeys: ["env-a:t2"] },
+        { id: "duplicate-name", name: "work", threadKeys: ["env-a:t2"] },
+        {
+          id: "second",
+          name: "Other",
+          threadKeys: ["env-a:t1", "env-a:t2", "offline:t3"],
+          collapsed: "yes",
+        },
+        { id: "third", name: "Empty", threadKeys: null },
+      ],
+    } as unknown as PersistedUiState);
+
+    expect(parsed.sidebarPinnedSections).toEqual([
+      { id: "first", name: "Work", threadKeys: ["env-a:t1"], collapsed: true },
+      { id: "second", name: "Other", threadKeys: ["env-a:t2", "offline:t3"], collapsed: false },
+      { id: "third", name: "Empty", threadKeys: [], collapsed: false },
+    ]);
+  });
+
+  it("bounds loaded section names and the number of accepted sections", () => {
+    const parsed = parsePersistedState({
+      sidebarPinnedSections: [
+        { id: "invalid", name: "", threadKeys: [], collapsed: false },
+        ...Array.from({ length: MAX_SIDEBAR_PINNED_SECTIONS + 2 }, (_, index) => ({
+          id: `${index}`,
+          name: `${index}-` + "x".repeat(MAX_SIDEBAR_SECTION_NAME_LENGTH),
+          threadKeys: [],
+          collapsed: false,
+        })),
+      ],
+    });
+
+    expect(parsed.sidebarPinnedSections).toHaveLength(MAX_SIDEBAR_PINNED_SECTIONS);
+    expect(parsed.sidebarPinnedSections[0]?.id).toBe("0");
+    expect(
+      parsed.sidebarPinnedSections.every(
+        (section) => section.name.length === MAX_SIDEBAR_SECTION_NAME_LENGTH,
+      ),
+    ).toBe(true);
+  });
+
   it("hydrates the last selected pull request merge method", () => {
     const parsed = parsePersistedState({
       pullRequestMergeMethod: "squash",
@@ -206,7 +264,9 @@ describe("parsePersistedState", () => {
       defaultAdvertisedEndpointKey: "desktop-core:lan:http",
       sidebarProjectScopeKey: null,
       sidebarPinnedSections: [],
+      sidebarCompactSections: { snoozed: true, settled: true },
       pullRequestMergeMethod: "merge",
+      threadPrBadgeHiddenById: {},
       threadChangedFilesExpandedById: {
         "environment:thread-1": {
           "turn-1": false,
@@ -243,22 +303,135 @@ describe("parsePersistedState", () => {
     expect(resolveProjectExpanded(parsed.projectExpandedById, [projectBKey])).toBe(false);
     expect(resolveProjectExpanded(parsed.projectExpandedById, ["unknown"])).toBe(true);
   });
+});
 
-  it("preserves legacy expanded-only semantics for one-way migration", () => {
-    const parsed = parsePersistedState({
-      expandedProjectCwds: ["/repo/a"],
+describe("named pinned sections", () => {
+  function sectionsState(): UiState {
+    return makeUiState({
+      sidebarPinnedSections: [
+        { id: "work", name: "Work", threadKeys: ["env-a:t1", "offline:t2"], collapsed: false },
+        { id: "personal", name: "Personal", threadKeys: ["env-b:t1"], collapsed: true },
+      ],
     });
+  }
 
+  it("creates trimmed, expanded, empty sections and enforces IDs, names, and limits", () => {
+    const state = sectionsState();
+    const next = createSidebarPinnedSection(state, "new", " New ");
+    expect(next.sidebarPinnedSections.at(-1)).toEqual({
+      id: "new",
+      name: "New",
+      threadKeys: [],
+      collapsed: false,
+    });
+    expect(state.sidebarPinnedSections).toHaveLength(2);
+    expect(createSidebarPinnedSection(state, "new", " work ")).toBe(state);
+    expect(createSidebarPinnedSection(state, "work", "New")).toBe(state);
+    expect(createSidebarPinnedSection(state, " ", "New")).toBe(state);
+    expect(createSidebarPinnedSection(state, "new", " ")).toBe(state);
     expect(
-      resolveProjectExpanded(parsed.projectExpandedById, [
-        legacyProjectCwdPreferenceKey("/repo/a"),
-      ]),
-    ).toBe(true);
+      createSidebarPinnedSection(state, "new", "x".repeat(MAX_SIDEBAR_SECTION_NAME_LENGTH + 1)),
+    ).toBe(state);
     expect(
-      resolveProjectExpanded(parsed.projectExpandedById, [
-        legacyProjectCwdPreferenceKey("/repo/b"),
-      ]),
+      createSidebarPinnedSection(state, "new", "x".repeat(MAX_SIDEBAR_SECTION_NAME_LENGTH))
+        .sidebarPinnedSections,
+    ).toHaveLength(3);
+    let full = makeUiState();
+    for (let index = 0; index < MAX_SIDEBAR_PINNED_SECTIONS; index++) {
+      full = createSidebarPinnedSection(full, `${index}`, `Section ${index}`);
+    }
+    expect(full.sidebarPinnedSections).toHaveLength(MAX_SIDEBAR_PINNED_SECTIONS);
+    expect(createSidebarPinnedSection(full, "overflow", "Overflow")).toBe(full);
+  });
+
+  it("renames without losing membership, order, or collapse state", () => {
+    const state = sectionsState();
+    const next = renameSidebarPinnedSection(state, "personal", " Family ");
+    expect(next.sidebarPinnedSections).toEqual([
+      state.sidebarPinnedSections[0],
+      { ...state.sidebarPinnedSections[1], name: "Family" },
+    ]);
+    expect(renameSidebarPinnedSection(state, "personal", "WORK")).toBe(state);
+    expect(renameSidebarPinnedSection(state, "personal", " ")).toBe(state);
+    expect(
+      renameSidebarPinnedSection(
+        state,
+        "personal",
+        "x".repeat(MAX_SIDEBAR_SECTION_NAME_LENGTH + 1),
+      ),
+    ).toBe(state);
+    expect(renameSidebarPinnedSection(state, "personal", "Personal")).toBe(state);
+    expect(renameSidebarPinnedSection(state, "missing", "New")).toBe(state);
+  });
+
+  it("moves scoped threads between buckets with unique membership and stable ordering", () => {
+    const state = sectionsState();
+    const next = moveThreadsToPinnedSection(
+      state,
+      ["env-a:t1", "env-a:t1", "offline:new", ""],
+      "personal",
+    );
+    expect(next.sidebarPinnedSections).toEqual([
+      { ...state.sidebarPinnedSections[0], threadKeys: ["offline:t2"] },
+      { ...state.sidebarPinnedSections[1], threadKeys: ["env-b:t1", "env-a:t1", "offline:new"] },
+    ]);
+    expect(state.sidebarPinnedSections[0]?.threadKeys).toEqual(["env-a:t1", "offline:t2"]);
+    expect(moveThreadsToPinnedSection(next, ["env-a:t1"], "personal")).toBe(next);
+    expect(moveThreadsToPinnedSection(state, ["env-a:t1"], "missing")).toBe(state);
+    expect(moveThreadsToPinnedSection(state, [], "personal")).toBe(state);
+  });
+
+  it("returns threads to default Pinned and deletes only section organization", () => {
+    const state = sectionsState();
+    const next = moveThreadsToPinnedSection(state, ["env-a:t1", "env-b:t1"], null);
+    expect(next.sidebarPinnedSections.map((section) => section.threadKeys)).toEqual([
+      ["offline:t2"],
+      [],
+    ]);
+    expect(moveThreadsToPinnedSection(next, ["env-a:t1"], null)).toBe(next);
+    expect(deleteSidebarPinnedSection(state, "work")).toEqual({
+      ...state,
+      sidebarPinnedSections: [state.sidebarPinnedSections[1]],
+    });
+    expect(deleteSidebarPinnedSection(state, "missing")).toBe(state);
+  });
+
+  it("toggles density independently and discards only a deleted section's preference", () => {
+    const state = sectionsState();
+    const compact = setSidebarSectionCompact(state, "pinned-section:work", true);
+    const active = setSidebarSectionCompact(compact, "active", true);
+    const expandedSettled = setSidebarSectionCompact(active, "settled", false);
+    expect(expandedSettled.sidebarCompactSections).toEqual({
+      snoozed: true,
+      settled: false,
+      active: true,
+      "pinned-section:work": true,
+    });
+    expect(
+      setSidebarSectionCompact(compact, "pinned-section:work", false).sidebarCompactSections[
+        "pinned-section:work"
+      ],
     ).toBe(false);
+    expect(expandedSettled.sidebarPinnedSections).toBe(state.sidebarPinnedSections);
+    expect(deleteSidebarPinnedSection(expandedSettled, "work").sidebarCompactSections).toEqual({
+      snoozed: true,
+      settled: false,
+      active: true,
+    });
+  });
+
+  it("toggles collapse and moves sections in both directions without changing membership", () => {
+    const state = sectionsState();
+    const toggled = toggleSidebarPinnedSection(state, "work");
+    expect(toggled.sidebarPinnedSections[0]?.collapsed).toBe(true);
+    expect(toggleSidebarPinnedSection(toggled, "work")).toEqual(state);
+    expect(toggleSidebarPinnedSection(state, "missing")).toBe(state);
+    const moved = moveSidebarPinnedSection(state, "work", "down");
+    expect(moved.sidebarPinnedSections).toEqual(state.sidebarPinnedSections.toReversed());
+    expect(moveSidebarPinnedSection(moved, "work", "up")).toEqual(state);
+    expect(moveSidebarPinnedSection(state, "work", "up")).toBe(state);
+    expect(moveSidebarPinnedSection(state, "personal", "down")).toBe(state);
+    expect(moveSidebarPinnedSection(state, "missing", "down")).toBe(state);
   });
 });
 
@@ -329,7 +502,9 @@ describe("uiStateStore persistence", () => {
       defaultAdvertisedEndpointKey: "desktop-core:lan:http",
       sidebarProjectScopeKey: null,
       sidebarPinnedSections: [],
+      sidebarCompactSections: { snoozed: true, settled: true },
       threadChangedFilesExpansionVersion: 2,
+      threadPrBadgeHiddenById: {},
       threadChangedFilesExpandedById: {
         "environment:thread-1": {
           "turn-1": false,
@@ -355,6 +530,37 @@ describe("uiStateStore persistence", () => {
     );
   });
 
+  it("restores per-environment sidebar PR choices across reloads", () => {
+    const hidden = setThreadPrBadgeHidden(makeUiState(), "env-a:thread-1", true);
+    const state = setThreadPrBadgeHidden(hidden, "env-b:thread-1", false);
+    persistState(state);
+    const persisted = JSON.parse(localStorageStub.getItem(PERSISTED_STATE_KEY) ?? "{}");
+    expect(parsePersistedState(persisted).threadPrBadgeHiddenById).toEqual({
+      "env-a:thread-1": true,
+      "env-b:thread-1": false,
+    });
+  });
+
+  it("round-trips section order, names, disconnected membership, collapse, and compact choices", () => {
+    const state = makeUiState({
+      sidebarPinnedSections: [
+        { id: "b", name: "Later", threadKeys: ["offline:thread"], collapsed: true },
+        { id: "a", name: "Today", threadKeys: ["env-a:thread", "env-b:thread"], collapsed: false },
+      ],
+      sidebarCompactSections: {
+        pinned: true,
+        active: false,
+        snoozed: true,
+        settled: false,
+        "pinned-section:a": true,
+      },
+    });
+    persistState(state);
+    const persisted = JSON.parse(localStorageStub.getItem(PERSISTED_STATE_KEY) ?? "{}");
+    expect(persisted.sidebarPinnedSections).toEqual(state.sidebarPinnedSections);
+    expect(parsePersistedState(persisted)).toEqual(state);
+  });
+
   it("drops the temporary expanded-only migration fallback when rewriting state", () => {
     const migrated = parsePersistedState({
       expandedProjectCwds: ["/repo/a"],
@@ -367,55 +573,5 @@ describe("uiStateStore persistence", () => {
     ) as PersistedUiState;
     expect(resolveProjectExpanded(persisted.projectExpandedById ?? {}, ["unknown"])).toBe(true);
     expect(persisted).not.toHaveProperty("threadPanelOpen");
-  });
-});
-
-describe("named section compatibility", () => {
-  it("preserves section order and appends only the exact moved member", () => {
-    const initial = parsePersistedState({
-      sidebarPinnedSections: [
-        {
-          id: "chief",
-          name: "Chief of Staff",
-          collapsed: true,
-          threadKeys: ["env:chief", "env:move", "other:move"],
-        },
-        {
-          id: "talos",
-          name: "Talos",
-          collapsed: false,
-          threadKeys: ["env:research", "env:existing"],
-        },
-      ],
-    });
-    const moved = moveThreadsToPinnedSection(initial, ["env:move"], "talos");
-    expect(moved.sidebarPinnedSections).toEqual([
-      { ...initial.sidebarPinnedSections[0], threadKeys: ["env:chief", "other:move"] },
-      {
-        ...initial.sidebarPinnedSections[1],
-        threadKeys: ["env:research", "env:existing", "env:move"],
-      },
-    ]);
-    expect(moveThreadsToPinnedSection(moved, ["env:move"], "talos")).toBe(moved);
-    expect(moveThreadsToPinnedSection(moved, ["env:move"], "missing")).toBe(moved);
-    const unassigned = moveThreadsToPinnedSection(moved, ["env:move"], null);
-    expect(unassigned.sidebarPinnedSections[1]?.threadKeys).toEqual([
-      "env:research",
-      "env:existing",
-    ]);
-  });
-
-  it("round trips the current section format and rejects duplicates without rearranging valid members", () => {
-    const initial = createSidebarPinnedSection(parsePersistedState({}), "talos", "Talos");
-    const moved = moveThreadsToPinnedSection(initial, ["env:a", "env:b", "env:a"], "talos");
-    expect(parsePersistedState(JSON.parse(JSON.stringify(moved)))).toEqual(moved);
-    expect(
-      parsePersistedState({
-        sidebarPinnedSections: [
-          ...moved.sidebarPinnedSections,
-          { id: "other", name: "Other", collapsed: true, threadKeys: ["env:a", "other:a"] },
-        ],
-      }).sidebarPinnedSections[1]?.threadKeys,
-    ).toEqual(["other:a"]);
   });
 });

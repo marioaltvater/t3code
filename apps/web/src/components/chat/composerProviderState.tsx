@@ -1,8 +1,8 @@
 import {
+  ProviderInstanceId,
   type ModelCapabilities,
   type ModelSelection,
   type ProviderDriverKind,
-  type ProviderInstanceId,
   type ProviderOptionSelection,
   type ScopedThreadRef,
   type ServerProviderModel,
@@ -21,15 +21,20 @@ import { getProviderModelCapabilities } from "../../providerModels";
 import type { ComposerControlSize } from "./ComposerControl";
 import {
   getReasoningTraitStep,
+  getReasoningTraitSnapshot,
   shouldRenderTraitsControls,
   TraitsMenuContent,
   TraitsPicker,
+  type PromptUltrathink,
 } from "./TraitsPicker";
 
 export type ComposerProviderStateInput = {
   provider: ProviderDriverKind;
+  instanceId?: ProviderInstanceId;
   model: string;
   models: ReadonlyArray<ServerProviderModel>;
+  reportedModelSelection?: ModelSelection | null | undefined;
+  prompt?: string | undefined;
   promptInjectionState?: ComposerPromptInjectionState;
   modelOptions: ReadonlyArray<ProviderOptionSelection> | null | undefined;
   planModeEnabled: boolean;
@@ -46,6 +51,26 @@ export type ComposerProviderState = {
   modelPickerIconClassName?: string;
 };
 
+export function getComposerEffortSnapshot(input: ComposerProviderStateInput) {
+  const { selections } = resolveComposerOptionSelections(
+    input.models,
+    input.model,
+    input.provider,
+    input.modelOptions,
+    input.planModeEnabled,
+  );
+  return getReasoningTraitSnapshot({
+    provider: input.provider,
+    instanceId: input.instanceId ?? ProviderInstanceId.make("legacy"),
+    model: input.model,
+    models: input.models,
+    modelOptions: selections,
+    reportedModelSelection: input.reportedModelSelection,
+    prompt: input.prompt ?? "",
+    planModeEnabled: input.planModeEnabled,
+  });
+}
+
 type TraitsRenderInput = {
   provider: ProviderDriverKind;
   instanceId?: ProviderInstanceId;
@@ -55,8 +80,8 @@ type TraitsRenderInput = {
   models: ReadonlyArray<ServerProviderModel>;
   modelOptions: ReadonlyArray<ProviderOptionSelection> | undefined;
   reportedModelSelection?: ModelSelection | null | undefined;
-  prompt: string;
-  onPromptChange: (prompt: string) => void;
+  promptUltrathink: PromptUltrathink;
+  onPromptEdit: (edit: (prompt: string) => string) => void;
   planModeEnabled: boolean;
   size?: ComposerControlSize;
   hidden?: boolean;
@@ -230,8 +255,8 @@ function renderTraitsControl(
     models,
     modelOptions,
     reportedModelSelection,
-    prompt,
-    onPromptChange,
+    promptUltrathink,
+    onPromptEdit,
     planModeEnabled,
     size,
     hidden,
@@ -253,7 +278,7 @@ function renderTraitsControl(
       models,
       model,
       modelOptions: resolvedModelOptions,
-      prompt,
+      promptUltrathink,
       planModeEnabled,
     })
   ) {
@@ -269,8 +294,8 @@ function renderTraitsControl(
       model={model}
       modelOptions={resolvedModelOptions}
       reportedModelSelection={reportedModelSelection}
-      prompt={prompt}
-      onPromptChange={onPromptChange}
+      promptUltrathink={promptUltrathink}
+      onPromptEdit={onPromptEdit}
       planModeEnabled={planModeEnabled}
       {...(size !== undefined ? { size } : {})}
       {...(hidden !== undefined ? { hidden } : {})}

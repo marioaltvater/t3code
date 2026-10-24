@@ -1,7 +1,7 @@
 import * as Schema from "effect/Schema";
 import { ForwardCompatibleArray, TrimmedString } from "./baseSchemas.ts";
 
-export const MAX_KEYBINDING_VALUE_LENGTH = 64;
+const MAX_KEYBINDING_VALUE_LENGTH = 64;
 const MAX_KEYBINDING_WHEN_LENGTH = 256;
 export const MAX_WHEN_EXPRESSION_DEPTH = 64;
 export const MAX_SCRIPT_ID_LENGTH = 24;
@@ -19,6 +19,35 @@ export const THREAD_JUMP_KEYBINDING_COMMANDS = [
   "thread.jump.9",
 ] as const;
 export type ThreadJumpKeybindingCommand = (typeof THREAD_JUMP_KEYBINDING_COMMANDS)[number];
+
+export const THREAD_PINNED_KEYBINDING_COMMANDS = [
+  "thread.pinned.1",
+  "thread.pinned.2",
+  "thread.pinned.3",
+  "thread.pinned.4",
+  "thread.pinned.5",
+  "thread.pinned.6",
+] as const;
+export type ThreadPinnedKeybindingCommand = (typeof THREAD_PINNED_KEYBINDING_COMMANDS)[number];
+
+export const THREAD_ACTIVE_KEYBINDING_COMMANDS = [
+  "thread.active.1",
+  "thread.active.2",
+  "thread.active.3",
+  "thread.active.4",
+  "thread.active.5",
+  "thread.active.6",
+] as const;
+export type ThreadActiveKeybindingCommand = (typeof THREAD_ACTIVE_KEYBINDING_COMMANDS)[number];
+
+export const THREAD_CHIEF_OF_STAFF_KEYBINDING_COMMANDS = [
+  "thread.chiefOfStaff.1",
+  "thread.chiefOfStaff.2",
+  "thread.chiefOfStaff.3",
+  "thread.chiefOfStaff.4",
+] as const;
+export type ThreadChiefOfStaffKeybindingCommand =
+  (typeof THREAD_CHIEF_OF_STAFF_KEYBINDING_COMMANDS)[number];
 
 export const MODEL_PICKER_JUMP_KEYBINDING_COMMANDS = [
   "modelPicker.jump.1",
@@ -45,6 +74,9 @@ const THREAD_KEYBINDING_COMMANDS = [
   "thread.pin",
   "thread.undo",
   ...THREAD_JUMP_KEYBINDING_COMMANDS,
+  ...THREAD_PINNED_KEYBINDING_COMMANDS,
+  ...THREAD_ACTIVE_KEYBINDING_COMMANDS,
+  ...THREAD_CHIEF_OF_STAFF_KEYBINDING_COMMANDS,
 ] as const;
 export type ThreadKeybindingCommand = (typeof THREAD_KEYBINDING_COMMANDS)[number];
 
@@ -73,6 +105,7 @@ export const STATIC_KEYBINDING_COMMANDS = [
   "view.reopenClosed",
   "pullRequest.copyNumber",
   "diff.toggle",
+  "diff.toggleLatestTurn",
   "preview.toggle",
   "preview.refresh",
   "preview.focusUrl",
@@ -90,6 +123,8 @@ export const STATIC_KEYBINDING_COMMANDS = [
   "composer.sendAlternate",
   "composer.sendBackground",
   "composer.sendAndNewThread",
+  "composer.submit",
+  "composer.focus",
   "composer.host",
   "composer.cycleHost",
   "composer.effort",
@@ -103,6 +138,12 @@ export const STATIC_KEYBINDING_COMMANDS = [
   "chat.newLocal",
   "chat.newWithoutProject",
   "chat.find",
+  "chat.scrollUp",
+  "chat.scrollDown",
+  "chat.previousTurn",
+  "chat.nextTurn",
+  "open-settings",
+  "settings.toggle",
   "editor.openFavorite",
   "usage.cost",
   "usage.tokens",
