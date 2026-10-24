@@ -69,6 +69,12 @@ import { PreviewChromeRow } from "./PreviewChromeRow";
 import { PreviewEmptyState } from "./PreviewEmptyState";
 import { PreviewMoreMenu, type PreviewMoreMenuActions } from "./PreviewMoreMenu";
 import {
+  pinnedPageFromSnapshot,
+  samePinnedPage,
+  usePinnedBrowserPages,
+  usePinnedBrowserPagesStore,
+} from "~/pinnedBrowserPagesStore";
+import {
   commitBrowserViewportChange,
   subscribeBrowserViewportChange,
 } from "~/browser/browserViewportActions";
@@ -225,6 +231,9 @@ export function PreviewView({
   const layoutZoomFactor = useBrowserLayoutZoomFactor(desktopOverlay?.zoomFactor ?? 1);
   const navStatus = snapshot?.navStatus ?? { _tag: "Idle" as const };
   const url = navStatus._tag === "Idle" ? "" : navStatus.url;
+  const pinnedPages = usePinnedBrowserPages(threadRef);
+  const pinPage = pinnedPageFromSnapshot(snapshot);
+  const pagePinned = pinPage !== null && pinnedPages.some((page) => samePinnedPage(page, pinPage));
   const loading = desktopOverlay?.loading ?? navStatus._tag === "Loading";
   const canGoBack = desktopOverlay?.canGoBack ?? snapshot?.canGoBack ?? false;
   const canGoForward = desktopOverlay?.canGoForward ?? snapshot?.canGoForward ?? false;
@@ -956,6 +965,18 @@ export function PreviewView({
         trailingActions={
           moreMenuActions ? (
             <PreviewMoreMenu
+              pin={
+                pinPage
+                  ? {
+                      pinned: pagePinned,
+                      onToggle: () => {
+                        const store = usePinnedBrowserPagesStore.getState();
+                        if (pagePinned) store.unpin(threadRef, pinPage);
+                        else store.pin(threadRef, pinPage);
+                      },
+                    }
+                  : undefined
+              }
               enabled={
                 runtimeTabId !== null &&
                 (serverOwnsRendering || (desktopOverlay?.hasWebContents ?? false))

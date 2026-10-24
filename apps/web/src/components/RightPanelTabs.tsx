@@ -1,4 +1,11 @@
 import { pullRequestHostOf, type SourceControlProviderKind } from "@t3tools/contracts";
+import { ThreadId } from "@t3tools/contracts";
+import { scopedThreadKey } from "@t3tools/client-runtime/environment";
+import {
+  pinnedPageFromSnapshot,
+  samePinnedPage,
+  usePinnedBrowserPagesStore,
+} from "~/pinnedBrowserPagesStore";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import { useProjects, useServerConfigs, useThreadShells } from "~/state/entities";
 import {
@@ -199,6 +206,7 @@ const SURFACE_UNAVAILABLE_HINTS = {
 } as const;
 
 type TabContextMenuAction =
+  | "toggle-pin-page"
   | "rename"
   | "copy-path"
   | "toggle-mute"
@@ -1116,6 +1124,27 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
     const menuPreviewTabId = previewTabIdOf(surface, props.previewSessions);
     const menuOverlay = menuPreviewTabId ? (props.desktopByTabId[menuPreviewTabId] ?? null) : null;
     const menuMuted = menuOverlay?.audioMuted ?? false;
+    const menuSnapshot = menuPreviewTabId ? props.previewSessions[menuPreviewTabId] : null;
+    const pinPage = pinnedPageFromSnapshot(menuSnapshot ?? null);
+    const pinRef =
+      props.environmentId && menuSnapshot
+        ? {
+            environmentId: props.environmentId,
+            threadId: ThreadId.make(menuSnapshot.threadId),
+          }
+        : null;
+    const pagePinned =
+      pinPage &&
+      pinRef &&
+      (usePinnedBrowserPagesStore.getState().byThreadKey[scopedThreadKey(pinRef)] ?? []).some(
+        (page) => samePinnedPage(page, pinPage),
+      );
+    if (pinPage && pinRef) {
+      items.push({
+        id: "toggle-pin-page",
+        label: pagePinned ? "Unpin page from thread" : "Pin page to thread",
+      });
+    }
     if (surface.kind === "preview") {
       items.push({
         id: "toggle-mute",
@@ -1146,6 +1175,14 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
 
     const action = await api.contextMenu.show(items, { x: event.clientX, y: event.clientY });
     switch (action) {
+      case "toggle-pin-page": {
+        if (pinPage && pinRef) {
+          const store = usePinnedBrowserPagesStore.getState();
+          if (pagePinned) store.unpin(pinRef, pinPage);
+          else store.pin(pinRef, pinPage);
+        }
+        break;
+      }
       case "rename":
         setRenamingDevice(surface.id);
         break;

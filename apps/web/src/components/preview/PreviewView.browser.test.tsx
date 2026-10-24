@@ -163,6 +163,8 @@ import { useBrowserPointerStore } from "~/browser/browserPointerStore";
 import { previewRuntimeTabId } from "~/browser/previewRuntimeTabId";
 import { usePreviewMiniPlayerStore } from "~/previewMiniPlayerStore";
 import { PreviewView } from "./PreviewView";
+import { scopedThreadKey } from "@t3tools/client-runtime/environment";
+import { usePinnedBrowserPagesStore } from "~/pinnedBrowserPagesStore";
 
 const TEST_THREAD_REF = {
   environmentId: EnvironmentId.make("environment-1"),
@@ -210,6 +212,7 @@ function hasCursor() {
 // The mocked modules and stores are shared by the whole file, so every test starts by
 // resetting them.
 function setup() {
+  usePinnedBrowserPagesStore.setState({ byThreadKey: {} });
   vi.clearAllMocks();
   mocks.readEnvironmentScope.mockReset().mockReturnValue(true);
   mocks.setAnnotationSendEnabled.mockReset().mockResolvedValue(undefined);
@@ -231,6 +234,23 @@ function setup() {
 }
 
 describe("PreviewView", () => {
+  it("pins the current page from More and offers to unpin it on the next visit", async () => {
+    setup();
+    await using _screen = await render(view());
+    await userEvent.click(page.getByRole("button", { name: "Preview menu" }));
+    await userEvent.click(page.getByRole("menuitem", { name: "Pin page to thread" }));
+    expect(
+      usePinnedBrowserPagesStore.getState().byThreadKey[scopedThreadKey(TEST_THREAD_REF)],
+    ).toEqual([
+      { url: "http://example.com/", title: "Example", profileId: DEFAULT_BROWSER_PROFILE_ID },
+    ]);
+    await userEvent.click(page.getByRole("button", { name: "Preview menu" }));
+    await userEvent.click(page.getByRole("menuitem", { name: "Unpin page from thread" }));
+    expect(
+      usePinnedBrowserPagesStore.getState().byThreadKey[scopedThreadKey(TEST_THREAD_REF)],
+    ).toBeUndefined();
+  });
+
   it("shows the cursor in a replacement browser while the old instance still records", async () => {
     setup();
     mocks.recordingTabIds.add(TEST_RUNTIME_TAB_ID);
