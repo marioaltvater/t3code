@@ -5,7 +5,11 @@ import {
   scopedThreadKey,
 } from "@t3tools/client-runtime/environment";
 import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
-import { canSnooze, threadWokeAt } from "@t3tools/client-runtime/state/thread-settled";
+import {
+  canSnooze,
+  effectiveSnoozed,
+  threadWokeAt,
+} from "@t3tools/client-runtime/state/thread-settled";
 import { threadRuntimeCanArchive } from "@t3tools/client-runtime/state/models";
 import {
   AuthOrchestrationOperateScope,
@@ -22,7 +26,8 @@ import * as Schema from "effect/Schema";
 import { AsyncResult } from "effect/reactivity";
 import { useRouter } from "@tanstack/react-router";
 
-import { getFallbackThreadIdAfterDelete, pinOrderKeyBetween } from "../components/Sidebar.logic";
+import { getFallbackThreadIdAfterDelete } from "../components/Sidebar.logic";
+import { planPinnedAppendOrder } from "@t3tools/client-runtime/state/thread-sort";
 import { useComposerDraftStore } from "../composerDraftStore";
 import { environmentSession, readEnvironmentScope } from "../state/session";
 import { appAtomRegistry } from "../rpc/atomRegistry";
@@ -108,15 +113,6 @@ export class ThreadSnoozeBlockedError extends Schema.TaggedError<ThreadSnoozeBlo
   }
 }
 
-function topOfPinnedRunOrderKey(): string | undefined {
-  let firstKey: string | null = null;
-  for (const shell of readThreadShells()) {
-    if (shell.pinnedAt == null || shell.pinOrderKey == null) continue;
-    if (firstKey === null || shell.pinOrderKey < firstKey) firstKey = shell.pinOrderKey;
-  }
-  return pinOrderKeyBetween(null, firstKey) ?? undefined;
-}
-
 export class ThreadAutoSettleOptOutUnsupportedError extends Schema.TaggedError<ThreadAutoSettleOptOutUnsupportedError>()(
   "ThreadAutoSettleOptOutUnsupportedError",
   {
@@ -165,7 +161,7 @@ export class ThreadActiveReorderUnsupportedError extends Schema.TaggedError<Thre
   }
 }
 
-export async function requestThreadUnpinConfirmation(input: {
+async function requestThreadUnpinConfirmation(input: {
   enabled: boolean;
   title: string;
   confirm: ((message: string) => Promise<boolean>) | null;
@@ -633,7 +629,7 @@ export function useThreadActions() {
     });
   };
 
-  const pinThread = async (target: ScopedThreadRef, opts: { orderKey?: string } = {}) => {
+  const pinThread = async (target: ScopedThreadRef, opts: { orderKey?: string | null } = {}) => {
     if (!readEnvironmentSupportsPinning(target.environmentId)) {
       return AsyncResult.failure(
         Cause.fail(
@@ -644,12 +640,61 @@ export function useThreadActions() {
         ),
       );
     }
-    // orderKey rides only to servers that decode it; pre-reorder servers get the bare pin they
-    // understand and the thread stays keyless.
-    const orderKey = readEnvironmentSupportsPinReorder(target.environmentId)
-      ? (opts.orderKey ?? topOfPinnedRunOrderKey())
-      : undefined;
+    const denied = threadOperationFailure(target);
+    if (denied) return denied;
+    const canReorder = readEnvironmentSupportsPinReorder(target.environmentId);
+    let orderKey = canReorder ? (opts.orderKey ?? undefined) : undefined;
+    if (opts.orderKey === undefined) {
+      const now = new Date().toISOString();
+      const pins = readThreadShells().filter(
+        (shell) =>
+          shell.pinnedAt != null &&
+          shell.archivedAt === null &&
+          shell.lineage.relationshipToParent !== "subagent" &&
+          (!readEnvironmentSupportsSettlement(shell.environmentId) ||
+            shell.settledOverride !== "settled") &&
+          (!readEnvironmentSupportsSnooze(shell.environmentId) ||
+            !effectiveSnoozed(shell, { now })),
+      );
+      if (!canReorder && pins.length > 0) {
+        return AsyncResult.failure(
+          Cause.fail(
+            new Error("Update this environment's server to append below existing pinned threads."),
+          ),
+        );
+      }
+      const append = planPinnedAppendOrder(pins);
+      if (append === null) {
+        return AsyncResult.failure(Cause.fail(new Error("Could not order pinned threads.")));
+      }
+      // Check every destination before normalizing any part of the merged legacy tail.
+      for (const { thread } of append.legacyKeys) {
+        if (!readEnvironmentSupportsPinReorder(thread.environmentId)) {
+          return AsyncResult.failure(
+            Cause.fail(
+              new Error("Update the servers owning existing pinned threads to append a new pin."),
+            ),
+          );
+        }
+        const denied = threadOperationFailure({
+          environmentId: thread.environmentId,
+          threadId: thread.id,
+        });
+        if (denied) return denied;
+      }
+      for (const { thread, orderKey } of append.legacyKeys) {
+        const result = await reorderPinnedThreadMutation({
+          environmentId: thread.environmentId,
+          input: { threadId: thread.id, orderKey },
+        });
+        if (result._tag === "Failure") return result;
+      }
+      if (canReorder) orderKey = append.orderKey;
+    }
     ThreadUndo.invalidate("pin", scopedThreadKey(target));
+    // Pinning clears snooze, so older Settled or Snoozed undos would fight this pin.
+    ThreadUndo.invalidate("settle", scopedThreadKey(target));
+    ThreadUndo.invalidate("snooze", scopedThreadKey(target));
     return pinThreadMutation({
       environmentId: target.environmentId,
       input: {
@@ -671,7 +716,7 @@ export function useThreadActions() {
       );
     }
     const thread = readThreadShell(target);
-    const orderKey = thread?.pinOrderKey ?? undefined;
+    const undoPlan = ThreadUndo.planThreadUndo("unpin", thread);
     const action = ThreadUndo.begin("pin", scopedThreadKey(target));
     const result = await unpinThreadMutation({
       environmentId: target.environmentId,
@@ -681,7 +726,7 @@ export function useThreadActions() {
       showThreadUndoNotice({
         action: "Unpinned",
         claim: action,
-        undo: () => pinThread(target, orderKey === undefined ? {} : { orderKey }),
+        undo: () => runUndoPlan(target, undoPlan),
         failureTitle: "Failed to undo unpin",
       });
     } else {
@@ -705,11 +750,7 @@ export function useThreadActions() {
     const wokeAt = resolved
       ? threadWokeAt(resolved.thread, { now: new Date().toISOString() })
       : null;
-    // Settling also drops the pin and the snooze server-side, so Undo
-    // has to put those back as well.
-    const pinOrderKey = resolved?.thread.pinnedAt != null ? resolved.thread.pinOrderKey : null;
-    const wasPinned = resolved?.thread.pinnedAt != null;
-    const snoozedUntil = resolved?.thread.snoozedUntil ?? null;
+    const undoPlan = ThreadUndo.planThreadUndo("settle", resolved?.thread);
     // An older unpin/snooze Undo would re-pin or re-snooze, and the server
     // treats either as a promotion that un-settles; settling supersedes them.
     ThreadUndo.invalidate("pin", scopedThreadKey(target));
@@ -729,24 +770,7 @@ export function useThreadActions() {
     showThreadUndoNotice({
       action: "Settled",
       claim: action,
-      undo: async () => {
-        const unsettled = await unsettleThread(target);
-        if (unsettled._tag !== "Success") return unsettled;
-        if (wasPinned) {
-          const pinned = await pinThread(
-            target,
-            pinOrderKey == null ? {} : { orderKey: pinOrderKey },
-          );
-          if (pinned._tag !== "Success") return pinned;
-        }
-        if (snoozedUntil !== null) {
-          return snoozeThreadMutation({
-            environmentId: target.environmentId,
-            input: { threadId: target.threadId, snoozedUntil },
-          });
-        }
-        return unsettled;
-      },
+      undo: () => runUndoPlan(target, undoPlan),
       failureTitle: "Failed to undo settle",
     });
     return result;
@@ -858,11 +882,35 @@ export function useThreadActions() {
     showThreadUndoNotice({
       action: "Snoozed",
       claim: action,
-      undo: () => unsnoozeThread(target),
+      undo: () => runUndoPlan(target, ThreadUndo.planThreadUndo("snooze")),
       failureTitle: "Failed to wake thread",
     });
     return result;
   };
+
+  const runUndoPlan = (target: ScopedThreadRef, plan: ThreadUndo.ThreadUndoPlan) =>
+    ThreadUndo.executeThreadUndo(
+      plan,
+      async (step) => {
+        switch (step.action) {
+          case "unsettle":
+            return unsettleThread(target);
+          case "unsnooze":
+            return unsnoozeThread(target);
+          case "pin":
+            return pinThread(
+              target,
+              step.orderKey === undefined ? {} : { orderKey: step.orderKey },
+            );
+          case "snooze":
+            return snoozeThreadMutation({
+              environmentId: target.environmentId,
+              input: { threadId: target.threadId, snoozedUntil: step.snoozedUntil },
+            });
+        }
+      },
+      (result) => result._tag === "Success",
+    );
 
   const confirmAndDeleteThread = async (target: ScopedThreadRef) => {
     const permissionFailure = threadOperationFailure(target);

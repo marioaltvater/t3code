@@ -2,8 +2,19 @@ import { Debouncer } from "@tanstack/react-pacer";
 import type { PullRequestMergeMethod } from "@t3tools/contracts";
 import { create } from "zustand";
 import { normalizeProjectPathForComparison } from "./lib/projectPaths";
+import { randomUUID } from "./lib/utils";
 
 export const PERSISTED_STATE_KEY = "t3code:ui-state:v1";
+export const MAX_SIDEBAR_PINNED_SECTIONS = 20;
+export const MAX_SIDEBAR_SECTION_NAME_LENGTH = 64;
+
+export interface SidebarPinnedSection {
+  id: string;
+  name: string;
+  threadKeys: string[];
+  collapsed: boolean;
+}
+
 const THREAD_CHANGED_FILES_EXPANSION_VERSION = 2;
 const LEGACY_PERSISTED_STATE_KEYS = [
   "t3code:renderer-state:v8",
@@ -22,11 +33,14 @@ export interface PersistedUiState {
   projectExpandedById?: Record<string, boolean>;
   projectOrder?: string[];
   threadLastVisitedAtById?: Record<string, string>;
+  threadPrBadgeHiddenById?: Record<string, boolean>;
   collapsedProjectCwds?: string[];
   expandedProjectCwds?: string[];
   projectOrderCwds?: string[];
   defaultAdvertisedEndpointKey?: string | null;
   sidebarProjectScopeKey?: string | null;
+  sidebarPinnedSections?: SidebarPinnedSection[];
+  sidebarCompactSections?: Record<string, boolean>;
   threadChangedFilesExpansionVersion?: number;
   threadChangedFilesExpandedById?: Record<string, Record<string, boolean>>;
   pullRequestMergeMethod?: string;
@@ -40,6 +54,7 @@ export interface UiProjectState {
 
 export interface UiThreadState {
   threadLastVisitedAtById: Record<string, string>;
+  threadPrBadgeHiddenById: Record<string, boolean>;
   threadChangedFilesExpandedById: Record<string, Record<string, boolean>>;
 }
 
@@ -52,13 +67,19 @@ export interface UiPullRequestState {
 }
 
 export interface UiState
-  extends UiProjectState, UiThreadState, UiEndpointState, UiPullRequestState {}
+  extends UiProjectState, UiThreadState, UiEndpointState, UiPullRequestState {
+  sidebarPinnedSections: SidebarPinnedSection[];
+  sidebarCompactSections: Record<string, boolean>;
+}
 
 const initialState: UiState = {
   projectExpandedById: {},
   projectOrder: [],
   sidebarProjectScopeKey: null,
+  sidebarPinnedSections: [],
+  sidebarCompactSections: { snoozed: true, settled: true },
   threadLastVisitedAtById: {},
+  threadPrBadgeHiddenById: {},
   threadChangedFilesExpandedById: {},
   defaultAdvertisedEndpointKey: null,
   pullRequestMergeMethod: "merge",
@@ -81,6 +102,50 @@ function sanitizeStringArray(value: unknown): string[] {
       value.filter((entry): entry is string => typeof entry === "string" && entry.length > 0),
     ),
   ];
+}
+
+function sanitizeSidebarPinnedSections(value: unknown): SidebarPinnedSection[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const sections: SidebarPinnedSection[] = [];
+  const ids = new Set<string>();
+  const names = new Set<string>();
+  const threadKeys = new Set<string>();
+  const entries: readonly unknown[] = value;
+  for (const candidate of entries) {
+    if (!candidate || typeof candidate !== "object") {
+      continue;
+    }
+    const entry = candidate as Record<string, unknown>;
+    const { id, name, collapsed } = entry;
+    if (typeof id !== "string" || !id.trim() || typeof name !== "string") {
+      continue;
+    }
+    const normalizedName = name.trim().slice(0, MAX_SIDEBAR_SECTION_NAME_LENGTH).trim();
+    const nameKey = normalizedName.toLowerCase();
+    if (!normalizedName || ids.has(id) || names.has(nameKey)) {
+      continue;
+    }
+    ids.add(id);
+    names.add(nameKey);
+    sections.push({
+      id,
+      name: normalizedName,
+      collapsed: collapsed === true,
+      threadKeys: sanitizeStringArray(entry.threadKeys).filter((key) => {
+        if (threadKeys.has(key)) {
+          return false;
+        }
+        threadKeys.add(key);
+        return true;
+      }),
+    });
+    if (sections.length === MAX_SIDEBAR_PINNED_SECTIONS) {
+      break;
+    }
+  }
+  return sections;
 }
 
 function sanitizeBooleanRecord(value: unknown): Record<string, boolean> {
@@ -141,16 +206,36 @@ export function parsePersistedState(parsed: PersistedUiState): UiState {
       ? sanitizeStringArray(parsed.projectOrderCwds).map(legacyProjectCwdPreferenceKey)
       : sanitizeStringArray(parsed.projectOrder);
 
+  const sidebarPinnedSections = sanitizeSidebarPinnedSections(parsed.sidebarPinnedSections);
+  const sectionKeys = new Set([
+    "pinned",
+    "active",
+    "working",
+    "snoozed",
+    "settled",
+    ...sidebarPinnedSections.map((section) => `pinned-section:${section.id}`),
+  ]);
+
   return {
     projectExpandedById,
     projectOrder,
     threadLastVisitedAtById: sanitizeTimestampRecord(parsed.threadLastVisitedAtById),
+    threadPrBadgeHiddenById: sanitizeBooleanRecord(parsed.threadPrBadgeHiddenById),
     threadChangedFilesExpandedById:
       parsed.threadChangedFilesExpansionVersion === THREAD_CHANGED_FILES_EXPANSION_VERSION
         ? sanitizePersistedThreadChangedFilesExpanded(parsed.threadChangedFilesExpandedById)
         : {},
     defaultAdvertisedEndpointKey: sanitizeOptionalKey(parsed.defaultAdvertisedEndpointKey),
     sidebarProjectScopeKey: sanitizeOptionalKey(parsed.sidebarProjectScopeKey),
+    sidebarPinnedSections,
+    sidebarCompactSections: {
+      ...initialState.sidebarCompactSections,
+      ...Object.fromEntries(
+        Object.entries(sanitizeBooleanRecord(parsed.sidebarCompactSections)).filter(([key]) =>
+          sectionKeys.has(key),
+        ),
+      ),
+    },
     pullRequestMergeMethod: isPullRequestMergeMethod(parsed.pullRequestMergeMethod)
       ? parsed.pullRequestMergeMethod
       : initialState.pullRequestMergeMethod,
@@ -223,8 +308,11 @@ export function persistState(state: UiState): void {
         projectExpandedById,
         projectOrder: state.projectOrder,
         threadLastVisitedAtById: state.threadLastVisitedAtById,
+        threadPrBadgeHiddenById: state.threadPrBadgeHiddenById,
         defaultAdvertisedEndpointKey: state.defaultAdvertisedEndpointKey,
         sidebarProjectScopeKey: state.sidebarProjectScopeKey,
+        sidebarPinnedSections: state.sidebarPinnedSections,
+        sidebarCompactSections: state.sidebarCompactSections,
         threadChangedFilesExpansionVersion: THREAD_CHANGED_FILES_EXPANSION_VERSION,
         threadChangedFilesExpandedById: state.threadChangedFilesExpandedById,
         pullRequestMergeMethod: state.pullRequestMergeMethod,
@@ -289,7 +377,7 @@ export function markThreadUnread(
   };
 }
 
-export function setThreadChangedFilesExpanded(
+function setThreadChangedFilesExpanded(
   state: UiState,
   threadId: string,
   turnId: string,
@@ -312,7 +400,7 @@ export function setThreadChangedFilesExpanded(
   };
 }
 
-export function setDefaultAdvertisedEndpointKey(state: UiState, key: string | null): UiState {
+function setDefaultAdvertisedEndpointKey(state: UiState, key: string | null): UiState {
   const nextKey = key && key.length > 0 ? key : null;
   if (state.defaultAdvertisedEndpointKey === nextKey) {
     return state;
@@ -323,7 +411,7 @@ export function setDefaultAdvertisedEndpointKey(state: UiState, key: string | nu
   };
 }
 
-export function setSidebarProjectScopeKey(state: UiState, projectKey: string | null): UiState {
+function setSidebarProjectScopeKey(state: UiState, projectKey: string | null): UiState {
   const nextKey = sanitizeOptionalKey(projectKey);
   if (state.sidebarProjectScopeKey === nextKey) {
     return state;
@@ -332,6 +420,151 @@ export function setSidebarProjectScopeKey(state: UiState, projectKey: string | n
     ...state,
     sidebarProjectScopeKey: nextKey,
   };
+}
+
+function validSidebarSectionName(state: UiState, name: string, exceptId?: string): boolean {
+  const trimmed = name.trim();
+  return (
+    trimmed.length > 0 &&
+    trimmed.length <= MAX_SIDEBAR_SECTION_NAME_LENGTH &&
+    !state.sidebarPinnedSections.some(
+      (section) => section.id !== exceptId && section.name.toLowerCase() === trimmed.toLowerCase(),
+    )
+  );
+}
+
+export function createSidebarPinnedSection(state: UiState, id: string, name: string): UiState {
+  if (
+    state.sidebarPinnedSections.length >= MAX_SIDEBAR_PINNED_SECTIONS ||
+    !id.trim() ||
+    state.sidebarPinnedSections.some((section) => section.id === id) ||
+    !validSidebarSectionName(state, name)
+  ) {
+    return state;
+  }
+  return {
+    ...state,
+    sidebarPinnedSections: [
+      ...state.sidebarPinnedSections,
+      { id, name: name.trim(), threadKeys: [], collapsed: false },
+    ],
+  };
+}
+
+export function renameSidebarPinnedSection(state: UiState, id: string, name: string): UiState {
+  if (!validSidebarSectionName(state, name, id)) {
+    return state;
+  }
+  const section = state.sidebarPinnedSections.find((section) => section.id === id);
+  if (!section || section.name === name.trim()) {
+    return state;
+  }
+  return {
+    ...state,
+    sidebarPinnedSections: state.sidebarPinnedSections.map((section) =>
+      section.id === id ? { ...section, name: name.trim() } : section,
+    ),
+  };
+}
+
+export function deleteSidebarPinnedSection(state: UiState, id: string): UiState {
+  const sidebarPinnedSections = state.sidebarPinnedSections.filter((section) => section.id !== id);
+  return sidebarPinnedSections.length === state.sidebarPinnedSections.length
+    ? state
+    : {
+        ...state,
+        sidebarPinnedSections,
+        sidebarCompactSections: Object.fromEntries(
+          Object.entries(state.sidebarCompactSections).filter(
+            ([key]) => key !== `pinned-section:${id}`,
+          ),
+        ),
+      };
+}
+
+export function moveThreadsToPinnedSection(
+  state: UiState,
+  threadKeys: readonly string[],
+  sectionId: string | null,
+): UiState {
+  if (
+    sectionId !== null &&
+    !state.sidebarPinnedSections.some((section) => section.id === sectionId)
+  ) {
+    return state;
+  }
+  const keys = new Set(threadKeys.filter((key) => key.length > 0));
+  if (keys.size === 0) {
+    return state;
+  }
+  let changed = false;
+  const sidebarPinnedSections = state.sidebarPinnedSections.map((section) => {
+    const nextKeys =
+      section.id === sectionId
+        ? [...new Set([...section.threadKeys, ...keys])]
+        : section.threadKeys.filter((key) => !keys.has(key));
+    if (nextKeys.length === section.threadKeys.length) {
+      return section;
+    }
+    changed = true;
+    return { ...section, threadKeys: nextKeys };
+  });
+  return changed ? { ...state, sidebarPinnedSections } : state;
+}
+
+export function setSidebarSectionCompact(
+  state: UiState,
+  sectionKey: string,
+  compact: boolean,
+): UiState {
+  return {
+    ...state,
+    sidebarCompactSections: {
+      ...state.sidebarCompactSections,
+      [sectionKey]: compact,
+    },
+  };
+}
+
+export function setThreadPrBadgeHidden(
+  state: UiState,
+  threadKey: string,
+  hidden: boolean,
+): UiState {
+  return {
+    ...state,
+    threadPrBadgeHiddenById: { ...state.threadPrBadgeHiddenById, [threadKey]: hidden },
+  };
+}
+
+export function toggleSidebarPinnedSection(state: UiState, id: string): UiState {
+  if (!state.sidebarPinnedSections.some((section) => section.id === id)) {
+    return state;
+  }
+  return {
+    ...state,
+    sidebarPinnedSections: state.sidebarPinnedSections.map((section) =>
+      section.id === id ? { ...section, collapsed: !section.collapsed } : section,
+    ),
+  };
+}
+
+export function moveSidebarPinnedSection(
+  state: UiState,
+  id: string,
+  direction: "up" | "down",
+): UiState {
+  const index = state.sidebarPinnedSections.findIndex((section) => section.id === id);
+  const targetIndex = index + (direction === "up" ? -1 : 1);
+  if (index < 0 || targetIndex < 0 || targetIndex >= state.sidebarPinnedSections.length) {
+    return state;
+  }
+  const sidebarPinnedSections = [...state.sidebarPinnedSections];
+  [sidebarPinnedSections[index], sidebarPinnedSections[targetIndex]] = [
+    sidebarPinnedSections[targetIndex]!,
+    sidebarPinnedSections[index]!,
+  ];
+  return { ...state, sidebarPinnedSections };
 }
 
 function setPullRequestMergeMethod(state: UiState, method: PullRequestMergeMethod): UiState {
@@ -418,6 +651,14 @@ export function reorderProjects(
 }
 
 interface UiStateStore extends UiState {
+  createSidebarPinnedSection: (name: string) => string | null;
+  renameSidebarPinnedSection: (id: string, name: string) => boolean;
+  deleteSidebarPinnedSection: (id: string) => void;
+  moveThreadsToPinnedSection: (threadKeys: readonly string[], sectionId: string | null) => void;
+  toggleSidebarPinnedSection: (id: string) => void;
+  setSidebarSectionCompact: (sectionKey: string, compact: boolean) => void;
+  setThreadPrBadgeHidden: (threadKey: string, hidden: boolean) => void;
+  moveSidebarPinnedSection: (id: string, direction: "up" | "down") => void;
   markThreadVisited: (threadId: string, visitedAt: string) => void;
   markThreadUnread: (threadId: string, latestTurnCompletedAt: string | null | undefined) => void;
   setThreadChangedFilesExpanded: (threadId: string, turnId: string, expanded: boolean) => void;
@@ -432,8 +673,41 @@ interface UiStateStore extends UiState {
   ) => void;
 }
 
-export const useUiStateStore = create<UiStateStore>((set) => ({
+export const useUiStateStore = create<UiStateStore>((set, get) => ({
   ...readPersistedState(),
+  createSidebarPinnedSection: (name) => {
+    const state = get();
+    if (
+      state.sidebarPinnedSections.length >= MAX_SIDEBAR_PINNED_SECTIONS ||
+      !validSidebarSectionName(state, name)
+    ) {
+      return null;
+    }
+    const id = randomUUID();
+    set((state) => createSidebarPinnedSection(state, id, name));
+    return id;
+  },
+  renameSidebarPinnedSection: (id, name) => {
+    const state = get();
+    if (
+      !state.sidebarPinnedSections.some((section) => section.id === id) ||
+      !validSidebarSectionName(state, name, id)
+    ) {
+      return false;
+    }
+    set((state) => renameSidebarPinnedSection(state, id, name));
+    return true;
+  },
+  deleteSidebarPinnedSection: (id) => set((state) => deleteSidebarPinnedSection(state, id)),
+  moveThreadsToPinnedSection: (threadKeys, sectionId) =>
+    set((state) => moveThreadsToPinnedSection(state, threadKeys, sectionId)),
+  toggleSidebarPinnedSection: (id) => set((state) => toggleSidebarPinnedSection(state, id)),
+  setSidebarSectionCompact: (sectionKey, compact) =>
+    set((state) => setSidebarSectionCompact(state, sectionKey, compact)),
+  setThreadPrBadgeHidden: (threadKey, hidden) =>
+    set((state) => setThreadPrBadgeHidden(state, threadKey, hidden)),
+  moveSidebarPinnedSection: (id, direction) =>
+    set((state) => moveSidebarPinnedSection(state, id, direction)),
   markThreadVisited: (threadId, visitedAt) =>
     set((state) => markThreadVisited(state, threadId, visitedAt)),
   markThreadUnread: (threadId, latestTurnCompletedAt) =>

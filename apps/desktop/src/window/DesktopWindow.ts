@@ -104,7 +104,7 @@ export class DesktopWindow extends Context.Service<
     readonly prepareCaptureReveal: Effect.Effect<void>;
     readonly dispatchMenuAction: (
       action: string,
-      options?: { readonly reveal?: boolean },
+      options?: { readonly reveal?: boolean; readonly dropWhenLoading?: boolean },
     ) => Effect.Effect<void, DesktopWindowError>;
     readonly dispatchSnapShotEvent: (
       event: DesktopSnapShotEvent,
@@ -185,7 +185,7 @@ function buildConnectingSplashDataUrl(shouldUseDarkColors: boolean): string {
   return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
 }
 
-export function isSameOriginRendererNavigation(input: {
+function isSameOriginRendererNavigation(input: {
   readonly applicationUrl: string;
   readonly navigationUrl: string;
 }): boolean {
@@ -196,7 +196,7 @@ export function isSameOriginRendererNavigation(input: {
   }
 }
 
-export function isRetryableDevelopmentRendererLoadFailure(input: {
+function isRetryableDevelopmentRendererLoadFailure(input: {
   readonly applicationUrl: string;
   readonly errorCode: number;
   readonly isMainFrame: boolean;
@@ -212,7 +212,7 @@ export function isRetryableDevelopmentRendererLoadFailure(input: {
   );
 }
 
-export function concealPendingQuitWindow(
+function concealPendingQuitWindow(
   window: Pick<
     Electron.BrowserWindow,
     "isDestroyed" | "isFullScreen" | "setFullScreen" | "setOpacity"
@@ -948,7 +948,10 @@ export const make = Effect.gen(function* () {
   const dispatchRendererEvent = Effect.fn("desktop.window.dispatchRendererEvent")(function* (
     channel: string,
     payload: unknown,
-    { reveal = true }: { readonly reveal?: boolean } = {},
+    {
+      reveal = true,
+      dropWhenLoading = false,
+    }: { readonly reveal?: boolean; readonly dropWhenLoading?: boolean } = {},
   ) {
     if (yield* Ref.get(desktopState.quitting)) return;
     const existingWindow = yield* reveal ? focusedMainWindow : electronWindow.main;
@@ -965,6 +968,7 @@ export const make = Effect.gen(function* () {
       ? send.pipe(Effect.andThen(electronWindow.reveal(targetWindow).pipe(Effect.ignoreCause)))
       : send;
     if (targetWindow.webContents.isLoadingMainFrame()) {
+      if (dropWhenLoading) return;
       targetWindow.webContents.once("did-finish-load", () => void runPromise(dispatch));
       return;
     }

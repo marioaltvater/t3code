@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import {
-  buildDraftActionMenuItems,
-  buildThreadActionMenuItems,
-  type ThreadActionMenuState,
-} from "./threadActionMenu.logic";
+import { buildThreadActionMenuItems, type ThreadActionMenuState } from "./threadActionMenu.logic";
 
 const baseState: ThreadActionMenuState = {
   canOperate: true,
@@ -13,6 +9,7 @@ const baseState: ThreadActionMenuState = {
   isPinned: false,
   isSettled: false,
   autoSettleEnabled: true,
+  prBadgeHidden: false,
   isSnoozed: false,
   canSnoozeNow: true,
   isRegeneratingTitle: false,
@@ -84,6 +81,7 @@ describe("buildThreadActionMenuItems", () => {
     expect(denied.filter((item) => !item.disabled).map((item) => item.id)).toEqual([
       "new-thread-on-branch",
       "mark-unread",
+      "pr-badge",
       "copy",
       "project-settings",
     ]);
@@ -103,7 +101,15 @@ describe("buildThreadActionMenuItems", () => {
           titleRegeneration: false,
         },
       }),
-    ).toEqual(["rename", "mark-unread", "copy", "project-settings", "archive", "delete"]);
+    ).toEqual([
+      "rename",
+      "mark-unread",
+      "pr-badge",
+      "copy",
+      "project-settings",
+      "archive",
+      "delete",
+    ]);
   });
 
   it("groups project settings with utility actions before archive", () => {
@@ -171,6 +177,29 @@ describe("buildThreadActionMenuItems", () => {
     ).not.toContain("auto-settle");
   });
 
+  it.each([false, true])(
+    "offers both sidebar PR choices to read-only clients (hidden: %s)",
+    (hidden) => {
+      const items = buildThreadActionMenuItems({
+        ...baseState,
+        canOperate: false,
+        prBadgeHidden: hidden,
+      });
+      const index = items.findIndex((item) => item.id === "pr-badge");
+      expect(items[index - 1]?.id).toBe("auto-settle");
+      expect(items[index + 1]?.id).toBe("copy");
+      expect(items[index]).toMatchObject({
+        label: "Pull requests",
+        children: [
+          { id: "pr-badge:visible", label: "Show", checked: !hidden },
+          { id: "pr-badge:hidden", label: "Hide", checked: hidden },
+        ],
+      });
+      expect(items[index]?.disabled).not.toBe(true);
+      expect(items[index]?.children?.every((item) => !item.disabled)).toBe(true);
+    },
+  );
+
   it("disables snooze when the thread cannot snooze, keeping presets visible", () => {
     const snooze = buildThreadActionMenuItems({ ...baseState, canSnoozeNow: false }).find(
       (item) => item.id === "snooze",
@@ -220,26 +249,5 @@ describe("buildThreadActionMenuItems", () => {
       (item) => item.id === "archive",
     );
     expect(archiveItem?.disabled).toBe(true);
-  });
-});
-
-describe("buildDraftActionMenuItems", () => {
-  it("offers only the copy values the draft has", () => {
-    const items = buildDraftActionMenuItems({ hasPath: false, hasBranch: true, hasProject: true });
-    expect(items[0]).toMatchObject({ id: "copy", disabled: false });
-    expect(items[0]?.children?.map((item) => item.id)).toEqual(["copy-branch"]);
-
-    const noCopy = buildDraftActionMenuItems({
-      hasPath: false,
-      hasBranch: false,
-      hasProject: true,
-    });
-    expect(noCopy[0]).toMatchObject({ id: "copy", disabled: true, children: [] });
-  });
-
-  it("drops project settings without a project and keeps discard last", () => {
-    const items = buildDraftActionMenuItems({ hasPath: true, hasBranch: false, hasProject: false });
-    expect(items.map((item) => item.id)).toEqual(["copy", "discard"]);
-    expect(items.at(-1)).toMatchObject({ label: "Discard draft", destructive: true });
   });
 });

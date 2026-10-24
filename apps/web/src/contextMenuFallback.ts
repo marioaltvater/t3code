@@ -50,6 +50,13 @@ const ICON_PATHS: Record<string, ReadonlyArray<{ tag: string; attrs: Record<stri
     { tag: "circle", attrs: { cx: "6", cy: "18", r: "3" } },
     { tag: "path", attrs: { d: "M18 9a9 9 0 0 1-9 9" } },
   ],
+  "git-pull-request-arrow": [
+    { tag: "circle", attrs: { cx: "5", cy: "6", r: "3" } },
+    { tag: "path", attrs: { d: "M5 9v12" } },
+    { tag: "circle", attrs: { cx: "19", cy: "18", r: "3" } },
+    { tag: "path", attrs: { d: "m15 9-3-3 3-3" } },
+    { tag: "path", attrs: { d: "M12 6h5a2 2 0 0 1 2 2v7" } },
+  ],
   hash: [
     { tag: "line", attrs: { x1: "4", x2: "20", y1: "9", y2: "9" } },
     { tag: "line", attrs: { x1: "4", x2: "20", y1: "15", y2: "15" } },
@@ -419,8 +426,9 @@ export function showContextMenuFallback<T extends string>(
           if (hasChildren) {
             const openSubmenu = (focusFirstItem = false) => {
               const rect = button.getBoundingClientRect();
-              const nextLeft = rect.right + 4;
-              const nextTop = rect.top;
+              const nextLeft = rect.right;
+              // Match MenuSubPopup: align the first item, accounting for popup border and padding.
+              const nextTop = rect.top - 5;
               openMenu(item.children!, nextLeft, nextTop, level + 1, button);
               button.setAttribute("aria-expanded", "true");
 
@@ -430,7 +438,7 @@ export function showContextMenuFallback<T extends string>(
               }
               const childRect = childMenu.getBoundingClientRect();
               if (childRect.right > window.innerWidth) {
-                clampMenuPosition(childMenu, rect.left - childRect.width - 4, rect.top);
+                clampMenuPosition(childMenu, rect.left - childRect.width, nextTop);
               }
               if (focusFirstItem) {
                 [...childMenu.querySelectorAll<HTMLButtonElement>("button")]

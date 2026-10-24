@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
-import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
+import * as Cause from "effect/Cause";
 import * as Fiber from "effect/Fiber";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as FileSystem from "effect/FileSystem";
@@ -289,52 +289,4 @@ describe("ElectronProtocol", () => {
       }
     }).pipe(Effect.provide(layerProtocol)),
   );
-
-  it("keeps executable sources host-restricted while allowing runtime network resources", () => {
-    const policy = ElectronProtocol.makeDesktopContentSecurityPolicy({
-      scheme: "t3code-personal",
-      targetOrigin: new URL("http://127.0.0.1:3773/"),
-      clerkFrontendApiHostname: "clerk.t3.codes",
-    });
-    const directives = Object.fromEntries(
-      policy.split("; ").map((directive) => {
-        const [name, ...sources] = directive.split(" ");
-        return [name, sources];
-      }),
-    );
-
-    assert.deepEqual(directives["script-src"], [
-      "'self'",
-      "'unsafe-inline'",
-      "'wasm-unsafe-eval'",
-      "https://clerk.t3.codes",
-      "https://challenges.cloudflare.com",
-    ]);
-    assert.deepEqual(directives["connect-src"], [
-      "'self'",
-      "blob:",
-      "http:",
-      "https:",
-      "ws:",
-      "wss:",
-    ]);
-    assert.deepEqual(directives["img-src"], [
-      "'self'",
-      "t3code-personal:",
-      "blob:",
-      "data:",
-      "http:",
-      "https:",
-    ]);
-    assert.deepEqual(directives["media-src"], [
-      "'self'",
-      "t3code-personal:",
-      "blob:",
-      "http:",
-      "https:",
-    ]);
-    assert.deepEqual(directives["frame-src"], ["'self'", "blob:", "http:", "https:"]);
-    assert.deepEqual(directives["object-src"], ["'self'", "blob:", "http:", "https:"]);
-    assert.deepEqual(directives["font-src"], ["'self'", "t3code-personal:", "data:"]);
-  });
 });

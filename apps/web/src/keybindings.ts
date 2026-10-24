@@ -6,7 +6,9 @@ import {
   MODEL_PICKER_JUMP_KEYBINDING_COMMANDS,
   type ResolvedKeybindingsConfig,
   THREAD_JUMP_KEYBINDING_COMMANDS,
+  THREAD_PINNED_KEYBINDING_COMMANDS,
   type ModelPickerJumpKeybindingCommand,
+  type ThreadPinnedKeybindingCommand,
   type ThreadJumpKeybindingCommand,
 } from "@t3tools/contracts";
 import {
@@ -262,6 +264,11 @@ export function threadJumpCommandForIndex(index: number): ThreadJumpKeybindingCo
 
 export function threadJumpIndexFromCommand(command: string): number | null {
   const index = THREAD_JUMP_KEYBINDING_COMMANDS.indexOf(command as ThreadJumpKeybindingCommand);
+  return index === -1 ? null : index;
+}
+
+export function threadPinnedIndexFromCommand(command: string): number | null {
+  const index = THREAD_PINNED_KEYBINDING_COMMANDS.indexOf(command as ThreadPinnedKeybindingCommand);
   return index === -1 ? null : index;
 }
 

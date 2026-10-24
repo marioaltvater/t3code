@@ -2,6 +2,9 @@ import type { ContextMenuItem } from "@t3tools/contracts";
 import type { SnoozePreset } from "@t3tools/client-runtime/state/thread-settled";
 
 export type ThreadActionMenuId =
+  | "pinned-section"
+  | "pinned-section:new"
+  | `pinned-section:move:${string}`
   | "new-thread-on-branch"
   | "filter-by-project"
   | "project-settings"
@@ -12,6 +15,9 @@ export type ThreadActionMenuId =
   | "auto-settle"
   | "auto-settle:enabled"
   | "auto-settle:disabled"
+  | "pr-badge"
+  | "pr-badge:visible"
+  | "pr-badge:hidden"
   | "snooze"
   | `snooze:${string}`
   | "unsnooze"
@@ -73,6 +79,7 @@ export interface ThreadActionMenuState {
   readonly isPinned: boolean;
   readonly isSettled: boolean;
   readonly autoSettleEnabled: boolean;
+  readonly prBadgeHidden: boolean;
   readonly isSnoozed: boolean;
   readonly canSnoozeNow: boolean;
   readonly isRegeneratingTitle: boolean;
@@ -90,6 +97,8 @@ export interface ThreadActionMenuState {
 
 /** Local navigation, read markers, and copying remain available to read-only clients. */
 export function threadActionRequiresOperate(action: ThreadActionMenuId): boolean {
+  if (action.startsWith("pinned-section")) return false;
+  if (action.startsWith("pr-badge")) return false;
   return ![
     "new-thread-on-branch",
     "project-settings",
@@ -99,6 +108,18 @@ export function threadActionRequiresOperate(action: ThreadActionMenuId): boolean
     "copy-branch",
     "copy-thread-id",
   ].includes(action);
+}
+
+export function buildThreadPrBadgeMenuItem(hidden: boolean): ContextMenuItem<ThreadActionMenuId> {
+  return {
+    id: "pr-badge",
+    label: "Pull requests",
+    icon: "git-pull-request-arrow",
+    children: [
+      { id: "pr-badge:visible", label: "Show", checked: !hidden },
+      { id: "pr-badge:hidden", label: "Hide", checked: hidden },
+    ],
+  };
 }
 
 export function buildThreadActionMenuItems(
@@ -191,6 +212,7 @@ export function buildThreadActionMenuItems(
           },
         ]
       : []),
+    buildThreadPrBadgeMenuItem(state.prBadgeHidden),
     {
       id: "copy",
       label: "Copy",

@@ -37,9 +37,9 @@ jobs:
           if [ -z "$base" ] || [ "$base" = 0000000000000000000000000000000000000000 ]; then
             base=HEAD^
           fi
-          # An upstream merge checks the preserved fork delta against that release.
-          merge="$(git rev-list --first-parent --merges "$base..HEAD" | head -n 1)"
-          if [ -n "$merge" ]; then
-            base="$(git rev-parse "$merge^2")"
+          # A newly integrated upstream release checks only the preserved fork delta.
+          release="$(git tag --merged HEAD --no-merged "$base" --list 'v*' --sort=-version:refname | sed -n '1p')"
+          if [ -n "$release" ]; then
+            base="$(git rev-parse "$release^{commit}")"
           fi
           pnpm fork:check "$base"

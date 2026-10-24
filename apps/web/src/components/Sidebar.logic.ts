@@ -11,7 +11,10 @@ import { threadSearchMatchKey } from "@t3tools/client-runtime/state/thread-searc
 import type { ContextMenuItem, EnvironmentId, ThreadId } from "@t3tools/contracts";
 import type { SidebarProjectSortOrder, SidebarThreadSortOrder } from "@t3tools/contracts/settings";
 import type { AsyncResult } from "effect/reactivity";
-import { planPinnedReorder } from "@t3tools/client-runtime/state/thread-sort";
+import {
+  planPinnedReorder,
+  sortPinnedThreadsByOrderKey as sortPinnedThreadsForSidebar,
+} from "@t3tools/client-runtime/state/thread-sort";
 import {
   effectiveSnoozed,
   type ThreadSnoozeShell,
@@ -25,7 +28,6 @@ import {
 import type { SidebarThreadSummary, Thread } from "../types";
 import { normalizeSearchText } from "../lib/utils";
 import { isLatestRunSettled } from "../session-logic";
-import { resolveServerBackedAppStageLabel } from "../branding.logic";
 
 export function shouldNavigateAfterThreadPark(input: {
   readonly threadKey: string;
@@ -44,7 +46,7 @@ export function shouldNavigateAfterThreadPark(input: {
 }
 
 const THREAD_SELECTION_SAFE_SELECTOR = "[data-thread-item], [data-thread-selection-safe]";
-export const THREAD_JUMP_HINT_SHOW_DELAY_MS = 200;
+const THREAD_JUMP_HINT_SHOW_DELAY_MS = 200;
 
 export function resolveSidebarRowAccessibility(input: {
   readonly title: string;
@@ -134,6 +136,7 @@ export function resolveSidebarThreadSection(input: {
 const SIDEBAR_MARKER_PREFIX = "sidebar-marker-";
 
 export type SidebarListMarker =
+  | `pinned-section:${string}`
   | "pinned-header"
   | "active-placeholder"
   | "settled-placeholder"
@@ -147,64 +150,98 @@ export function sidebarMarkerId(marker: SidebarListMarker): string {
 }
 
 export type SidebarListItem =
-  | { readonly kind: "thread"; readonly key: string; readonly section: SidebarSection }
+  | {
+      readonly kind: "thread";
+      readonly key: string;
+      readonly section: SidebarSection;
+      readonly pinnedSectionId?: string | null;
+    }
   | { readonly kind: "marker"; readonly marker: SidebarListMarker };
 
 export function sidebarListItemId(item: SidebarListItem): string {
   return item.kind === "thread" ? item.key : sidebarMarkerId(item.marker);
 }
 
-function sectionAtSidebarSlot(items: readonly SidebarListItem[], index: number): SidebarSection {
-  let section: SidebarSection = "pinned";
-  for (let i = 0; i < index && i < items.length; i += 1) {
-    const item = items[i]!;
-    if (item.kind !== "marker") continue;
-    if (item.marker === "pinned-divider") section = "active";
-    else if (item.marker === "working-header") section = "working";
-    else if (item.marker === "snoozed-header") section = "snoozed";
-    else if (item.marker === "settled-header") section = "settled";
-  }
-  return section;
-}
-
 export type SidebarDropTarget = {
   readonly section: "pinned" | "active" | "settled";
+  readonly pinnedSectionId?: string | null;
   readonly pinnedOrder: readonly string[];
   readonly activeOrder: readonly string[];
 };
 
-export function resolveSidebarDropTarget(
-  items: readonly SidebarListItem[],
-  activeKey: string,
-  overId: string,
-): SidebarDropTarget | null {
-  const activeIndex = items.findIndex((item) => sidebarListItemId(item) === activeKey);
-  const overIndex = items.findIndex((item) => sidebarListItemId(item) === overId);
-  if (activeIndex === -1 || overIndex === -1 || items[activeIndex]?.kind !== "thread") return null;
-  const moved = items.filter((_, index) => index !== activeIndex);
-  moved.splice(overIndex, 0, items[activeIndex]!);
-  const section = sectionAtSidebarSlot(moved, overIndex);
-  if (section === "working" || section === "snoozed") return null;
-  const pinnedOrder: string[] = [];
-  const activeOrder: string[] = [];
-  let currentSection: SidebarSection = "pinned";
-  for (const item of moved) {
-    if (item.kind === "marker") {
-      if (item.marker === "pinned-divider") currentSection = "active";
-      else if (
-        item.marker === "working-header" ||
-        item.marker === "snoozed-header" ||
-        item.marker === "settled-header"
-      )
-        break;
-    } else if (currentSection === "pinned") pinnedOrder.push(item.key);
-    else activeOrder.push(item.key);
-  }
-  return { section, pinnedOrder, activeOrder };
+export function sidebarDestinationId(
+  section: SidebarDropTarget["section"],
+  pinnedSectionId: string | null = null,
+): string {
+  return `sidebar-destination:${section === "pinned" && pinnedSectionId !== null ? `section:${pinnedSectionId}` : section}`;
+}
+
+export function resolveSidebarDestinationTarget(input: {
+  activeKey: string;
+  overId: string;
+  pinnedOrder: readonly string[];
+  activeOrder: readonly string[];
+  pinnedSectionIds: readonly string[];
+  pinnedSectionIdByThreadKey: ReadonlyMap<string, string>;
+}): SidebarDropTarget | null {
+  const { activeKey, overId } = input;
+  const sectionId = input.pinnedSectionIds.find(
+    (id) => sidebarDestinationId("pinned", id) === overId,
+  );
+  const section =
+    sectionId !== undefined || overId === sidebarDestinationId("pinned")
+      ? "pinned"
+      : overId === sidebarDestinationId("active")
+        ? "active"
+        : overId === sidebarDestinationId("settled")
+          ? "settled"
+          : null;
+  if (section === null) return null;
+  const destinationPins = input.pinnedOrder.filter(
+    (key) => (input.pinnedSectionIdByThreadKey.get(key) ?? null) === (sectionId ?? null),
+  );
+  const includeThread = (order: readonly string[]) =>
+    order.includes(activeKey) ? order : [...order, activeKey];
+  return {
+    section,
+    ...(section === "pinned" ? { pinnedSectionId: sectionId ?? null } : {}),
+    pinnedOrder: section === "pinned" ? includeThread(destinationPins) : input.pinnedOrder,
+    activeOrder: section === "active" ? includeThread(input.activeOrder) : input.activeOrder,
+  };
+}
+
+export function resolveSidebarSourceTarget(input: {
+  activeKey: string;
+  overId: string;
+  section: SidebarSection;
+  pinnedSectionId: string | null;
+  sourceKeys: ReadonlySet<string>;
+  pinnedOrder: readonly string[];
+  activeOrder: readonly string[];
+  pinnedSectionIdByThreadKey: ReadonlyMap<string, string>;
+}): SidebarDropTarget | null {
+  if (!input.sourceKeys.has(input.overId) || !input.sourceKeys.has(input.activeKey)) return null;
+  if (input.section !== "pinned" && input.section !== "active") return null;
+  const pinnedOrder = input.pinnedOrder.filter(
+    (key) => (input.pinnedSectionIdByThreadKey.get(key) ?? null) === input.pinnedSectionId,
+  );
+  const order = [...(input.section === "pinned" ? pinnedOrder : input.activeOrder)];
+  const from = order.indexOf(input.activeKey);
+  const to = order.indexOf(input.overId);
+  if (from < 0 || to < 0) return null;
+  order.splice(from, 1);
+  order.splice(to, 0, input.activeKey);
+  return {
+    section: input.section,
+    ...(input.section === "pinned" ? { pinnedSectionId: input.pinnedSectionId } : {}),
+    pinnedOrder: input.section === "pinned" ? order : input.pinnedOrder,
+    activeOrder: input.section === "active" ? order : input.activeOrder,
+  };
 }
 
 export type SidebarThreadDropPlan =
   | { readonly kind: "none" }
+  | { readonly kind: "blocked" }
   | {
       readonly kind: "reorder-pinned";
       readonly order: readonly string[];
@@ -227,18 +264,6 @@ export type SidebarThreadDropPlan =
   | { readonly kind: "settle" };
 
 export type SidebarDropVerb = "pin" | "unpin" | "settle" | "unsettle" | "wake";
-
-export function resolveSidebarDropVerb(
-  from: SidebarSection,
-  to: SidebarSection | null,
-): SidebarDropVerb | null {
-  if (to === null || to === from || to === "working" || to === "snoozed") return null;
-  if (to === "pinned") return "pin";
-  if (to === "settled") return "settle";
-  if (from === "pinned") return "unpin";
-  if (from === "settled") return "unsettle";
-  return "wake";
-}
 
 export function resolveSidebarSweepKeys(
   orderedKeys: readonly string[],
@@ -353,6 +378,11 @@ export function planSidebarThreadDrop(input: {
       ) {
         return { kind: "none" };
       }
+      if (
+        reorderableKeys &&
+        order.some((key) => pinnedKeysById.get(key) == null && !reorderableKeys.has(key))
+      )
+        return { kind: "blocked" };
       const assignments = arrange(order, pinnedKeysById, reorderableKeys);
       if (assignments === null) return { kind: "none" };
       if (activeSection === "pinned") {
@@ -513,7 +543,7 @@ export function buildMultiSelectThreadContextMenuItems(input: {
   ];
 }
 
-export function isSidebarSubagentThread(thread: Pick<SidebarThreadSummary, "lineage">): boolean {
+function isSidebarSubagentThread(thread: Pick<SidebarThreadSummary, "lineage">): boolean {
   return thread.lineage.relationshipToParent === "subagent";
 }
 
@@ -552,15 +582,26 @@ export function filterSidebarV2VisibleThreads<
   );
 }
 
-export function getSidebarForkParentThreadId(
-  thread: Pick<SidebarThreadSummary, "forkedFrom" | "lineage">,
+export function getSidebarPinnedDestinationThreads(
+  threads: readonly SidebarThreadSummary[],
+  serverConfigs: ReadonlyMap<
+    EnvironmentId,
+    { environment: { capabilities: { threadSnooze?: boolean; threadSettlement?: boolean } } }
+  >,
+  now: string,
 ) {
-  if (thread.lineage.relationshipToParent !== "fork") {
-    return null;
-  }
-  return thread.forkedFrom?.type === "run"
-    ? thread.forkedFrom.threadId
-    : thread.lineage.parentThreadId;
+  return sortPinnedThreadsForSidebar(
+    filterSidebarV2VisibleThreads(threads, null).filter((thread) => {
+      const capabilities = serverConfigs.get(thread.environmentId)?.environment.capabilities;
+      return (
+        resolveSidebarThreadSection({
+          snoozed: capabilities?.threadSnooze === true && effectiveSnoozed(thread, { now }),
+          settled: capabilities?.threadSettlement === true && thread.settledOverride === "settled",
+          pinned: thread.pinnedAt != null,
+        }) === "pinned"
+      );
+    }),
+  );
 }
 
 export function buildBulkTitleRegenerationContextMenuItem(input: {
@@ -634,14 +675,7 @@ export interface ThreadJumpHintVisibilityController {
   dispose: () => void;
 }
 
-export function resolveSidebarStageBadgeLabel(input: {
-  primaryServerVersion: string | null | undefined;
-  fallbackStageLabel: string;
-}): string {
-  return resolveServerBackedAppStageLabel(input);
-}
-
-export function createThreadJumpHintVisibilityController(input: {
+function createThreadJumpHintVisibilityController(input: {
   delayMs: number;
   onVisibilityChange: (visible: boolean) => void;
   setTimeoutFn?: typeof globalThis.setTimeout;
@@ -971,10 +1005,6 @@ export function resolveSidebarV2TopStatus(input: {
   return input.isUnread ? "done" : null;
 }
 
-export function shouldShowSidebarV2Duration(status: SidebarThreadStatus): boolean {
-  return status === "working";
-}
-
 export function firstValidTimestampMs(
   ...candidates: ReadonlyArray<string | null | undefined>
 ): number {
@@ -994,7 +1024,7 @@ export {
 } from "@t3tools/client-runtime/state/thread-inbox";
 
 export { pinOrderKeyBetween } from "@t3tools/client-runtime/state/thread-sort";
-export { sortPinnedThreadsByOrderKey as sortPinnedThreadsForSidebar } from "@t3tools/client-runtime/state/thread-sort";
+export { sortPinnedThreadsForSidebar };
 
 const EMPTY_CONTENT_MATCH_KEYS: ReadonlySet<string> = new Set<string>();
 
@@ -1079,14 +1109,6 @@ export function resolveWorkingStartedAt(
   thread: Pick<SidebarThreadSummary, "latestRun" | "runtime">,
 ): string | null {
   return resolveThreadWorkingStartedAt(thread);
-}
-
-export function formatWorkingDurationLabel(elapsedMs: number): string {
-  const seconds = Number.isFinite(elapsedMs) ? Math.max(0, Math.floor(elapsedMs / 1000)) : 0;
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m`;
-  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 }
 
 export function resolveThreadStatusPill(input: {
@@ -1228,7 +1250,7 @@ export function getFallbackThreadIdAfterDelete<
     )[0]?.id ?? null
   );
 }
-export function getProjectSortTimestamp(
+function getProjectSortTimestamp(
   project: SidebarProject,
   projectThreads: readonly ThreadSortInput[],
   sortOrder: Exclude<SidebarProjectSortOrder, "manual">,

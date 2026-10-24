@@ -1,253 +1,173 @@
-import { closestCenter, type CollisionDetection, type Modifier } from "@dnd-kit/core";
-import { verticalListSortingStrategy, type SortingStrategy } from "@dnd-kit/sortable";
 import {
-  resolveSidebarDropTarget,
-  sidebarListItemId,
-  sidebarMarkerId,
-  type SidebarListItem,
-  type SidebarListMarker,
-  type SidebarSection,
-} from "./Sidebar.logic";
+  closestCenter,
+  getClientRect,
+  pointerWithin,
+  type CollisionDetection,
+} from "@dnd-kit/core";
+import { verticalListSortingStrategy, type SortingStrategy } from "@dnd-kit/sortable";
 
-const stationary = { x: 0, y: 0, scaleX: 1, scaleY: 1 };
-const hidden = { ...stationary, scaleY: 0 };
-type ThreadItem = Extract<SidebarListItem, { kind: "thread" }>;
-type Layout = Parameters<SortingStrategy>[0];
-const isShelfHeader = (item: SidebarListItem | undefined) =>
-  item?.kind === "marker" &&
-  (item.marker === "working-header" ||
-    item.marker === "snoozed-header" ||
-    item.marker === "settled-header");
-
-export function restrictBelowSidebarLabel(
-  { transform, containerNodeRect, draggingNodeRect }: Parameters<Modifier>[0],
-  offset: number,
-) {
-  if (!containerNodeRect || !draggingNodeRect) return transform;
-  const minimumY = containerNodeRect.top + offset - draggingNodeRect.top;
-  return transform.y < minimumY ? { ...transform, y: minimumY } : transform;
-}
-
-export function createSidebarCollisionDetection(
-  isValidTarget: (id: string) => boolean,
-  options: {
-    items?: readonly SidebarListItem[];
-    activationY?: number | null;
-  } = {},
-): CollisionDetection {
-  const validity = new Map<string, boolean>();
-  const sections = new Map<string, SidebarSection | null>();
-  let previousPointerY = options.activationY;
-  let boundarySection: "pinned" | "active" | undefined;
-  return (args) => {
-    let collisions = closestCenter(args);
-    const pointer = args.pointerCoordinates;
-    const items = options.items;
-    const source = items?.find((item) => item.kind === "thread" && item.key === args.active.id);
-    const boundary = args.droppableContainers
-      .find((container) => container.id === sidebarMarkerId("pinned-divider"))
-      ?.node.current?.querySelector(".sidebar-drag-boundary-label")
-      ?.getBoundingClientRect();
-    if (items && boundary && source?.kind === "thread" && pointer) {
-      boundarySection ??= source.section === "pinned" ? "pinned" : "active";
-      // Use the visible divider row, including its sortable translation.
-      // Only pointer movement can change sections: opening the destination
-      // moves this row, but must not toggle a stationary gesture back.
-      const previousY = previousPointerY ?? pointer.y;
-      previousPointerY = pointer.y;
-      if (pointer.x >= boundary.left && pointer.x <= boundary.right) {
-        if (pointer.y < previousY && pointer.y <= boundary.bottom) boundarySection = "pinned";
-        else if (pointer.y > previousY && pointer.y >= boundary.top) boundarySection = "active";
-        const nextHeader = (["working-header", "snoozed-header", "settled-header"] as const)
-          .map((marker) =>
-            args.droppableContainers.find((container) => container.id === sidebarMarkerId(marker)),
-          )
-          .find((container) => container !== undefined);
-        const activeBottom = nextHeader?.node.current?.getBoundingClientRect().top;
-        if (boundarySection === "pinned" || (activeBottom != null && pointer.y < activeBottom)) {
-          const target = collisions.find((collision) => {
-            const id = String(collision.id);
-            if (!sections.has(id)) {
-              sections.set(
-                id,
-                resolveSidebarDropTarget(items, String(args.active.id), id)?.section ?? null,
-              );
-            }
-            return sections.get(id) === boundarySection;
-          });
-          if (target)
-            collisions = [target, ...collisions.filter((collision) => collision !== target)];
-        }
-      }
-    }
-    const nearest = collisions[0];
-    if (!nearest || nearest.id === args.active.id) {
-      return collisions;
-    }
-    const id = String(nearest.id);
-    const valid = validity.get(id) ?? isValidTarget(id);
-    validity.set(id, valid);
-    return valid ? collisions : collisions.filter((collision) => collision.id === args.active.id);
+export function sidebarDragExpansion({
+  pointerY,
+  anchor,
+  sourceBounds,
+  sourceSection,
+  pinnedAreaBottom,
+  expanded,
+  pinnedExpanded,
+}: {
+  pointerY: number;
+  anchor: { grabFraction: number; cardHeight: number } | null;
+  sourceBounds: { top: number; bottom: number } | null;
+  sourceSection: string;
+  pinnedAreaBottom: number | undefined;
+  expanded: boolean;
+  pinnedExpanded: boolean;
+}) {
+  if (!sourceBounds) return { expanded, pinnedExpanded };
+  // Shrinking the held card must not move the layout transition boundary.
+  const centerY = pointerY + (anchor ? (0.5 - anchor.grabFraction) * anchor.cardHeight : 0);
+  const margin = expanded ? 6 : -6;
+  // The retained pickup bounds can extend behind the current pinned targets.
+  // Crossing their shared boundary must expand both layouts in the same frame.
+  const top =
+    sourceSection === "active"
+      ? Math.max(sourceBounds.top, pinnedAreaBottom ?? -Infinity)
+      : sourceBounds.top;
+  const nextExpanded = centerY < top + margin || centerY > sourceBounds.bottom - margin;
+  return {
+    expanded: nextExpanded,
+    pinnedExpanded:
+      nextExpanded &&
+      pinnedAreaBottom !== undefined &&
+      centerY < pinnedAreaBottom + (pinnedExpanded ? 6 : -6),
   };
 }
 
-export function createSidebarSortingStrategy(input: {
-  items: readonly SidebarListItem[];
-  enabled?: boolean;
-  settledOrder: readonly string[];
-  activeOrder?: readonly string[];
-  settledExpanded: boolean;
-  settledVisibleCount?: number;
-  routeThreadKey?: string | null;
-  snoozedThreadCount?: number;
-  cardHeight?: number;
-  slimHeight?: number;
-  boundaryLabelHeight?: number;
-}): SortingStrategy {
-  if (input.enabled === false) return () => stationary;
-  const { items } = input;
-  const indices = new Map(items.map((item, index) => [sidebarListItemId(item), index]));
-  let previous: Pick<Layout, "rects" | "activeIndex" | "overIndex"> | undefined;
-  let transforms: ReturnType<SortingStrategy>[] | null = [];
+export function sidebarDragTranslation({
+  pointerY,
+  grabFraction,
+  cardHeight,
+  bounds,
+  originTop,
+}: {
+  pointerY: number;
+  grabFraction: number;
+  cardHeight: number;
+  bounds: { top: number; height: number };
+  originTop: number;
+}) {
+  const top = Math.max(
+    bounds.top,
+    Math.min(pointerY - grabFraction * cardHeight, bounds.top + bounds.height - cardHeight),
+  );
+  // Collision geometry uses a delta; the fixed card retains its viewport origin.
+  return top - originTop;
+}
 
-  function project({ rects, activeIndex, overIndex }: Layout) {
-    const active = items[activeIndex];
-    const over = items[overIndex] ?? active;
-    if (active?.kind !== "thread" || !over || !rects[0]) return [];
-    const target = resolveSidebarDropTarget(items, active.key, sidebarListItemId(over));
-    if (!target) return [];
-    const groups: Record<SidebarSection, ThreadItem[]> = {
-      pinned: [],
-      active: [],
-      working: [],
-      snoozed: [],
-      settled: [],
-    };
-    let cardHeight = input.cardHeight;
-    let slimHeight = input.slimHeight;
-    let headerScale: number | undefined;
-    for (const [index, item] of items.entries()) {
-      if (item.kind === "marker") {
-        if (isShelfHeader(item)) {
-          const height = rects[index]?.height;
-          if (height) headerScale ??= height / 32;
-        }
-        continue;
-      }
-      if (item.section === "pinned" || item.section === "active" || item.section === "working")
-        cardHeight ??= rects[index]?.height;
-      else slimHeight ??= rects[index]?.height;
-      if (item.key !== active.key) groups[item.section].push(item);
-    }
-    const scale =
-      slimHeight !== undefined ? slimHeight / 36 : (headerScale ?? (cardHeight ?? 82) / 82);
-    cardHeight ??= 82 * scale;
-    slimHeight ??= 36 * scale;
-    const labelHeight = (input.boundaryLabelHeight ?? 0) * scale;
-    const group = groups[target.section];
-    const order =
-      target.section === "pinned"
-        ? target.pinnedOrder
-        : target.section === "settled"
-          ? input.settledOrder
-          : (input.activeOrder ?? target.activeOrder);
-    const ranks = new Map(order.map((key, index) => [key, index]));
-    const rank = ranks.get(active.key) ?? Number.POSITIVE_INFINITY;
-    const index = group.findIndex(
-      (item) => (ranks.get(item.key) ?? Number.POSITIVE_INFINITY) > rank,
-    );
-    group.splice(index < 0 ? group.length : index, 0, { ...active, section: target.section });
-    const settledOrder = (
-      input.settledOrder.length > 0 ? input.settledOrder : groups.settled.map((item) => item.key)
-    ).filter((key) => key !== active.key || target.section === "settled");
-    const visible = input.settledExpanded
-      ? settledOrder.slice(0, input.settledVisibleCount ?? settledOrder.length)
-      : [];
-    const routeKey = input.routeThreadKey;
-    if (routeKey && settledOrder.includes(routeKey) && !visible.includes(routeKey)) {
-      visible.push(routeKey);
-    }
-    groups.settled = visible.map((key) => ({ kind: "thread", key, section: "settled" }));
-    const projected: SidebarListItem[] = [];
-    const marker = (name: SidebarListMarker) => projected.push({ kind: "marker", marker: name });
-    const section = (name: "active" | "settled") => {
-      if (groups[name].length > 0) projected.push(...groups[name]);
-      else marker(`${name}-placeholder`);
-    };
-    marker("pinned-header");
-    projected.push(...groups.pinned);
-    marker("pinned-divider");
-    section("active");
-    if (items.some((item) => item.kind === "marker" && item.marker === "working-header")) {
-      marker("working-header");
-      projected.push(...groups.working);
-    }
-    if (
-      groups.snoozed.length > 0 ||
-      ((active.section !== "snoozed" || (input.snoozedThreadCount ?? 0) > 1) &&
-        items.some((item) => item.kind === "marker" && item.marker === "snoozed-header"))
-    ) {
-      marker("snoozed-header");
-      projected.push(...groups.snoozed);
-    }
-    marker("settled-header");
-    section("settled");
-    const heights = projected.map((item) => {
-      const index = indices.get(sidebarListItemId(item));
-      const rect = index === undefined ? undefined : rects[index];
-      const fallback =
-        item.kind === "thread" &&
-        (item.section === "pinned" || item.section === "active" || item.section === "working")
-          ? cardHeight
-          : slimHeight;
-      const moved = item.kind === "thread" && item.key === active.key;
-      return item.kind === "marker" &&
-        (item.marker === "pinned-header" || item.marker === "pinned-divider")
-        ? labelHeight
-        : item.kind === "marker" && item.marker.endsWith("placeholder")
-          ? slimHeight
-          : moved
-            ? fallback
-            : (rect?.height ?? fallback);
-    });
-    const firstShelf = items.findIndex(isShelfHeader);
-    const shelfRect = rects[firstShelf];
-    const beforeShelf = rects[firstShelf - 1];
-    const lastRect = rects.at(-1);
-    let shelfSpace =
-      shelfRect && beforeShelf && lastRect && shelfRect.top > beforeShelf.bottom + 1
-        ? Math.max(
-            0,
-            lastRect.bottom - rects[0].top - heights.reduce((sum, height) => sum + height + 1, -1),
-          )
-        : 0;
-    const result = items.map(() => hidden);
-    let top = rects[0].top;
-    for (const [projectedIndex, item] of projected.entries()) {
-      if (isShelfHeader(item)) {
-        top += shelfSpace;
-        shelfSpace = 0;
-      }
-      const index = indices.get(sidebarListItemId(item));
-      const rect = index === undefined ? undefined : rects[index];
-      if (index !== undefined && rect) result[index] = { ...stationary, y: top - rect.top };
-      top += heights[projectedIndex]! + 1;
-    }
-    result[activeIndex] = stationary;
-    return result;
-  }
+export function positionSidebarDragCard(
+  node: HTMLElement,
+  anchor: { pointerY: number; grabFraction: number; bounds: { top: number; height: number } },
+) {
+  const card = node.querySelector<HTMLElement>('[role="button"]');
+  if (!card) return;
+  // Fixed cards use viewport coordinates, independently of dnd-kit's ancestor
+  // scroll compensation, which changes when the pointer enters another section.
+  const top = sidebarDragTranslation({
+    ...anchor,
+    cardHeight: card.getBoundingClientRect().height,
+    originTop: 0,
+  });
+  card.style.top = `${top}px`;
+}
 
+export function measureSidebarDropTarget(element: HTMLElement) {
+  const rect = getClientRect(element, { ignoreTransform: true });
+  const list = element.parentElement;
+  if (!element.dataset.threadItem || !list || element.offsetParent !== list) return rect;
+  const listRect = list.getBoundingClientRect();
+  const scaleX = list.offsetWidth ? listRect.width / list.offsetWidth : 1;
+  const scaleY = list.offsetHeight ? listRect.height / list.offsetHeight : 1;
+  // The held row and sorted peers move visually. Their drop slots must stay
+  // in normal flow, including while a CSS transition is between positions.
+  const top = listRect.top + (element.offsetTop - list.scrollTop + list.clientTop) * scaleY;
+  const left = listRect.left + (element.offsetLeft - list.scrollLeft + list.clientLeft) * scaleX;
+  const height = element.offsetHeight * scaleY;
+  const width = element.offsetWidth * scaleX;
+  return { top, left, height, width, bottom: top + height, right: left + width };
+}
+
+export function sidebarSourceSortingStrategy(args: Parameters<SortingStrategy>[0]) {
+  // Outside the source list, close the held row's slot. Returning to a row
+  // resumes ordinary insertion at that row instead of restoring an empty gap.
+  return verticalListSortingStrategy({
+    ...args,
+    overIndex: args.overIndex < 0 ? args.rects.length - 1 : args.overIndex,
+  });
+}
+
+export function createSidebarDestinationCollisionDetection(
+  isValidTarget: (id: string) => boolean,
+  sourceKeys: ReadonlySet<string> = new Set(),
+  getHeldCardRect?: () => Pick<DOMRect, "top" | "height"> | undefined,
+): CollisionDetection {
   return (args) => {
-    if (
-      previous?.rects !== args.rects ||
-      previous.activeIndex !== args.activeIndex ||
-      previous.overIndex !== args.overIndex
-    ) {
-      previous = args;
-      transforms = project(args);
+    if (!args.pointerCoordinates) return [];
+    const destinations = args.droppableContainers.filter((container) =>
+      String(container.id).startsWith("sidebar-destination:"),
+    );
+    // A single source row has no enabled droppable, but still has a held card.
+    // Its compact height can differ from dnd-kit's original collision rectangle.
+    const heldRect = getHeldCardRect?.() ?? args.collisionRect;
+    const destinationRects = new Map(args.droppableRects);
+    for (const destination of destinations) {
+      const rect = destination.node.current?.getBoundingClientRect();
+      // Cached DnD measurements can lag behind the target's expansion animation.
+      if (rect) destinationRects.set(destination.id, rect);
     }
-    return transforms === null
-      ? verticalListSortingStrategy(args)
-      : (transforms[args.index] ?? stationary);
+    const boxes = pointerWithin({
+      ...args,
+      pointerCoordinates: {
+        x: args.pointerCoordinates.x,
+        y: heldRect.top + heldRect.height / 2,
+      },
+      droppableContainers: destinations,
+      droppableRects: destinationRects,
+    });
+    const listViewport = destinations[0]?.node.current
+      ?.closest("[data-sidebar-drag-list]")
+      ?.getBoundingClientRect();
+    if (
+      listViewport &&
+      (args.pointerCoordinates.y < listViewport.top ||
+        args.pointerCoordinates.y > listViewport.bottom)
+    )
+      return [];
+    // Settled stays above overflowed sections at the bottom of short lists.
+    const box = boxes.find(({ id }) => id === "sidebar-destination:settled") ?? boxes[0];
+    if (box) return isValidTarget(String(box.id)) ? [box] : [];
+    const source = args.droppableContainers.filter((container) =>
+      sourceKeys.has(String(container.id)),
+    );
+    const rects = source.flatMap((container) => {
+      const rect = args.droppableRects.get(container.id);
+      return rect ? [rect] : [];
+    });
+    const pointer = args.pointerCoordinates;
+    const viewport = source[0]?.node.current
+      ?.closest("[data-sidebar-source-list]")
+      ?.getBoundingClientRect();
+    // Include trailing whitespace so releasing there commits the previewed
+    // reorder. Explicit destination boxes above retain priority.
+    if (
+      !rects.length ||
+      pointer.y <
+        Math.max(viewport?.top ?? -Infinity, Math.min(...rects.map((rect) => rect.top))) ||
+      (viewport !== undefined && pointer.y > viewport.bottom) ||
+      pointer.x < Math.min(...rects.map((rect) => rect.left)) ||
+      pointer.x > Math.max(...rects.map((rect) => rect.right))
+    )
+      return [];
+    const target = closestCenter({ ...args, droppableContainers: source })[0];
+    return target && isValidTarget(String(target.id)) ? [target] : [];
   };
 }
