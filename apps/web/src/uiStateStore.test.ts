@@ -2,6 +2,8 @@ import { ProjectId, ThreadId } from "@t3tools/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import {
+  createSidebarPinnedSection,
+  moveThreadsToPinnedSection,
   legacyProjectCwdPreferenceKey,
   markThreadUnread,
   markThreadVisited,
@@ -23,6 +25,7 @@ function makeUiState(overrides: Partial<UiState> = {}): UiState {
     projectExpandedById: {},
     projectOrder: [],
     sidebarProjectScopeKey: null,
+    sidebarPinnedSections: [],
     threadLastVisitedAtById: {},
     threadChangedFilesExpandedById: {},
     defaultAdvertisedEndpointKey: null,
@@ -202,6 +205,7 @@ describe("parsePersistedState", () => {
       },
       defaultAdvertisedEndpointKey: "desktop-core:lan:http",
       sidebarProjectScopeKey: null,
+      sidebarPinnedSections: [],
       pullRequestMergeMethod: "merge",
       threadChangedFilesExpandedById: {
         "environment:thread-1": {
@@ -324,6 +328,7 @@ describe("uiStateStore persistence", () => {
       },
       defaultAdvertisedEndpointKey: "desktop-core:lan:http",
       sidebarProjectScopeKey: null,
+      sidebarPinnedSections: [],
       threadChangedFilesExpansionVersion: 2,
       threadChangedFilesExpandedById: {
         "environment:thread-1": {
@@ -362,5 +367,55 @@ describe("uiStateStore persistence", () => {
     ) as PersistedUiState;
     expect(resolveProjectExpanded(persisted.projectExpandedById ?? {}, ["unknown"])).toBe(true);
     expect(persisted).not.toHaveProperty("threadPanelOpen");
+  });
+});
+
+describe("named section compatibility", () => {
+  it("preserves section order and appends only the exact moved member", () => {
+    const initial = parsePersistedState({
+      sidebarPinnedSections: [
+        {
+          id: "chief",
+          name: "Chief of Staff",
+          collapsed: true,
+          threadKeys: ["env:chief", "env:move", "other:move"],
+        },
+        {
+          id: "talos",
+          name: "Talos",
+          collapsed: false,
+          threadKeys: ["env:research", "env:existing"],
+        },
+      ],
+    });
+    const moved = moveThreadsToPinnedSection(initial, ["env:move"], "talos");
+    expect(moved.sidebarPinnedSections).toEqual([
+      { ...initial.sidebarPinnedSections[0], threadKeys: ["env:chief", "other:move"] },
+      {
+        ...initial.sidebarPinnedSections[1],
+        threadKeys: ["env:research", "env:existing", "env:move"],
+      },
+    ]);
+    expect(moveThreadsToPinnedSection(moved, ["env:move"], "talos")).toBe(moved);
+    expect(moveThreadsToPinnedSection(moved, ["env:move"], "missing")).toBe(moved);
+    const unassigned = moveThreadsToPinnedSection(moved, ["env:move"], null);
+    expect(unassigned.sidebarPinnedSections[1]?.threadKeys).toEqual([
+      "env:research",
+      "env:existing",
+    ]);
+  });
+
+  it("round trips the current section format and rejects duplicates without rearranging valid members", () => {
+    const initial = createSidebarPinnedSection(parsePersistedState({}), "talos", "Talos");
+    const moved = moveThreadsToPinnedSection(initial, ["env:a", "env:b", "env:a"], "talos");
+    expect(parsePersistedState(JSON.parse(JSON.stringify(moved)))).toEqual(moved);
+    expect(
+      parsePersistedState({
+        sidebarPinnedSections: [
+          ...moved.sidebarPinnedSections,
+          { id: "other", name: "Other", collapsed: true, threadKeys: ["env:a", "other:a"] },
+        ],
+      }).sidebarPinnedSections[1]?.threadKeys,
+    ).toEqual(["other:a"]);
   });
 });
