@@ -96,11 +96,13 @@ export function decodeK0Report(report: Uint8Array) {
     command:
       control === 11
         ? null
-        : (control === 27 || control === 28) && report[7] === 1
-          ? control === 27
-            ? "thread.chiefOfStaff.3"
-            : "thread.chiefOfStaff.4"
-          : K0_COMMANDS[control as keyof typeof K0_COMMANDS],
+        : control === 9 && report[7] === 1
+          ? "thread.settle"
+          : (control === 27 || control === 28) && report[7] === 1
+            ? control === 27
+              ? "thread.chiefOfStaff.3"
+              : "thread.chiefOfStaff.4"
+            : K0_COMMANDS[control as keyof typeof K0_COMMANDS],
   };
 }
 
