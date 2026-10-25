@@ -18,7 +18,6 @@ import {
   useSensor,
   useSensors,
   type DragEndEvent,
-  type DragMoveEvent,
   type DragStartEvent,
   type Modifier,
 } from "@dnd-kit/core";
@@ -164,6 +163,7 @@ import {
   measureSidebarDropTarget,
   sidebarDragTranslation,
   sidebarDragExpansion,
+  canAutoScrollSidebarSource,
   positionSidebarDragCard,
 } from "./Sidebar.drag";
 import { SidebarDragLifecycle, SidebarPointerSensor } from "./Sidebar.pointer";
@@ -215,8 +215,7 @@ import {
 import { publishControllerThreadTargets } from "./desktop/controllerUiState";
 import { resolveControllerThreadTargets } from "./desktop/controllerThreadTargets";
 import { partitionSidebarThreads, type SidebarOptimisticDrop } from "./Sidebar.threadPartition";
-import { createSidebarDragDwell } from "./Sidebar.dragDwell";
-import { SidebarDragLayout } from "./SidebarDragLayout";
+import { SidebarDragLayout, SidebarSourceList } from "./SidebarDragLayout";
 
 function sameSidebarProviderEntries(
   left: ReadonlyMap<string, SidebarProviderEntry>,
@@ -795,8 +794,6 @@ export default function Sidebar() {
   const dragSourceBoundsRef = useRef<{ top: number; bottom: number } | null>(null);
   const dragSourceReturnBoundsRef = useRef<{ top: number; bottom: number } | null>(null);
   const dragPointerYRef = useRef(0);
-  const [destinationDwell] = useState(createSidebarDragDwell);
-  useLayoutEffect(() => destinationDwell.clear, [destinationDwell]);
   const listMotionRef = useRef<ReturnType<typeof createSidebarListMotion> | null>(null);
   const [dragState, setDragState] = useState<{
     readonly activeKey: string;
@@ -805,8 +802,6 @@ export default function Sidebar() {
     readonly pinnedSectionId: string | null;
     readonly dropBounds: { top: number; left: number; width: number; height: number };
     readonly outsideSource: boolean;
-    readonly destinationsExpanded: boolean;
-    readonly pinnedDestinationsExpanded: boolean;
     readonly contextDrag: boolean;
   } | null>(null);
   const dragSensorRef = useRef<SidebarPointerSensor | null>(null);
@@ -1347,7 +1342,6 @@ export default function Sidebar() {
   // Working rows can supply chat context, but never preview sidebar movement.
   const isContextDrag = dragState?.contextDrag === true || dragState?.activeSection === "working";
   const finishThreadDrag = (started: boolean) => {
-    destinationDwell.clear();
     dragSensorRef.current = null;
     contextDragKeyRef.current = null;
     endThreadContextDrag();
@@ -1360,7 +1354,6 @@ export default function Sidebar() {
     dragSensorRef.current = sensor;
   };
   const cancelThreadDrag = () => {
-    destinationDwell.clear();
     dragSensorRef.current?.cancel();
   };
   const contextDragThreads = (): ReadonlyArray<ScopedThreadRef> => {
@@ -1391,7 +1384,6 @@ export default function Sidebar() {
             ?.querySelector('[data-sidebar-marker="pinned-divider"]')
             ?.getBoundingClientRect().top,
           expanded: dragState.outsideSource,
-          pinnedExpanded: dragState.pinnedDestinationsExpanded,
         }),
   );
   const moveThreadContextDrag = (point: { x: number; y: number }) => {
@@ -1399,25 +1391,15 @@ export default function Sidebar() {
     positionDragCard();
     const contextDrag = pointerOutsideThreadList(point);
     const expansion = contextDrag ? null : readDragExpansion();
-    if (contextDrag || !expansion?.expanded) destinationDwell.clear();
     setDragState((current) => {
       if (current === null) return current;
       const outsideSource = expansion?.expanded ?? current.outsideSource;
-      // Compact the held card immediately; only larger destinations wait for dwell.
-      const destinationsExpanded = current.destinationsExpanded && (expansion?.expanded ?? true);
-      const pinnedDestinationsExpanded =
-        destinationsExpanded && (expansion?.pinnedExpanded ?? current.pinnedDestinationsExpanded);
-      return current.contextDrag === contextDrag &&
-        current.outsideSource === outsideSource &&
-        current.destinationsExpanded === destinationsExpanded &&
-        current.pinnedDestinationsExpanded === pinnedDestinationsExpanded
+      return current.contextDrag === contextDrag && current.outsideSource === outsideSource
         ? current
         : {
             ...current,
             contextDrag,
             outsideSource,
-            destinationsExpanded,
-            pinnedDestinationsExpanded,
           };
     });
     if (!contextDrag) {
@@ -1431,7 +1413,6 @@ export default function Sidebar() {
     return true;
   };
   const dropThreadContextDrag = (point: { x: number; y: number }) => {
-    destinationDwell.clear();
     if (!pointerOutsideThreadList(point)) return false;
     dropThreadContext(point, contextDragThreads());
     return true;
@@ -1570,7 +1551,6 @@ export default function Sidebar() {
   };
 
   const handleThreadDragStart = (event: DragStartEvent) => {
-    destinationDwell.clear();
     const activeKey = String(event.active.id);
     contextDragKeyRef.current = activeKey;
     const activeSection = sectionByThreadKey.get(activeKey);
@@ -1623,8 +1603,6 @@ export default function Sidebar() {
       sourceRowHeight: sourceRect?.height,
       pinnedSectionId,
       outsideSource: false,
-      destinationsExpanded: false,
-      pinnedDestinationsExpanded: false,
       // Destinations fill the visible sidebar even when the thread list scrolls.
       dropBounds: {
         top,
@@ -1737,9 +1715,8 @@ export default function Sidebar() {
   }, [listMotionPass]);
   const organizingDrag = dragState !== null && !isContextDrag;
   const mixedDrag = organizingDrag && dragState.outsideSource;
-  const pinnedDropTargetsExpanded = organizingDrag && dragState.pinnedDestinationsExpanded;
   const dragLayout = {
-    key: `${mixedDrag}:${pinnedDropTargetsExpanded}:${sidebarListItemsKey}`,
+    key: `${mixedDrag}:${sidebarListItemsKey}`,
     dragging: organizingDrag,
   };
   const sourceRows = organizingDrag
@@ -1854,49 +1831,6 @@ export default function Sidebar() {
     if (dragState.activeSection === target.section) return true;
     if (!readEnvironmentScope(source.environmentId, AuthOrchestrationOperateScope)) return false;
     return plan.kind !== "none";
-  };
-  const expandDragDestinations = useStableCallback((id: string) => {
-    const expansion = readDragExpansion();
-    if (
-      !dragState ||
-      isContextDrag ||
-      dragState.destinationsExpanded ||
-      !isValidDropTarget(id) ||
-      !expansion
-    )
-      return;
-    setDragState((current) =>
-      current?.activeKey === dragState.activeKey && !current.contextDrag
-        ? {
-            ...current,
-            destinationsExpanded: true,
-            pinnedDestinationsExpanded: expansion.pinnedExpanded,
-          }
-        : current,
-    );
-  });
-  const handleThreadDragHover = (event: DragMoveEvent) => {
-    // Collisions already use the held card's center, viewport clipping and
-    // permission validation. `over` can still name the previous move's target.
-    const id = event.collisions?.[0]?.id;
-    const target = typeof id === "string" ? resolveDropTarget(String(event.active.id), id) : null;
-    const isSource =
-      target?.section === dragState?.activeSection &&
-      (target?.section !== "pinned" ||
-        (target.pinnedSectionId ?? null) === dragState?.pinnedSectionId);
-    destinationDwell.update(
-      dragState &&
-        !isContextDrag &&
-        !dragState.destinationsExpanded &&
-        typeof id === "string" &&
-        id.startsWith("sidebar-destination:") &&
-        target &&
-        !isSource &&
-        isValidDropTarget(id)
-        ? id
-        : null,
-      expandDragDestinations,
-    );
   };
   const dropDestinations = [
     { id: sidebarDestinationId("pinned"), label: "Pinned", count: defaultPinnedThreads.length },
@@ -3091,7 +3025,13 @@ export default function Sidebar() {
             >
               <DndContext
                 sensors={dndSensors}
-                autoScroll={false}
+                autoScroll={{
+                  enabled: organizingDrag,
+                  layoutShiftCompensation: false,
+                  canScroll: (element) =>
+                    !isContextDrag && canAutoScrollSidebarSource(element, dragPointerYRef.current),
+                  threshold: { x: 0, y: 0.12 },
+                }}
                 measuring={{
                   droppable: {
                     strategy: MeasuringStrategy.Always,
@@ -3101,8 +3041,6 @@ export default function Sidebar() {
                 collisionDetection={dndCollisionDetection}
                 modifiers={dndModifiers}
                 onDragStart={handleThreadDragStart}
-                onDragMove={handleThreadDragHover}
-                onDragOver={handleThreadDragHover}
                 onDragEnd={handleThreadDragEnd}
               >
                 <SidebarDragLifecycle onUnmount={cancelThreadDrag} />
@@ -3317,8 +3255,8 @@ export default function Sidebar() {
                                             "sticky bottom-2 z-10 mt-auto border-t-8 border-transparent",
                                           destination.size === "half"
                                             ? "h-26 min-h-11 shrink"
-                                            : section === "pinned" && pinnedDropTargetsExpanded
-                                              ? "h-24 min-h-9 shrink"
+                                            : section === "pinned"
+                                              ? "h-16 shrink-0"
                                               : "h-9 shrink-0",
                                         )}
                                       >
@@ -3360,18 +3298,10 @@ export default function Sidebar() {
                                 threadGroup = { key, rows: [] };
                                 const source = organizingDrag && sourceKeys.has(item.key);
                                 items.push(
-                                  <li
+                                  <SidebarSourceList
                                     key={`threads:${key}`}
-                                    data-sidebar-thread-group
-                                    data-sidebar-source-list={source || undefined}
-                                    className={
-                                      source
-                                        ? cn(
-                                            "relative min-h-9 shrink list-none overflow-y-auto [overflow-anchor:none]",
-                                            item.section === "active" && "flex-1",
-                                          )
-                                        : "contents"
-                                    }
+                                    source={source}
+                                    fill={item.section === "active"}
                                   >
                                     <ul
                                       role="presentation"
@@ -3383,7 +3313,7 @@ export default function Sidebar() {
                                     >
                                       {threadGroup.rows}
                                     </ul>
-                                  </li>,
+                                  </SidebarSourceList>,
                                 );
                               }
                               threadGroup.rows.push(
@@ -3475,6 +3405,8 @@ export default function Sidebar() {
                                     key="settled-shelf-header"
                                     marker="settled-header"
                                     className={cn(
+                                      "sticky bottom-0 z-10 h-11 shrink-0 bg-sidebar surface-grain pb-3",
+                                      "before:pointer-events-none before:absolute before:inset-x-0 before:bottom-full before:h-[var(--fade-size)] before:bg-sidebar before:surface-grain before:mask-t-from-0",
                                       workingThreads.length + snoozedThreads.length === 0 &&
                                         "mt-auto",
                                     )}

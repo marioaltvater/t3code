@@ -1,6 +1,7 @@
 import { expect, it } from "vite-plus/test";
 import { render } from "../../test/render";
 import {
+  canAutoScrollSidebarSource,
   measureSidebarDropTarget,
   positionSidebarDragCard,
   sidebarSourceSortingStrategy,
@@ -109,5 +110,33 @@ it("keeps a fixed held card under the pointer while its outer list scrolls", asy
       bounds: { top: 0, height: 1000 },
     });
     expect(card.getBoundingClientRect().top).toBe(pointerTop);
+  }
+});
+
+it("auto-scrolls only inside the source viewport, leaving destination boxes and outer scrolling alone", async () => {
+  await using screen = await render(
+    <div data-testid="outer" style={{ height: 200, overflowY: "auto" }}>
+      <ul style={{ margin: 0, padding: 0 }}>
+        <li data-testid="pinned" style={{ height: 64 }}>
+          Pinned
+        </li>
+        <li data-sidebar-source-list style={{ height: 100, overflowY: "auto" }}>
+          <div style={{ height: 500 }}>Threads</div>
+        </li>
+        <li data-testid="settled" style={{ height: 96 }}>
+          Settled
+        </li>
+      </ul>
+    </div>,
+  );
+  const source = screen.container.querySelector<HTMLElement>("[data-sidebar-source-list]")!;
+  const bounds = source.getBoundingClientRect();
+  expect(canAutoScrollSidebarSource(source, bounds.top + 1)).toBe(true);
+  expect(canAutoScrollSidebarSource(source, bounds.bottom - 1)).toBe(true);
+  expect(canAutoScrollSidebarSource(source, bounds.top - 1)).toBe(false);
+  expect(canAutoScrollSidebarSource(source, bounds.bottom + 1)).toBe(false);
+  for (const id of ["outer", "pinned", "settled"]) {
+    const element = screen.container.querySelector<HTMLElement>(`[data-testid="${id}"]`)!;
+    expect(canAutoScrollSidebarSource(element, bounds.bottom - 1)).toBe(false);
   }
 });

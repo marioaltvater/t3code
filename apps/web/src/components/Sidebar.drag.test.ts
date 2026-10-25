@@ -32,17 +32,14 @@ describe("sidebar drag expansion", () => {
     sourceSection: "active",
     pinnedAreaBottom: 240,
     expanded: false,
-    pinnedExpanded: false,
   };
 
-  it("expands the pinned targets and source layout together at their visible boundary", () => {
+  it("compacts the held card at the visible pinned boundary", () => {
     expect(sidebarDragExpansion({ ...input, pointerY: 230 })).toEqual({
       expanded: true,
-      pinnedExpanded: true,
     });
     expect(sidebarDragExpansion({ ...input, pointerY: 250 })).toEqual({
       expanded: false,
-      pinnedExpanded: false,
     });
   });
 
@@ -62,26 +59,21 @@ describe("sidebar drag expansion", () => {
 
   it("keeps a bottom-edge grab stable across compaction at the pinned boundary", () => {
     const atBoundary = { ...input, pointerY: 260, anchor: { grabFraction: 0.9, cardHeight: 78 } };
-    expect(sidebarDragExpansion(atBoundary)).toEqual({ expanded: true, pinnedExpanded: true });
-    expect(sidebarDragExpansion({ ...atBoundary, expanded: true, pinnedExpanded: true })).toEqual({
+    expect(sidebarDragExpansion(atBoundary)).toEqual({ expanded: true });
+    expect(sidebarDragExpansion({ ...atBoundary, expanded: true })).toEqual({
       expanded: true,
-      pinnedExpanded: true,
     });
   });
 
   it("preserves source reordering inside a pinned section", () => {
     expect(sidebarDragExpansion({ ...input, sourceSection: "pinned", pointerY: 230 })).toEqual({
       expanded: false,
-      pinnedExpanded: false,
     });
   });
 
-  it("collapses the pinned targets again on the way to Settled", () => {
-    expect(
-      sidebarDragExpansion({ ...input, pointerY: 800, expanded: true, pinnedExpanded: true }),
-    ).toEqual({
+  it("keeps the held card compact on the way to Settled", () => {
+    expect(sidebarDragExpansion({ ...input, pointerY: 800, expanded: true })).toEqual({
       expanded: true,
-      pinnedExpanded: false,
     });
   });
 });

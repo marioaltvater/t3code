@@ -13,7 +13,6 @@ export function sidebarDragExpansion({
   sourceSection,
   pinnedAreaBottom,
   expanded,
-  pinnedExpanded,
 }: {
   pointerY: number;
   anchor: { grabFraction: number; cardHeight: number } | null;
@@ -21,14 +20,13 @@ export function sidebarDragExpansion({
   sourceSection: string;
   pinnedAreaBottom: number | undefined;
   expanded: boolean;
-  pinnedExpanded: boolean;
 }) {
-  if (!sourceBounds) return { expanded, pinnedExpanded };
+  if (!sourceBounds) return { expanded };
   // Shrinking the held card must not move the layout transition boundary.
   const centerY = pointerY + (anchor ? (0.5 - anchor.grabFraction) * anchor.cardHeight : 0);
   const margin = expanded ? 6 : -6;
   // The retained pickup bounds can extend behind the current pinned targets.
-  // Crossing their shared boundary must expand both layouts in the same frame.
+  // Compact the held card as it crosses their shared boundary.
   const top =
     sourceSection === "active"
       ? Math.max(sourceBounds.top, pinnedAreaBottom ?? -Infinity)
@@ -36,11 +34,13 @@ export function sidebarDragExpansion({
   const nextExpanded = centerY < top + margin || centerY > sourceBounds.bottom - margin;
   return {
     expanded: nextExpanded,
-    pinnedExpanded:
-      nextExpanded &&
-      pinnedAreaBottom !== undefined &&
-      centerY < pinnedAreaBottom + (pinnedExpanded ? 6 : -6),
   };
+}
+
+export function canAutoScrollSidebarSource(element: Element, pointerY: number) {
+  if (!element.hasAttribute("data-sidebar-source-list")) return false;
+  const bounds = element.getBoundingClientRect();
+  return pointerY >= bounds.top && pointerY <= bounds.bottom;
 }
 
 export function sidebarDragTranslation({
