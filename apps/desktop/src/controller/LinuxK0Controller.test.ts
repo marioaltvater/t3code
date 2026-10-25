@@ -115,6 +115,29 @@ it("discards a submit queued between the last unavailable poll and ready IPC", a
   }
 });
 
+it("dispatches Command plus pin once on press and keeps pin alone working", async () => {
+  const { controller, command } = setup();
+  const pin = (sequence: number, modifier: number, phase: number) => {
+    const report = submit(sequence);
+    report[5] = 9;
+    report[6] = phase;
+    report[7] = modifier;
+    return report;
+  };
+  try {
+    controller.setReady(true);
+    device.reports.push(pin(1, 1, 1), pin(1, 1, 1), pin(2, 0, 0));
+    await vi.advanceTimersByTimeAsync(12);
+    expect(command.mock.calls).toEqual([["thread.settle"]]);
+    device.reports.push(pin(3, 0, 1), pin(4, 0, 0));
+    await vi.advanceTimersByTimeAsync(12);
+    expect(command.mock.calls).toEqual([["thread.settle"], ["thread.pin"]]);
+  } finally {
+    await controller.close();
+    vi.useRealTimers();
+  }
+});
+
 it("detects firmware that accepts USB writes but never acknowledges lighting", async () => {
   const { controller, command, warning } = setup();
   try {
