@@ -1,5 +1,7 @@
 import { useDndContext } from "@dnd-kit/core";
-import { useLayoutEffect, useRef } from "react";
+import { useLayoutEffect, useRef, type ReactNode } from "react";
+import { observeResize } from "../lib/observeResize";
+import { cn } from "../lib/utils";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 
 const dragLayoutTiming = { duration: 180, easing: "ease-out" };
@@ -123,4 +125,63 @@ export function SidebarDragLayout({
     [],
   );
   return null;
+}
+
+export function SidebarSourceList({
+  source,
+  fill,
+  children,
+}: {
+  source: boolean;
+  fill: boolean;
+  children: ReactNode;
+}) {
+  const ref = useRef<HTMLLIElement>(null);
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (!source || !element) return;
+    const update = () => {
+      element.style.setProperty("--source-scroll-start", `${element.scrollTop}px`);
+      element.style.setProperty(
+        "--source-scroll-end",
+        `${element.scrollHeight - element.clientHeight - element.scrollTop}px`,
+      );
+      element.toggleAttribute("data-scroll-up", element.scrollTop > 1);
+      element.toggleAttribute(
+        "data-scroll-down",
+        element.scrollHeight - element.clientHeight - element.scrollTop > 1,
+      );
+    };
+    const stopObserving = observeResize(
+      element.firstElementChild ? [element, element.firstElementChild] : element,
+      update,
+    );
+    element.addEventListener("scroll", update, { passive: true });
+    update();
+    return () => {
+      stopObserving();
+      element.removeEventListener("scroll", update);
+    };
+  }, [source]);
+  return (
+    <li
+      ref={ref}
+      data-sidebar-thread-group
+      data-sidebar-source-list={source || undefined}
+      className={
+        source
+          ? cn(
+              "relative min-h-9 shrink list-none overflow-y-auto [overflow-anchor:none]",
+              // Reuse the enclosing ScrollArea's fade size and sidebar surface.
+              // Masking the list itself would also clip the fixed held card.
+              "before:pointer-events-none before:sticky before:top-0 before:z-10 before:hidden before:h-[min(var(--fade-size),var(--source-scroll-start))] before:mb-[calc(-1*min(var(--fade-size),var(--source-scroll-start)))] before:bg-sidebar before:surface-grain before:mask-b-from-0 data-[scroll-up]:before:block",
+              "after:pointer-events-none after:sticky after:bottom-0 after:z-10 after:hidden after:h-[min(var(--fade-size),var(--source-scroll-end))] after:mt-[calc(-1*min(var(--fade-size),var(--source-scroll-end)))] after:bg-sidebar after:surface-grain after:mask-t-from-0 data-[scroll-down]:after:block",
+              fill && "flex-1",
+            )
+          : "contents"
+      }
+    >
+      {children}
+    </li>
+  );
 }

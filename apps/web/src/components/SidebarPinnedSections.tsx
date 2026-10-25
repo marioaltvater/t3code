@@ -207,18 +207,22 @@ export function SidebarThreadSectionHeader({
       <CollapsibleSectionHeader
         variant="sidebar"
         expanded={section || onToggle ? isExpanded : menuOpen}
-        aria-haspopup={section || onToggle ? undefined : "menu"}
+        aria-haspopup={section || onToggle || shelf === "active" ? undefined : "menu"}
         tone={tone}
         data-testid={testId}
         actionOpen={menuOpen}
-        onClick={(event) => {
-          if (section) toggle(section.id);
-          else if (onToggle) onToggle();
-          else {
-            const rect = event.currentTarget.getBoundingClientRect();
-            void openMenu({ x: rect.left, y: rect.bottom });
-          }
-        }}
+        onClick={
+          shelf === "active"
+            ? undefined
+            : (event) => {
+                if (section) toggle(section.id);
+                else if (onToggle) onToggle();
+                else {
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  void openMenu({ x: rect.left, y: rect.bottom });
+                }
+              }
+        }
         action={
           <Button
             variant="ghost"
