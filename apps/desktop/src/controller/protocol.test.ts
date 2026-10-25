@@ -49,6 +49,17 @@ describe("K0 input boundary", () => {
     expect(decodeK0Report(report(20))?.command).toBe("rightPanel.toggle");
   });
 
+  it("settles with Command plus pin and preserves pin alone", () => {
+    for (const [modifier, command] of [
+      [0, "thread.pin"],
+      [1, "thread.settle"],
+    ] as const) {
+      const value = report(9);
+      value[7] = modifier;
+      expect(decodeK0Report(value)?.command).toBe(command);
+    }
+  });
+
   it("maps fn1/fn2 and local Command to the four Chief of Staff positions", () => {
     for (const [control, modifier, command] of [
       [27, 0, "thread.chiefOfStaff.1"],
