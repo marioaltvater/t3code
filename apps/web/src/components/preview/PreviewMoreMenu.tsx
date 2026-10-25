@@ -49,6 +49,7 @@ interface Props {
   nativePictureInPicture: boolean;
   profileName: string | undefined;
   move?: { readonly label: string; readonly onMove: () => void };
+  pin?: { readonly pinned: boolean; readonly onToggle: () => void } | undefined;
 }
 
 const MenuTriggerButton = () => (
@@ -76,6 +77,7 @@ export function PreviewMoreMenu({
   nativePictureInPicture,
   profileName,
   move,
+  pin,
 }: Props) {
   const zoomLabel = `${Math.round(zoomFactor * 100)}%`;
   const disabled = !enabled;
@@ -83,6 +85,11 @@ export function PreviewMoreMenu({
     <Menu>
       <MenuTriggerButton />
       <MenuPopup align="end" sideOffset={6}>
+        {pin ? (
+          <MenuItem onClick={pin.onToggle}>
+            {pin.pinned ? "Unpin page from thread" : "Pin page to thread"}
+          </MenuItem>
+        ) : null}
         <MenuItem onClick={actions.hardReload} disabled={disabled}>
           Hard reload
         </MenuItem>
