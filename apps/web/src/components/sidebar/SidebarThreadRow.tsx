@@ -3,7 +3,7 @@ import { ThreadTerminalStatusButton } from "../ThreadStatusIndicators";
 import { discardComposerDraft } from "../../lib/discardComposerDraft";
 import { requestCustomSnooze } from "../CustomSnoozeDialog";
 import { useSupportsMultiplePullRequests } from "~/hooks/useSupportsMultiplePullRequests";
-import { resolveThreadCurrentPullRequestLink } from "@t3tools/shared/threadPullRequests";
+import { resolveThreadCurrentPullRequestLink } from "@t3tools/client-runtime/thread-pull-requests";
 import { useDraggable, useDroppable, useDndContext } from "@dnd-kit/core";
 import { verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
@@ -47,6 +47,7 @@ import {
   SquarePenIcon,
   TerminalIcon,
   Undo2Icon,
+  UserRoundIcon,
   XIcon,
 } from "lucide-react";
 import {
@@ -754,31 +755,37 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                 icon: "input" as const,
                 className: "text-indigo-600 dark:text-indigo-300",
               }
-            : status === "limited"
+            : status === "request"
               ? {
-                  label: "Limited",
-                  icon: "failed" as const,
-                  className: "text-warning",
+                  label: "Request",
+                  icon: "request" as const,
+                  className: "text-guest-foreground",
                 }
-              : status === "failed"
+              : status === "limited"
                 ? {
-                    label: "Failed",
+                    label: "Limited",
                     icon: "failed" as const,
-                    className: "text-error",
+                    className: "text-warning",
                   }
-                : isWoke
+                : status === "failed"
                   ? {
-                      label: "Woke",
-                      icon: "woke" as const,
-                      className: "text-warning",
+                      label: "Failed",
+                      icon: "failed" as const,
+                      className: "text-error",
                     }
-                  : isUnread
+                  : isWoke
                     ? {
-                        label: "Done",
-                        icon: "done" as const,
-                        className: "text-success",
+                        label: "Woke",
+                        icon: "woke" as const,
+                        className: "text-warning",
                       }
-                    : null;
+                    : isUnread
+                      ? {
+                          label: "Done",
+                          icon: "done" as const,
+                          className: "text-success",
+                        }
+                      : null;
   const isWokeStatus = topStatus?.icon === "woke";
 
   const branchMismatch = resolveLocalCheckoutBranchMismatch({
@@ -1061,7 +1068,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                 "truncate",
                 shouldRecede
                   ? "text-secondary-label"
-                  : isUnread || isWoke || status === "input"
+                  : isUnread || isWoke || status === "input" || status === "request"
                     ? "text-foreground"
                     : status === "failed"
                       ? "text-foreground/95"
@@ -1070,12 +1077,16 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
             : cn(
                 "truncate group-focus-within/sidebar-row:text-foreground group-hover/sidebar-row:text-foreground",
                 isCompactEnabled
-                  ? props.isActive || isSelected || isWoke || status === "input"
+                  ? props.isActive ||
+                    isSelected ||
+                    isWoke ||
+                    status === "input" ||
+                    status === "request"
                     ? "text-foreground"
                     : "text-foreground/90"
                   : shouldRecede
                     ? "text-secondary-label/70"
-                    : props.isActive || isWoke || status === "input"
+                    : props.isActive || isWoke || status === "input" || status === "request"
                       ? "text-foreground"
                       : isUnread
                         ? "text-muted-foreground"
@@ -1153,7 +1164,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                 )}
               >
                 <AlarmClockIcon aria-hidden className="size-4 shrink-0" />
-                <span role="status">{topStatus.label}</span>
+                <span>{topStatus.label}</span>
               </button>
             }
           />
@@ -1167,6 +1178,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
             <CircleDotDashedIcon aria-hidden className="size-4 shrink-0" />
           ) : topStatus.icon === "input" ? (
             <MessageCircleQuestionIcon aria-hidden className="size-4 shrink-0" />
+          ) : topStatus.icon === "request" ? (
+            <UserRoundIcon aria-hidden className="size-4 shrink-0" />
           ) : topStatus.icon === "approval" ? (
             <ShieldQuestionIcon aria-hidden className="size-4 shrink-0" />
           ) : topStatus.icon === "failed" ? (
@@ -1174,10 +1187,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
           ) : topStatus.icon === "done" ? (
             <CircleCheckIcon aria-hidden className="size-4 shrink-0" />
           ) : null}
-          {/* Keep ticking durations outside the live region. The open thread
-              announces its own status, so its sidebar row stays quiet. */}
+          {/* BackgroundThreadAnnouncer speaks status changes even while the sidebar is inert. */}
           <span
-            role={props.isRouteThread ? undefined : "status"}
             className={variant === "slim" && topStatus.label === "Working" ? "sr-only" : undefined}
           >
             {topStatus.label}
@@ -1582,6 +1593,8 @@ export const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props
   resultId: string;
   searchMatch: EnvironmentThreadSearchMatch | null;
   searchQuery: string;
+  /** The query `searchMatch` was found for, which lags `searchQuery` while a search runs. */
+  searchMatchQuery?: string;
   onHighlight: () => void;
   onSelect: () => void;
   onFileDropThreads: (threadRef: ScopedThreadRef, files: File[]) => void;
@@ -1720,7 +1733,7 @@ export const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props
                 match={{
                   source: props.searchMatch.source,
                   snippet: props.searchMatch.snippet,
-                  query: props.searchQuery,
+                  query: props.searchMatchQuery ?? props.searchQuery,
                 }}
               />
             ) : null}

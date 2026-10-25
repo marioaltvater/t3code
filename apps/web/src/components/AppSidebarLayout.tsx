@@ -41,13 +41,16 @@ import {
   usePanelAnimationSettings,
   usePanelNavigationSuppression,
 } from "../panelAnimations";
+import { BackgroundThreadAnnouncer } from "./BackgroundThreadAnnouncer";
 import LegacyThreadSidebar from "./LegacySidebar";
 import { useThreadVisitedMigration } from "../hooks/useThreadVisitedMigration";
 import ThreadSidebar from "./Sidebar";
-import { SettingsSidebarNav } from "./settings/SettingsSidebarNav";
-import { SidebarChromeHeader } from "./sidebar/SidebarChrome";
-import { MainAppLocationTracker, useNavigateToMainApp } from "./sidebar/mainAppLocation";
-import { readThreadShells, useProjects } from "../state/entities";
+import {
+  isAppModalPage,
+  MainAppLocationTracker,
+  useCloseAppModal,
+} from "./sidebar/mainAppLocation";
+import { readThreadShells } from "../state/entities";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
 import { useScratchProject } from "../hooks/useScratchProject";
 import { useStableCallback } from "../hooks/useStableCallback";
@@ -91,8 +94,7 @@ function readViewportWidth(): number {
   return window.innerWidth;
 }
 
-// getWindowFullscreenState is a synchronous IPC round trip, so the snapshot is cached
-// and only re-read when a subscription starts.
+// Cache the synchronous fullscreen IPC read until subscription.
 let windowFullscreenSnapshot: boolean | null = null;
 
 function macosDesktopBridge() {
@@ -273,8 +275,8 @@ export function NavigationHistoryShortcuts() {
 
 const MODIFIER_KEYS = new Set(["Alt", "Control", "Meta", "Shift"]);
 
-// Undoes the thread actions in the sidebar's notice. Mounted wherever the
-// thread sidebar can show; Settings replaces it. Listens in the capture phase
+// Undoes the thread actions in the sidebar's notice. Settings and Usage own
+// mod+z while open. Listens in the capture phase
 // so mod+z reaches it before the composer's own undo handler consumes the key.
 function ThreadUndoShortcut() {
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
@@ -332,16 +334,7 @@ function ThreadUndoShortcut() {
   return null;
 }
 
-// Settings swaps the thread sidebar out of the tree. Keep the lightweight
-// project projection subscribed so returning to a draft never renders the
-// zero-project state while the environment snapshot reconnects.
-function ProjectProjectionRetention() {
-  useProjects();
-  return null;
-}
-
-// Settings replaces both the chat route and its thread sidebar. Keep these
-// navigation controls available there without a second subscriber in chat.
+// Modal routes suspend chat shortcuts; keep controller actions available there.
 function SettingsControllerNavigation() {
   const navigate = useNavigate();
   const { defaultProjectRef, handleNewThread } = useHandleNewThread();
@@ -414,16 +407,15 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
   const panelAnimationsSuppressed = usePanelNavigationSuppression(pathname);
   const routePanelAnimationsActive = panelAnimationsActive && !panelAnimationsSuppressed;
   const isOnSettings = pathname === "/settings" || pathname.startsWith("/settings/");
-  const navigateToMainApp = useNavigateToMainApp();
+  const closeAppModal = useCloseAppModal();
   const toggleSettings = useStableCallback(() => {
-    if (isOnSettings) void navigateToMainApp();
+    if (isOnSettings) void closeAppModal();
     else void navigate({ to: "/settings" });
   });
+  const appModalOpen = isAppModalPage(pathname);
   const isMacosDesktop = isElectron && isMacPlatform(navigator.platform);
   const [sidebarWidth, setSidebarWidth] = useState(readInitialThreadSidebarWidth);
-  // Subscribed rather than read once: the clamp must track live window size,
-  // and a clamped drag ends with an unchanged width, which skips the re-render
-  // that would otherwise refresh a render-time snapshot.
+  // A clamped drag may not change width, so viewport changes need a separate subscription.
   const viewportWidth = useSyncExternalStore(subscribeToViewportWidth, readViewportWidth);
   const sidebarMinimumWidth = resolveThreadSidebarMinimumWidth(0);
   const sidebarMaximumWidth = resolveThreadSidebarMaximumWidth(viewportWidth, sidebarMinimumWidth);
@@ -487,13 +479,12 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
         defaultOpen
         style={sidebarProviderStyle}
       >
-        <ProjectProjectionRetention />
         <Sidebar
           side="left"
           collapsible="offcanvas"
           data-app-sidebar=""
           role="navigation"
-          aria-label={isOnSettings ? "Settings" : "Threads"}
+          aria-label="Threads"
           resizable={{
             maxWidth: sidebarMaximumWidth,
             minWidth: sidebarMinimumWidth,
@@ -505,12 +496,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
           }}
           style={windowControlsInsetStyle}
         >
-          {isOnSettings ? (
-            <>
-              <SidebarChromeHeader isElectron={isElectron} />
-              <SettingsSidebarNav pathname={pathname} />
-            </>
-          ) : legacySidebarEnabled ? (
+          {legacySidebarEnabled ? (
             <LegacyThreadSidebar routeReveal={sidebarRouteReveal} />
           ) : (
             <ThreadSidebar routeReveal={sidebarRouteReveal} />
@@ -518,10 +504,11 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
           <SidebarRail onDoubleClick={resetSidebarWidth} />
         </Sidebar>
         {children}
+        <BackgroundThreadAnnouncer />
         <SidebarControl />
         <NavigationHistoryShortcuts />
-        {isOnSettings ? <SettingsControllerNavigation /> : null}
-        {isOnSettings ? null : <ThreadUndoShortcut />}
+        {appModalOpen ? <SettingsControllerNavigation /> : null}
+        {appModalOpen ? null : <ThreadUndoShortcut />}
         <MainAppLocationTracker />
       </SidebarProvider>
     </PanelAnimationSuppressionProvider>

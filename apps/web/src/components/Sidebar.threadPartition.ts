@@ -20,7 +20,7 @@ import {
 } from "./Sidebar.logic";
 
 // Shared with controller navigation so returns keep their order across Settings.
-const inboxReturns = createInboxReturnTracker();
+export const inboxReturns = createInboxReturnTracker();
 
 export type SidebarOptimisticDrop = {
   readonly key: string;
@@ -50,12 +50,15 @@ export function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
   const { threads, scopedProjectKeys, serverConfigs, optimisticDrop, workingShelfEnabled } = input;
   const preciseNow = input.now ?? new Date().toISOString();
   const visible = filterSidebarV2VisibleThreads(threads, null);
-  inboxReturns.observe(workingShelfEnabled ? threads : null);
+  const inboxObservation = inboxReturns.observe(workingShelfEnabled ? threads : null);
   const pinned: EnvironmentThreadShell[] = [];
   const active: EnvironmentThreadShell[] = [];
   const working: EnvironmentThreadShell[] = [];
-  const inbox = (thread: EnvironmentThreadShell) =>
-    workingShelfEnabled && isSidebarThreadWorking(thread) ? working : active;
+  const inbox = (thread: EnvironmentThreadShell, manuallyMoved = false) =>
+    workingShelfEnabled &&
+    (manuallyMoved ? isSidebarThreadWorking(thread) : inboxObservation.isWorking(thread))
+      ? working
+      : active;
   const snoozed: EnvironmentThreadShell[] = [];
   const settled: EnvironmentThreadShell[] = [];
   const draggable = new Set<string>();
@@ -85,7 +88,7 @@ export function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
         ? pinned
         : optimisticDrop.section === "settled"
           ? settled
-          : inbox(projected)
+          : inbox(projected, true)
       ).push(
         optimisticDrop.clearsSnooze
           ? projected
@@ -112,7 +115,7 @@ export function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
   // web and mobile from the same data.
   const sortedPinned = sortPinnedThreadsForSidebar(pinned);
   const sortedActive = workingShelfEnabled
-    ? sortInboxThreadsByReturn(active, inboxReturns.returnedAt)
+    ? sortInboxThreadsByReturn(active, inboxObservation.returnedAt)
     : sortThreadsForSidebar(active);
   return {
     pinnedThreads:
@@ -141,5 +144,11 @@ export function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
     ),
     settledThreads: sortSettledThreads(settled),
     snoozeNow: preciseNow,
+    visibleThreads:
+      scopedProjectKeys === null
+        ? visible
+        : visible.filter((thread) =>
+            scopedProjectKeys.has(`${thread.environmentId}:${thread.projectId}`),
+          ),
   };
 }
