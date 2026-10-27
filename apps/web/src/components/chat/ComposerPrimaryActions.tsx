@@ -347,7 +347,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
           <path
             d="M7 11.5V2.5M7 2.5L3 6.5M7 2.5L11 6.5"
             stroke="currentColor"
-            strokeWidth="1.8"
+            strokeWidth="1.5"
             strokeLinecap="round"
             strokeLinejoin="round"
           />
