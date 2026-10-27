@@ -15,6 +15,7 @@ export function DraftProjectName({
   const measurementRef = useRef<HTMLSpanElement>(null);
   const [displayName, setDisplayName] = useState(value);
 
+  // oxlint-disable-next-line t3code/react-effect-budget -- Truncation depends on committed DOM width and loaded font metrics.
   useLayoutEffect(() => {
     const container = containerRef.current;
     const measurement = measurementRef.current;

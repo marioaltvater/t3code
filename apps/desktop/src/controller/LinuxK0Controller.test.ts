@@ -6,6 +6,7 @@ const device = vi.hoisted(() => ({
   available: true,
   writes: [] as Uint8Array[],
   writeBusy: false,
+  commandCalls: [] as { command: string; timeout: number }[],
 }));
 
 vi.mock("node:perf_hooks", () => ({
@@ -37,16 +38,25 @@ vi.mock("node:fs", () => ({
 
 vi.mock("node:child_process", () => ({
   execFile: Object.assign(() => {}, {
-    [Symbol.for("nodejs.util.promisify.custom")]: async (_file: string, args: string[]) => ({
-      stdout: JSON.stringify(
-        args[1] === "start"
-          ? { session_id: "0123456789abcdef0123456789abcdef" }
-          : args[1] === "result"
-            ? { text: "Recorded" }
-            : {},
-      ),
-      stderr: "",
-    }),
+    [Symbol.for("nodejs.util.promisify.custom")]: async (
+      _file: string,
+      args: string[],
+      options: { timeout: number },
+    ) => {
+      device.commandCalls.push({ command: args[1]!, timeout: options.timeout });
+      return {
+        stdout: JSON.stringify(
+          args[1] === "start"
+            ? { session_id: "0123456789abcdef0123456789abcdef" }
+            : args[1] === "result"
+              ? { text: "Recorded" }
+              : args[1] === "stop"
+                ? { duration: 600 }
+                : {},
+        ),
+        stderr: "",
+      };
+    },
   }),
 }));
 
@@ -70,6 +80,7 @@ function setup() {
   device.available = true;
   device.writes = [];
   device.writeBusy = false;
+  device.commandCalls = [];
   vi.useFakeTimers();
   const command = vi.fn();
   const warning = vi.fn();
@@ -271,6 +282,11 @@ it("keeps the microphone LED red after a double tap and clears it on stop or ren
     await vi.advanceTimersByTimeAsync(24);
     expect(microphoneColor()).toEqual([0, 0, 0]);
     expect(event.mock.calls.filter(([value]) => value.type === "dictation")).toHaveLength(1);
+    expect(device.commandCalls).toEqual([
+      { command: "start", timeout: 15_000 },
+      { command: "stop", timeout: 15_000 },
+      { command: "result", timeout: 780_000 },
+    ]);
     device.reports.push(mic(7, 1));
     await vi.advanceTimersByTimeAsync(12);
     expect(microphoneColor()).toEqual([255, 0, 0]);

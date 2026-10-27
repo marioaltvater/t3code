@@ -59,7 +59,9 @@ function stableScopeKey(environmentId: EnvironmentId, scope: BackgroundScope): s
   }
 }
 
-function getClientId(): string {
+let ephemeralClientId: string | undefined;
+
+export function getClientId(): string {
   try {
     const existing = window.localStorage.getItem(CLIENT_ID_STORAGE_KEY);
     if (existing) return existing;
@@ -67,7 +69,7 @@ function getClientId(): string {
     window.localStorage.setItem(CLIENT_ID_STORAGE_KEY, next);
     return next;
   } catch {
-    return "ephemeral-browser-client";
+    return (ephemeralClientId ??= randomUUID());
   }
 }
 

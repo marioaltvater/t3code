@@ -40,7 +40,7 @@ export function encodeK0Lighting(colors: ReadonlyArray<number>, sequence: number
   });
 }
 
-export const K0_COMMANDS = {
+const K0_COMMANDS = {
   1: "thread.active.1",
   2: "thread.active.2",
   3: "thread.active.3",

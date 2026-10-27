@@ -30,7 +30,7 @@ export const THREAD_PINNED_KEYBINDING_COMMANDS = [
 ] as const;
 export type ThreadPinnedKeybindingCommand = (typeof THREAD_PINNED_KEYBINDING_COMMANDS)[number];
 
-export const THREAD_ACTIVE_KEYBINDING_COMMANDS = [
+const THREAD_ACTIVE_KEYBINDING_COMMANDS = [
   "thread.active.1",
   "thread.active.2",
   "thread.active.3",
@@ -40,7 +40,7 @@ export const THREAD_ACTIVE_KEYBINDING_COMMANDS = [
 ] as const;
 export type ThreadActiveKeybindingCommand = (typeof THREAD_ACTIVE_KEYBINDING_COMMANDS)[number];
 
-export const THREAD_CHIEF_OF_STAFF_KEYBINDING_COMMANDS = [
+const THREAD_CHIEF_OF_STAFF_KEYBINDING_COMMANDS = [
   "thread.chiefOfStaff.1",
   "thread.chiefOfStaff.2",
   "thread.chiefOfStaff.3",
@@ -244,11 +244,7 @@ export const ResolvedKeybindingRule = Schema.Struct({
 }).annotate({ parseOptions: { onExcessProperty: "ignore" } });
 export type ResolvedKeybindingRule = typeof ResolvedKeybindingRule.Type;
 
-/**
- * Decoding drops those rules instead of failing the whole payload —
- * rejecting the config would take down the connection over a shortcut the
- * client couldn't dispatch anyway.
- */
+/** Drops undecodable rules without failing the connection. */
 export const ResolvedKeybindingsConfig = ForwardCompatibleArray(ResolvedKeybindingRule).check(
   Schema.isMaxLength(MAX_KEYBINDINGS_COUNT),
 );

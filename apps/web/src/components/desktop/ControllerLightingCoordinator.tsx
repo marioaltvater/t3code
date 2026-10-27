@@ -5,7 +5,11 @@ import { useThreadShells } from "../../state/entities";
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { useUiStateStore } from "../../uiStateStore";
 import { threadWokeAt } from "@t3tools/client-runtime/state/thread-settled";
-import { hasUnseenCompletion, resolveThreadLastVisitedAt } from "../Sidebar.logic";
+import {
+  hasUnseenCompletion,
+  resolveThreadLastVisitedAt,
+  useSnoozeWakeClock,
+} from "../Sidebar.logic";
 import {
   createControllerLightingFrame,
   controllerWorkingPulseIntensity,
@@ -19,6 +23,7 @@ export function ControllerLightingCoordinator({
   readonly activeThreads: readonly ControllerThreadRef[];
 }) {
   const threads = useThreadShells();
+  const wakeClock = useSnoozeWakeClock(threads);
   const localVisits = useUiStateStore((state) => state.threadLastVisitedAtById);
   const { presentationById } = useEnvironments();
   const { routeThreadRef } = useHandleNewThread();
@@ -34,7 +39,7 @@ export function ControllerLightingCoordinator({
       localVisits[scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id))],
     );
     const wokeAt = threadWokeAt(thread, {
-      now: new Date().toISOString(),
+      now: new Date(Math.max(wakeClock, pulseTime)).toISOString(),
     });
     const isWoke =
       wokeAt !== null &&
@@ -55,6 +60,7 @@ export function ControllerLightingCoordinator({
     };
   });
   const hasWorkingPin = pinStates.some((pin) => pin?.state === "working");
+  // oxlint-disable-next-line t3code/react-effect-budget -- Clock ticks drive the physical controller working pulse.
   useEffect(() => {
     if (!hasWorkingPin || !window.desktopBridge?.controller?.setLighting) return;
     const timer = window.setInterval(() => setPulseTime(Date.now()), 120);
@@ -67,6 +73,7 @@ export function ControllerLightingCoordinator({
   });
   const frameKey = frame.join(",");
 
+  // oxlint-disable-next-line t3code/react-effect-budget -- Send changed light frames to the external controller bridge.
   useEffect(() => {
     const bridge = window.desktopBridge?.controller;
     if (!bridge?.setLighting) return;

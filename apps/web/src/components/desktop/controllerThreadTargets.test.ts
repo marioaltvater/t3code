@@ -4,6 +4,7 @@ import type { EnvironmentServerConfig } from "@t3tools/client-runtime/connection
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { makeThreadFixture, type ThreadFixtureOverrides } from "../../test-fixtures";
 import { partitionSidebarThreads } from "../Sidebar.threadPartition";
+import { WORKING_EXIT_GRACE_MS } from "@t3tools/client-runtime/state/thread-inbox";
 import {
   controllerThreadSlotFromCommand,
   controllerThreadTargetFromCommand,
@@ -96,7 +97,14 @@ it("uses the sidebar's environment/project scope and wakes snoozed threads in fa
 });
 
 it("follows Working shelf eligibility and return order across sidebar and fallback rebuilds", () => {
-  using _time = vi.spyOn(Date, "now").mockReturnValue(Date.parse(now));
+  vi.useFakeTimers();
+  using _timers = {
+    [Symbol.dispose]() {
+      partition([]);
+      vi.useRealTimers();
+    },
+  };
+  vi.setSystemTime(Date.parse(now));
   const working = thread("working", { runtime: { status: "running" } as never });
   const idle = thread("idle", { createdAt: "2026-10-21T00:00:00.000Z" });
   partition([working, idle]); // Reset the shared return tracker with the shelf disabled.
@@ -105,6 +113,10 @@ it("follows Working shelf eligibility and return order across sidebar and fallba
     partition([working, idle], { workingShelfEnabled: true }).activeThreads.map((t) => t.id),
   ).toEqual([idle.id]);
   const returned = { ...working, runtime: null };
+  const held = partition([returned, idle], { workingShelfEnabled: true });
+  expect(held.activeThreads.map((t) => t.id)).toEqual([idle.id]);
+  expect(held.workingThreads.map((t) => t.id)).toEqual([returned.id]);
+  vi.advanceTimersByTime(WORKING_EXIT_GRACE_MS);
   expect(
     partition([returned, idle], { workingShelfEnabled: true }).activeThreads.map((t) => t.id),
   ).toEqual([returned.id, idle.id]);

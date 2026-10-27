@@ -8,6 +8,7 @@ import {
   type SidebarListMarker,
 } from "../Sidebar.logic";
 import { SidebarThreadSectionHeader } from "../SidebarPinnedSections";
+import { SidebarThreadUndoNotice } from "./SidebarThreadUndoNotice";
 
 const SIDEBAR_SORTABLE_DRAG_DISABLED = { draggable: true } as const;
 
@@ -59,6 +60,8 @@ export function SidebarSectionHeader(props: {
   count: number;
   className?: string;
   toggle: { expanded: boolean; onToggle: () => void };
+  /** The first shelf at the bottom of the list hosts the undo notice just above itself. */
+  hostsUndoNotice?: boolean;
 }) {
   const shelf =
     props.marker === "working-header"
@@ -70,8 +73,11 @@ export function SidebarSectionHeader(props: {
     <SortableSidebarMarker
       marker={props.marker}
       data-testid={`sidebar-${props.marker}`}
-      className={cn("h-8", props.className)}
+      className={cn("relative h-8", props.className)}
     >
+      {props.hostsUndoNotice ? (
+        <SidebarThreadUndoNotice className="absolute inset-x-0 bottom-full bg-sidebar surface-grain" />
+      ) : null}
       <SidebarThreadSectionHeader
         shelf={shelf}
         count={props.count}

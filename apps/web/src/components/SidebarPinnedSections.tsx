@@ -36,7 +36,7 @@ import { toastManager } from "./ui/toast";
 type SectionRequest = { sectionId: string | null; resolve: (id: string | null) => void };
 const useSectionRequest = create<{ request: SectionRequest | null }>(() => ({ request: null }));
 
-export function requestPinnedSection(sectionId: string | null = null): Promise<string | null> {
+function requestPinnedSection(sectionId: string | null = null): Promise<string | null> {
   useSectionRequest.getState().request?.resolve(null);
   return new Promise((resolve) => useSectionRequest.setState({ request: { sectionId, resolve } }));
 }
@@ -266,6 +266,7 @@ export function SidebarThreadSectionHeader({
 
 export function PinnedSectionDialogHost() {
   const request = useSectionRequest((state) => state.request);
+  // oxlint-disable-next-line t3code/react-effect-budget -- Resolve pending dialog promises when their host unmounts.
   useEffect(() => () => finishSectionRequest(null), []);
   return request ? (
     <PinnedSectionDialog key={request.sectionId ?? "new"} sectionId={request.sectionId} />

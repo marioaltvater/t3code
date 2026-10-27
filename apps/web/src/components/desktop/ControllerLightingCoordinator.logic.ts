@@ -1,9 +1,9 @@
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import { resolveSidebarThreadStatus, resolveSidebarV2TopStatus } from "../Sidebar.logic";
 
-export const CONTROLLER_LED_COUNT = 26;
+const CONTROLLER_LED_COUNT = 26;
 export const CONTROLLER_PINNED_LED_INDICES = [0, 1, 2, 5, 6, 7] as const;
-export const CONTROLLER_AMBIENT_LED_INDICES = [3, 8, 4, 9, 14, 18, 22, 24, 13, 25] as const;
+const CONTROLLER_AMBIENT_LED_INDICES = [3, 8, 4, 9, 14, 18, 22, 24, 13, 25] as const;
 const WORKING_PULSE_PERIOD_MS = 2_000;
 const UNSELECTED_PIN_INTENSITY = 0.18;
 

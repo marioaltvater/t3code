@@ -60,10 +60,12 @@ function existingTarget(target: CaptureTarget): CaptureTarget | null {
 export function ControllerCoordinator() {
   const { routeDraftId, routeThreadRef } = useHandleNewThread();
   const routeRef = useRef({ routeDraftId, routeThreadRef });
+  // oxlint-disable-next-line t3code/react-effect-budget -- Commit route changes before asynchronous controller capture events.
   useLayoutEffect(() => {
     routeRef.current = { routeDraftId, routeThreadRef };
   }, [routeDraftId, routeThreadRef]);
 
+  // oxlint-disable-next-line t3code/react-effect-budget -- Subscribe to microphone and focus events from the native controller.
   useEffect(() => {
     // The renderer may be paired with an older desktop build or run on the web.
     const controller = (
