@@ -12,7 +12,9 @@
         // CodeRabbit loads its configuration by filename.
         ".coderabbit.config.ts",
         ".github/scripts/thread-transfer-report.cjs",
+        ".github/scripts/mirror-play-apk.cjs",
       ],
+      "ignoreDependencies": ["oxlint"],
       "vite": { "entry": [".github/**/*.test.cjs"] },
       "vitest": { "entry": [".github/**/*.test.cjs"] },
     },
@@ -26,6 +28,9 @@
         // These fixture scripts are injected into a browser page by path.
         "fixtures/*/*.js",
         "knip-schemas.ts",
+        "build-cli-archive.ts",
+        "resolve-nightly-release.ts",
+        "smoke-cli-archive.ts",
         "mobile-native-client.ts",
         "setup-worktree.ts",
         "sign-macos.ts",

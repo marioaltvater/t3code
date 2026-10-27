@@ -2984,11 +2984,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
 
   // Question dismissal unmounts focused controls without firing blur.
   const activePendingUserInputRequestId = activePendingUserInput?.requestId ?? null;
+  // oxlint-disable-next-line t3code/react-effect-budget -- Question controls can unmount focused DOM without dispatching blur.
   useEffect(() => {
     if (activePendingUserInputRequestId !== null) return;
     scheduleComposerCollapseCheckStable();
   }, [activePendingUserInputRequestId, scheduleComposerCollapseCheckStable]);
 
+  // oxlint-disable-next-line t3code/react-effect-budget -- Cancel queued focus and expansion frames when the composer unmounts.
   useEffect(() => {
     return () => {
       if (composerBlurFrameRef.current !== null) {

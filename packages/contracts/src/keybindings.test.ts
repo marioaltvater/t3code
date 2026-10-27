@@ -2,7 +2,12 @@ import { assert, it } from "@effect/vitest";
 import * as Schema from "effect/Schema";
 import * as Effect from "effect/Effect";
 
-import { KeybindingRule, KeybindingsConfig, ResolvedKeybindingsConfig } from "./keybindings.ts";
+import {
+  KeybindingRule,
+  KeybindingsConfig,
+  ResolvedKeybindingRule,
+  ResolvedKeybindingsConfig,
+} from "./keybindings.ts";
 
 const decode = <S extends Schema.Top>(
   schema: S,

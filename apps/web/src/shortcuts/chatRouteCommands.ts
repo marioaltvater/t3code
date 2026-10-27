@@ -23,7 +23,7 @@ import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../termina
 import { useThreadSelectionStore } from "../threadSelectionStore";
 import { resolveThreadRouteTarget } from "../threadRoutes";
 import { useUiStateStore } from "../uiStateStore";
-import { type CommandHandler, registerCommands } from "./dispatcher";
+import { type CommandHandler, registerCommands, registerMenuAction } from "./dispatcher";
 
 const CHAT_ROUTE_ID = "/_chat";
 
@@ -90,10 +90,26 @@ export function installChatRouteCommands(router: AnyRouter): () => void {
     event.stopPropagation();
   };
 
+  const newLocal = () => void startNewThreadFromContext(readThreadContext());
+  const newWithoutProject = () => {
+    const { activeThread, activeDraftThread } = readThreadContext();
+    const environmentId = scratch.scratchEnvironmentId(
+      activeThread?.environmentId ??
+        activeDraftThread?.environmentId ??
+        appAtomRegistry.get(primaryEnvironmentIdAtom),
+    );
+    if (environmentId === null) return false;
+    void scratch.startScratchThread(environmentId);
+    return true;
+  };
   const startNewLocal: CommandHandler = (event) => {
     claim(event);
-    void startNewThreadFromContext(readThreadContext());
+    newLocal();
   };
+  const ownsChatRoute = () =>
+    router.state.matches.some((match) => match.routeId === CHAT_ROUTE_ID) &&
+    !router.state.matches.some((match) => isAppModalPage(match.pathname)) &&
+    !isCommandPaletteOpen();
 
   const previewCommand =
     (action: PreviewAction): CommandHandler =>
@@ -103,19 +119,11 @@ export function installChatRouteCommands(router: AnyRouter): () => void {
       if (threadRef && canOperatePreview(threadRef.environmentId)) dispatchPreviewAction(action);
     };
 
-  return registerCommands(
+  const unregisterKeys = registerCommands(
     {
       "chat.newLocal": startNewLocal,
       "chat.newWithoutProject": (event) => {
-        const { activeThread, activeDraftThread } = readThreadContext();
-        const environmentId = scratch.scratchEnvironmentId(
-          activeThread?.environmentId ??
-            activeDraftThread?.environmentId ??
-            appAtomRegistry.get(primaryEnvironmentIdAtom),
-        );
-        if (environmentId === null) return;
-        claim(event);
-        void scratch.startScratchThread(environmentId);
+        if (newWithoutProject()) claim(event);
       },
       "chat.new": (event) => {
         // Pre-hydration settings are the defaults, where the legacy sidebar is off.
@@ -151,10 +159,7 @@ export function installChatRouteCommands(router: AnyRouter): () => void {
       "preview.resetZoom": previewCommand("reset-zoom"),
     },
     {
-      when: () =>
-        router.state.matches.some((match) => match.routeId === CHAT_ROUTE_ID) &&
-        !router.state.matches.some((match) => isAppModalPage(match.pathname)) &&
-        !isCommandPaletteOpen(),
+      when: ownsChatRoute,
       context: () => {
         const threadRef = readRouteThreadRef();
         return {
@@ -176,4 +181,15 @@ export function installChatRouteCommands(router: AnyRouter): () => void {
       },
     },
   );
+  const unregisterNewLocal = registerMenuAction("chat.newLocal", () => {
+    if (ownsChatRoute()) newLocal();
+  });
+  const unregisterNewWithoutProject = registerMenuAction("chat.newWithoutProject", () => {
+    if (ownsChatRoute()) newWithoutProject();
+  });
+  return () => {
+    unregisterKeys();
+    unregisterNewLocal();
+    unregisterNewWithoutProject();
+  };
 }

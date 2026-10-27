@@ -33,6 +33,7 @@ export function ControllerThreadCoordinator() {
   const ui = useControllerUiSnapshot();
   const navigate = useNavigate();
   const [wakeTime, setWakeTime] = useState(() => Date.now());
+  // oxlint-disable-next-line t3code/react-effect-budget -- Refresh off-screen controller targets when snoozed threads wake.
   useEffect(() => {
     if (ui.threadTargets !== null) return;
     const delay = controllerSnoozeWakeDelay(threads, Math.max(wakeTime, Date.now()));
@@ -91,6 +92,7 @@ export function ControllerThreadCoordinator() {
     event.stopPropagation();
     onAction(command);
   });
+  // oxlint-disable-next-line t3code/react-effect-budget -- Hardware actions require a mounted window and menu subscription.
   useEffect(() => {
     window.addEventListener("keydown", onKeyDown);
     const unsubscribe = window.desktopBridge?.onMenuAction(onAction);

@@ -154,7 +154,7 @@ function readRoutePanelsOpen(router: AnyRouter) {
 }
 
 export function registerNavigationHistoryCommands(router: AnyRouter): () => void {
-  return registerCommands(
+  const unregisterKeys = registerCommands(
     {
       "navigation.back": (event) => {
         event.preventDefault();
@@ -175,6 +175,15 @@ export function registerNavigationHistoryCommands(router: AnyRouter): () => void
       }),
     },
   );
+  const unregisterBack = registerMenuAction("navigation.back", () => window.history.back());
+  const unregisterForward = registerMenuAction("navigation.forward", () =>
+    window.history.forward(),
+  );
+  return () => {
+    unregisterKeys();
+    unregisterBack();
+    unregisterForward();
+  };
 }
 
 // Escape leaves the pull requests page when no scope (a selection, a dialog,

@@ -30,7 +30,7 @@ export const THREAD_PINNED_KEYBINDING_COMMANDS = [
 ] as const;
 export type ThreadPinnedKeybindingCommand = (typeof THREAD_PINNED_KEYBINDING_COMMANDS)[number];
 
-export const THREAD_ACTIVE_KEYBINDING_COMMANDS = [
+const THREAD_ACTIVE_KEYBINDING_COMMANDS = [
   "thread.active.1",
   "thread.active.2",
   "thread.active.3",
@@ -40,7 +40,7 @@ export const THREAD_ACTIVE_KEYBINDING_COMMANDS = [
 ] as const;
 export type ThreadActiveKeybindingCommand = (typeof THREAD_ACTIVE_KEYBINDING_COMMANDS)[number];
 
-export const THREAD_CHIEF_OF_STAFF_KEYBINDING_COMMANDS = [
+const THREAD_CHIEF_OF_STAFF_KEYBINDING_COMMANDS = [
   "thread.chiefOfStaff.1",
   "thread.chiefOfStaff.2",
   "thread.chiefOfStaff.3",

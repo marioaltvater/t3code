@@ -27,7 +27,7 @@ const TERMINAL_GLYPH_FALLBACKS =
   '"CaskaydiaCove Nerd Font", "PowerlineSymbols", monospace';
 // Concrete names only: an unknown keyword such as ui-monospace makes
 // canvas font shorthand parsing reject the whole string.
-export const DEFAULT_TERMINAL_FONT_FAMILY =
+const DEFAULT_TERMINAL_FONT_FAMILY =
   '"Geist Mono", "SFMono-Medium", "SF Mono", Menlo, Consolas, "Liberation Mono", ' +
   TERMINAL_GLYPH_FALLBACKS;
 const CONTENT_PADDING = 4;
