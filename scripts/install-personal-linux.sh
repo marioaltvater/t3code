@@ -30,7 +30,8 @@ chmod 755 "$temporary_app"
 [[ "$(sha256sum "$artifact" | cut -d' ' -f1)" = "$(sha256sum "$temporary_app" | cut -d' ' -f1)" ]]
 node "$repo_dir/scripts/personal-install-guard.ts" "$repo_dir" "$temporary_app" "$app_path"
 if [[ -e "$app_path" ]]; then
-  cp -p "$app_path" "$app_path.backup-$(date +%Y%m%d-%H%M%S)"
+  backup_path="$(mktemp "$app_path.backup-$(date +%Y%m%d-%H%M%S).XXXXXXXX")"
+  cp -p "$app_path" "$backup_path"
 fi
 mv "$temporary_app" "$app_path"
 cp "$repo_dir/assets/prod/black-universal-1024.png" "$icon_dir/t3-code-personal.png"
