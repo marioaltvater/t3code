@@ -165,6 +165,24 @@ beforeEach(() => vi.stubGlobal("HTMLElement", TestRow));
 afterEach(() => vi.unstubAllGlobals());
 
 describe("sidebar list motion", () => {
+  it("keeps the sticky Settled header anchored when Working expands and collapses", () => {
+    const workingHeader = new TestRow("Working", 32);
+    const working = new TestRow("working");
+    const settledHeader = new TestRow("Settled", 44);
+    settledHeader.dataset.sidebarMarker = "settled-header";
+    const { motion, layout } = fixture([workingHeader, settledHeader]);
+    motion.update(true);
+
+    layout([workingHeader, working, settledHeader]);
+    motion.update(true);
+    expect(working.animate).toHaveBeenCalled();
+    expect(settledHeader.animate).not.toHaveBeenCalled();
+
+    layout([workingHeader, settledHeader]);
+    motion.update(true);
+    expect(settledHeader.animate).not.toHaveBeenCalled();
+  });
+
   it("moves a retained Active row into Settled with its displaced peers", () => {
     const pinnedHeader = new TestRow("Pinned", 0);
     const pinned = new TestRow("pin");

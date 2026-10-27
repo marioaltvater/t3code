@@ -181,7 +181,12 @@ export function createSidebarListMotion(parent: HTMLUListElement) {
         listRows(parent)
           .filter(
             (node): node is HTMLElement =>
-              node instanceof HTMLElement && !exiting.has(node) && node !== landing?.clone,
+              node instanceof HTMLElement &&
+              !exiting.has(node) &&
+              node !== landing?.clone &&
+              // Sticky placement owns this header's position. A FLIP transform
+              // would lift its scrim off the bottom and expose rows beneath it.
+              node.dataset.sidebarMarker !== "settled-header",
           )
           .map((node) => [
             node,

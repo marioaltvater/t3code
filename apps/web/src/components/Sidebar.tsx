@@ -1338,6 +1338,12 @@ export default function Sidebar() {
     listMotionRef.current = node === null ? null : createSidebarListMotion(node);
     listMotionRef.current?.update(false);
   };
+  const toggleThreadShelf = (toggle: () => void) => {
+    // Whole-shelf visibility changes must not leave fading row copies over
+    // the next shelf. Ordinary thread moves still use list motion.
+    listMotionRef.current?.suspend();
+    toggle();
+  };
 
   // Working rows can supply chat context, but never preview sidebar movement.
   const isContextDrag = dragState?.contextDrag === true || dragState?.activeSection === "working";
@@ -3076,7 +3082,7 @@ export default function Sidebar() {
                             : undefined
                         }
                         className={cn(
-                          "relative flex flex-col gap-px",
+                          "relative flex flex-col gap-px overflow-clip",
                           organizingDrag && "gap-2 overflow-y-auto py-2 [overflow-anchor:none]",
                           sidebarListItems.length > 0 && "flex-1",
                           actionSweep !== null && "**:pointer-events-none",
@@ -3349,7 +3355,7 @@ export default function Sidebar() {
                                       section={null}
                                       count={defaultPinnedThreads.length}
                                       expanded={pinnedShelfExpanded}
-                                      onToggle={togglePinnedShelf}
+                                      onToggle={() => toggleThreadShelf(togglePinnedShelf)}
                                     />
                                   </SortableSidebarMarker>,
                                 );
@@ -3380,7 +3386,7 @@ export default function Sidebar() {
                                     count={workingThreads.length}
                                     toggle={{
                                       expanded: workingShelfExpanded,
-                                      onToggle: toggleWorkingShelf,
+                                      onToggle: () => toggleThreadShelf(toggleWorkingShelf),
                                     }}
                                   />,
                                 );
@@ -3394,7 +3400,7 @@ export default function Sidebar() {
                                     count={snoozedThreads.length}
                                     toggle={{
                                       expanded: snoozedShelfExpanded,
-                                      onToggle: toggleSnoozedShelf,
+                                      onToggle: () => toggleThreadShelf(toggleSnoozedShelf),
                                     }}
                                   />,
                                 );
@@ -3405,7 +3411,7 @@ export default function Sidebar() {
                                     key="settled-shelf-header"
                                     marker="settled-header"
                                     className={cn(
-                                      "sticky bottom-0 z-10 h-11 shrink-0 bg-sidebar surface-grain pb-3",
+                                      "sticky bottom-0 z-10 mt-5 h-11 shrink-0 bg-sidebar surface-grain pb-3",
                                       "before:pointer-events-none before:absolute before:inset-x-0 before:bottom-full before:h-[var(--fade-size)] before:bg-sidebar before:surface-grain before:mask-t-from-0",
                                       workingThreads.length + snoozedThreads.length === 0 &&
                                         "mt-auto",
@@ -3413,7 +3419,7 @@ export default function Sidebar() {
                                     count={settledThreads.length}
                                     toggle={{
                                       expanded: settledShelfExpanded,
-                                      onToggle: toggleSettledShelf,
+                                      onToggle: () => toggleThreadShelf(toggleSettledShelf),
                                     }}
                                   />,
                                 );

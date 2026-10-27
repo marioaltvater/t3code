@@ -66,7 +66,6 @@ export function SidebarSectionHeader(props: {
       : props.marker === "snoozed-header"
         ? "snoozed"
         : "settled";
-  const snoozed = shelf === "snoozed";
   return (
     <SortableSidebarMarker
       marker={props.marker}
@@ -78,7 +77,7 @@ export function SidebarSectionHeader(props: {
         count={props.count}
         onToggle={props.toggle.onToggle}
         expanded={props.toggle.expanded}
-        tone={snoozed ? "info" : "muted"}
+        tone={shelf === "working" ? "info" : shelf === "snoozed" ? "plum" : "muted"}
         testId={`sidebar-${shelf}-shelf-toggle`}
       />
     </SortableSidebarMarker>

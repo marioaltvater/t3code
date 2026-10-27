@@ -1,5 +1,5 @@
 import { useEffect, useId, useState } from "react";
-import { EllipsisIcon } from "lucide-react";
+import { CircleDashedIcon, EllipsisIcon } from "lucide-react";
 import { create } from "zustand";
 import type { ContextMenuItem, ScopedThreadRef } from "@t3tools/contracts";
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
@@ -131,7 +131,7 @@ export function SidebarThreadSectionHeader({
 }: {
   section?: SidebarPinnedSection | null;
   shelf?: "pinned" | "active" | "working" | "snoozed" | "settled";
-  tone?: "muted" | "info";
+  tone?: "muted" | "info" | "plum";
   testId?: string;
   count?: number;
   expanded?: boolean;
@@ -209,6 +209,24 @@ export function SidebarThreadSectionHeader({
         expanded={section || onToggle ? isExpanded : menuOpen}
         aria-haspopup={section || onToggle || shelf === "active" ? undefined : "menu"}
         tone={tone}
+        accessory={
+          shelf === "working" ? (
+            <CircleDashedIcon aria-hidden className="size-3 shrink-0" />
+          ) : shelf === "snoozed" ? (
+            <svg
+              aria-hidden
+              className="size-3 shrink-0"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M4 12h6l-6 8h6m4-16h6l-6 8h6" />
+            </svg>
+          ) : undefined
+        }
         data-testid={testId}
         actionOpen={menuOpen}
         onClick={

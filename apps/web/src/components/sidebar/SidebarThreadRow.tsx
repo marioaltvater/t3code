@@ -1137,7 +1137,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   ) : null;
   const statusContent =
     variantAction === "unsnooze" && props.snoozeWakeLabelText ? (
-      <span className="text-info-foreground">{props.snoozeWakeLabelText}</span>
+      <span className="text-plum">{props.snoozeWakeLabelText}</span>
     ) : topStatus ? (
       isWokeStatus ? (
         <Tooltip>
