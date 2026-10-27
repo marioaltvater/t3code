@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off globalConsole:off
 import { extractFile } from "@electron/asar";
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";

@@ -2,7 +2,6 @@ import type { DesktopControllerEvent } from "@t3tools/contracts";
 import * as NodeEvents from "node:events";
 import type * as Electron from "electron";
 import * as Effect from "effect/Effect";
-import * as Option from "effect/Option";
 import { it } from "@effect/vitest";
 import { expect, vi } from "vite-plus/test";
 import { DesktopEnvironment } from "../app/DesktopEnvironment.ts";
@@ -77,7 +76,7 @@ it.effect(
             platform: "linux",
           } as DesktopEnvironment["Service"]),
           Effect.provideService(ElectronWindow, {
-            main: Effect.succeed(Option.some(main)),
+            main: Effect.succeedSome(main),
           } as ElectronWindow["Service"]),
           Effect.provideService(DesktopIpc, {
             handle: () => Effect.void,
@@ -138,7 +137,7 @@ it.effect(
             platform: "linux",
           } as DesktopEnvironment["Service"]),
           Effect.provideService(ElectronWindow, {
-            main: Effect.succeed(Option.some(main)),
+            main: Effect.succeedSome(main),
           } as ElectronWindow["Service"]),
           Effect.provideService(DesktopIpc, {
             handle: (method: DesktopIpcMethod<Error, never>) =>

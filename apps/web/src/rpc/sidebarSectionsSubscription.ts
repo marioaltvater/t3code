@@ -6,7 +6,7 @@ export function subscribeSidebarSections(
   environmentId: EnvironmentId,
   clientId: string,
   surface: SidebarClient["surface"],
-) {
+): ReturnType<typeof subscribeDynamic<typeof WS_METHODS.sidebarSectionsConnect>> {
   return subscribeDynamic(
     WS_METHODS.sidebarSectionsConnect,
     (session) =>

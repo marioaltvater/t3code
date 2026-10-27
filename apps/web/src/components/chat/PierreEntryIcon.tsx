@@ -59,6 +59,9 @@ const ICON_COLORS: Record<string, readonly [light: string, dark: string]> = {
   zip: ["#d47628", "#ffa359"],
 };
 
+// Every icon references the one shared sprite, so it is in the document before any renders.
+ensurePierreIconSprite();
+
 export const PierreEntryIcon = memo(function PierreEntryIcon(props: {
   pathValue: string;
   kind: "file" | "directory";
