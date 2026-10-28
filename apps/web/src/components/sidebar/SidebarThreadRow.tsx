@@ -998,6 +998,15 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   };
 
   const sortable = props.sortable;
+  const brightenIdle =
+    variantAction === "unsnooze" || (status === "ready" && variantAction === "settle");
+  const dimWorkingDetails =
+    !brightenIdle &&
+    shouldRecede &&
+    !sortable?.isDragging &&
+    (status === "working" || status === "waiting");
+  const workingDetailsClassName =
+    "opacity-50 transition-opacity group-hover/sidebar-row:opacity-100 group-focus-within/sidebar-row:opacity-100 motion-reduce:transition-none";
   const rowSurfaceClassName = cn(
     "group/sidebar-row relative w-full cursor-pointer overflow-hidden rounded-md text-left outline-none select-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
     variantAction === "unsettle" &&
@@ -1014,10 +1023,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
             : shouldRecede
               ? "text-sidebar-muted-foreground/75 hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
               : "bg-transparent text-sidebar-foreground hover:bg-sidebar-row-hover",
-    shouldRecede &&
-      !sortable?.isDragging &&
-      status === "working" &&
-      "opacity-70 transition-opacity hover:opacity-100 focus-within:opacity-100 motion-reduce:transition-none",
     isFileDragOver && "ring-1 ring-inset ring-primary/70",
     isFileDragOver && !props.isActive && !isSelected && "bg-sidebar-row-hover",
   );
@@ -1080,35 +1085,62 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         aria-hidden
         className={cn(
           "min-w-0 flex-1 text-start text-sm transition-opacity motion-reduce:transition-none",
-          shouldRecede ? "font-normal" : "font-medium",
+          shouldRecede && status !== "approval" ? "font-normal" : "font-medium",
           variant === "card"
             ? cn(
                 "truncate",
                 shouldRecede
-                  ? "text-secondary-label"
-                  : isUnread || isWoke || status === "input" || status === "request"
+                  ? !brightenIdle && (status === "working" || status === "waiting")
+                    ? "text-foreground/50 group-hover/sidebar-row:text-foreground group-focus-within/sidebar-row:text-foreground"
+                    : status === "approval"
+                      ? "text-foreground"
+                      : brightenIdle
+                        ? "text-foreground/85"
+                        : "text-secondary-label"
+                  : isUnread ||
+                      isWoke ||
+                      status === "input" ||
+                      status === "request" ||
+                      status === "approval" ||
+                      status === "failed" ||
+                      status === "limited"
                     ? "text-foreground"
-                    : status === "failed"
-                      ? "text-foreground/95"
-                      : "text-foreground/90",
+                    : "text-foreground/90",
               )
             : cn(
                 "truncate group-focus-within/sidebar-row:text-foreground group-hover/sidebar-row:text-foreground",
                 isCompactEnabled
-                  ? props.isActive ||
-                    isSelected ||
-                    isWoke ||
-                    status === "input" ||
-                    status === "request"
+                  ? props.isActive || isSelected
                     ? "text-foreground"
-                    : "text-foreground/90"
+                    : status === "working" || status === "waiting"
+                      ? "text-foreground/50"
+                      : isWoke ||
+                          isUnread ||
+                          status === "input" ||
+                          status === "request" ||
+                          status === "approval" ||
+                          status === "failed" ||
+                          status === "limited"
+                        ? "text-foreground"
+                        : "text-foreground/90"
                   : shouldRecede
-                    ? "text-secondary-label/70"
-                    : props.isActive || isWoke || status === "input" || status === "request"
+                    ? !brightenIdle && (status === "working" || status === "waiting")
+                      ? "text-foreground/50"
+                      : status === "approval"
+                        ? "text-foreground"
+                        : brightenIdle
+                          ? "text-foreground/85"
+                          : "text-secondary-label/70"
+                    : props.isActive ||
+                        isWoke ||
+                        isUnread ||
+                        status === "input" ||
+                        status === "request" ||
+                        status === "approval" ||
+                        status === "failed" ||
+                        status === "limited"
                       ? "text-foreground"
-                      : isUnread
-                        ? "text-muted-foreground"
-                        : "text-secondary-label/70",
+                      : "text-secondary-label/70",
               ),
           isRegeneratingTitle && "opacity-55",
           sortable?.isDragging && "text-foreground",
@@ -1166,7 +1198,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   ) : null;
   const statusContent =
     variantAction === "unsnooze" && props.snoozeWakeLabelText ? (
-      <span className="text-plum">{props.snoozeWakeLabelText}</span>
+      <span className="text-secondary-label">{props.snoozeWakeLabelText}</span>
     ) : topStatus ? (
       isWokeStatus ? (
         <Tooltip>
@@ -1271,6 +1303,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               className={cn(
                 "flex shrink-0 items-center transition-opacity",
                 !isCompactEnabled &&
+                  variantAction !== "unsnooze" &&
                   (!props.isActive || variantAction === "unsettle") &&
                   !sortable?.isDragging &&
                   "opacity-40 grayscale group-focus-within/sidebar-row:opacity-100 group-focus-within/sidebar-row:grayscale-0 group-hover/sidebar-row:opacity-100 group-hover/sidebar-row:grayscale-0",
@@ -1423,13 +1456,22 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
             <div className="flex h-5 min-w-0 items-center gap-1.5">
               {draftIndicator}
               {props.project ? (
-                <ProjectFavicon project={props.project} className="size-4 shrink-0" />
+                <span className={cn("shrink-0", dimWorkingDetails && workingDetailsClassName)}>
+                  <ProjectFavicon project={props.project} className="size-4" />
+                </span>
               ) : null}
               {props.projectDisplayName ? (
                 <span
                   className={cn(
                     "min-w-0 flex-1 truncate text-secondary-label text-xs",
-                    shouldRecede ? "font-normal" : "font-medium",
+                    shouldRecede &&
+                      !brightenIdle &&
+                      (status === "working" || status === "waiting") &&
+                      "text-foreground/75",
+                    dimWorkingDetails && workingDetailsClassName,
+                    shouldRecede && status !== "approval" && !brightenIdle
+                      ? "font-normal"
+                      : "font-medium",
                   )}
                 >
                   {props.projectDisplayName}
@@ -1533,12 +1575,22 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
             <div
               className={cn(
                 "mt-0.5 flex min-w-0 items-center gap-1.5 text-secondary-label text-xs",
+                dimWorkingDetails && workingDetailsClassName,
               )}
             >
               {thread.branch ? (
                 <>
                   <ThreadWorktreeIndicator thread={thread} />
-                  <span className="flex min-w-0 flex-1 text-muted-foreground/40">
+                  <span
+                    className={cn(
+                      "flex min-w-0 flex-1",
+                      !brightenIdle && (status === "working" || status === "waiting")
+                        ? "text-muted-foreground"
+                        : variantAction === "settle" || variantAction === "unsnooze"
+                          ? "text-muted-foreground/75"
+                          : "text-muted-foreground/40",
+                    )}
+                  >
                     <MiddleTruncate value={thread.branch} showTitle={false} />
                   </span>
                 </>
