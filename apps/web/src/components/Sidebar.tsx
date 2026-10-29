@@ -1207,6 +1207,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     publishControllerThreadTargets(
       resolveControllerThreadTargets({
         activeThreads,
+        projectFolders,
         pinnedThreads,
         pinnedSections: namedPinnedSections.map(({ section, threads }) => ({
           ...section,
@@ -1214,7 +1215,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         })),
       }),
     );
-  }, [activeThreads, pinnedThreads, namedPinnedSections]);
+  }, [activeThreads, projectFolders, pinnedThreads, namedPinnedSections]);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Release controller targets when the sidebar unmounts.
   useLayoutEffect(() => () => publishControllerThreadTargets(null), []);
 
@@ -1572,7 +1573,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       "[data-thread-item][data-thread-dragging]",
     );
     if (!anchor || !node || !dragState) return args.transform;
-    const card = node.querySelector<HTMLElement>('[role="button"]') ?? node;
+    const card = node.querySelector<HTMLElement>("[data-sidebar-row]") ?? node;
     const rect = card.getBoundingClientRect();
     const bounds = dragState.dropBounds;
     // Section containers and compact siblings move the source's layout slot.
@@ -1838,7 +1839,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     const pointerY = (event.activatorEvent as PointerEvent).clientY;
     const sourceRect = sourceNode?.getBoundingClientRect();
     const cardRect =
-      sourceNode?.querySelector<HTMLElement>('[role="button"]')?.getBoundingClientRect() ??
+      sourceNode?.querySelector<HTMLElement>("[data-sidebar-row]")?.getBoundingClientRect() ??
       sourceRect;
     dragAnchorRef.current = {
       cardHeight: cardRect?.height ?? 0,
@@ -1901,6 +1902,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     // Boring mode keeps a project the user filtered to, so it can start a thread.
     if (
       !hasProjectFolders &&
+      namedPinnedSections.length === 0 &&
       pinnedThreads.length +
         activeThreads.length +
         workingThreads.length +
@@ -2136,7 +2138,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   ].map((destination) => ({ ...destination, disabled: !isValidDropTarget(destination.id) }));
   const readHeldCardRect = useStableCallback(() =>
     threadListRef.current
-      ?.querySelector<HTMLElement>('[data-thread-dragging] [role="button"]')
+      ?.querySelector<HTMLElement>("[data-thread-dragging] [data-sidebar-row]")
       ?.getBoundingClientRect(),
   );
   const dndCollisionDetection = createSidebarDestinationCollisionDetection(

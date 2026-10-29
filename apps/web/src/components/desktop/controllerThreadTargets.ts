@@ -12,6 +12,7 @@ type Thread = Pick<EnvironmentThreadShell, "environmentId" | "id">;
 
 export function resolveControllerThreadTargets(input: {
   readonly activeThreads: readonly Thread[];
+  readonly projectFolders?: readonly { readonly threads: readonly Thread[] }[] | null;
   readonly pinnedThreads: readonly Thread[];
   readonly pinnedSections: readonly SidebarPinnedSection[];
 }): ControllerThreadTargets {
@@ -22,7 +23,11 @@ export function resolveControllerThreadTargets(input: {
     threadId: thread.id,
   });
   return {
-    activeThreads: input.activeThreads.slice(0, 6).map(toRef),
+    activeThreads: (
+      input.projectFolders?.flatMap((folder) => folder.threads) ?? input.activeThreads
+    )
+      .slice(0, 6)
+      .map(toRef),
     chiefOfStaffThreads: input.pinnedThreads
       .filter((thread) =>
         sectionKeys.has(scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id))),

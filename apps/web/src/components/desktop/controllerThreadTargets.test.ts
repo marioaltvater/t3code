@@ -193,3 +193,25 @@ it("keeps missing LED targets dark without shifting later slots or the button se
   ]);
   expect(controllerThreadTargetFromCommand("thread.active.3", targets)?.threadId).toBe("third");
 });
+
+it("uses visible project-folder order and excludes collapsed rows from controller slots", () => {
+  const first = thread("first-folder", { projectId: ProjectId.make("first") });
+  const second = thread("second-folder", { projectId: ProjectId.make("second") });
+  const input = {
+    activeThreads: [second, first],
+    pinnedThreads: [],
+    pinnedSections: [],
+    projectFolders: [{ threads: [first] }, { threads: [second] }],
+  };
+  const targets = resolveControllerThreadTargets(input);
+  expect(controllerThreadTargetFromCommand("thread.active.1", targets)?.threadId).toBe(first.id);
+  expect(controllerThreadTargetFromCommand("thread.active.2", targets)?.threadId).toBe(second.id);
+  const collapsed = resolveControllerThreadTargets({
+    ...input,
+    projectFolders: [{ threads: [] }, { threads: [second] }],
+  });
+  expect(collapsed.activeThreads.map((ref) => ref.threadId)).toEqual([second.id]);
+  expect(resolveControllerThreadTargets({ ...input, projectFolders: [] }).activeThreads).toEqual(
+    [],
+  );
+});

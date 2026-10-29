@@ -66,10 +66,12 @@ class TestRow {
   querySelectorAll(_selector: string): TestRow[] {
     return this.children.flatMap((child) => [child, ...child.querySelectorAll("*")]);
   }
-  querySelector(_selector: string): TestRow | null {
+  querySelector(selector: string): TestRow | null {
     return (
       this.querySelectorAll("*").find((child) =>
-        child.attributes.some(({ name, value }) => name === "role" && value === "button"),
+        child.attributes.some(
+          ({ name }) => selector === "[data-sidebar-row]" && name === "data-sidebar-row",
+        ),
       ) ?? null
     );
   }
@@ -145,7 +147,8 @@ function heldRow() {
   row.dataset.threadItem = "environment:thread-a";
   row.dataset.threadDragging = "true";
   const visual = new TestRow("held compact visual", 36);
-  visual.setAttribute("role", "button");
+  visual.setAttribute("role", "treeitem");
+  visual.setAttribute("data-sidebar-row", "thread");
   visual.setAttribute("data-testid", "sidebar-row-slim");
   visual.setAttribute("id", "held-control");
   row.children = [visual];
@@ -156,7 +159,8 @@ function destinationRow(height = 82) {
   const row = new TestRow("final row", height);
   row.dataset.threadItem = "environment:thread-a";
   const visual = new TestRow("final visual", height);
-  visual.setAttribute("role", "button");
+  visual.setAttribute("role", "treeitem");
+  visual.setAttribute("data-sidebar-row", "thread");
   row.children = [visual];
   return row;
 }
@@ -322,7 +326,8 @@ describe("sidebar list motion", () => {
       expect(clone.offsetHeight).toBe(36);
       expect(clone.inert).toBe(true);
       expect(clone.attributes).toEqual([
-        { name: "role", value: "button" },
+        { name: "role", value: "treeitem" },
+        { name: "data-sidebar-row", value: "thread" },
         { name: "aria-hidden", value: "true" },
       ]);
       expect(clone.style).toMatchObject({

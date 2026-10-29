@@ -9,7 +9,7 @@ import { SidebarThreadSectionHeader } from "./SidebarPinnedSections";
 it("does not open Display when clicking the Active header", async () => {
   await using screen = await render(<SidebarThreadSectionHeader shelf="active" count={40} />);
   using _menu = { [Symbol.dispose]: dismissContextMenu };
-  await userEvent.click(screen.getByRole("button", { name: "Active (40)", exact: true }));
+  await userEvent.click(screen.getByRole("treeitem", { name: "Active (40)", exact: true }));
   await expect.element(page.getByText("Display", { exact: true })).not.toBeInTheDocument();
 });
 

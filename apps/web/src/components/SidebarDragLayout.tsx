@@ -66,7 +66,8 @@ export function SidebarDragLayout({
         Boolean(before.box) === Boolean(box)
       )
         continue;
-      const visual = child.querySelector<HTMLElement>('[role="button"]') ?? child.firstElementChild;
+      const visual =
+        child.querySelector<HTMLElement>("[data-sidebar-row]") ?? child.firstElementChild;
       if (!(visual instanceof HTMLElement) || position.height === 0) continue;
       const offset = before ? before.top - position.top : 0;
       const visualHeight = visual.offsetHeight;
