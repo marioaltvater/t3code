@@ -407,6 +407,56 @@ it.layer(
       }),
     );
 
+    it.effect("treats a gateway usage rejection as unsupported without an OpenAI account", () =>
+      Effect.gen(function* () {
+        const status = yield* checkCodexProviderStatus(defaultCodexSettings, () =>
+          Effect.succeed(
+            makeCodexProbeSnapshot({
+              account: { account: null, requiresOpenaiAuth: false },
+              rateLimits: { failure: "Codex could not read usage (JSON-RPC -32600)." },
+            }),
+          ),
+        );
+
+        assert.strictEqual(status.status, "ready");
+        assert.strictEqual(status.message, undefined);
+        assert.deepStrictEqual(status.usageLimits?.unavailable, { reason: "unsupported" });
+        assert.deepStrictEqual(status.usageLimits?.windows, []);
+      }),
+    );
+
+    it.effect(
+      "preserves usage failures for a ChatGPT account even without required OpenAI auth",
+      () =>
+        Effect.gen(function* () {
+          const failure = "Codex could not read usage (JSON-RPC -32600).";
+          const status = yield* checkCodexProviderStatus(defaultCodexSettings, () =>
+            Effect.succeed(makeCodexProbeSnapshot({ rateLimits: { failure } })),
+          );
+
+          assert.strictEqual(status.status, "ready");
+          assert.deepStrictEqual(status.usageLimits?.unavailable, {
+            reason: "probeFailed",
+            message: failure,
+          });
+        }),
+    );
+
+    it.effect("keeps API-key gateway usage unsupported when OpenAI auth is required", () =>
+      Effect.gen(function* () {
+        const status = yield* checkCodexProviderStatus(defaultCodexSettings, () =>
+          Effect.succeed(
+            makeCodexProbeSnapshot({
+              account: { account: { type: "apiKey" }, requiresOpenaiAuth: true },
+            }),
+          ),
+        );
+
+        assert.strictEqual(status.status, "ready");
+        assert.deepStrictEqual(status.usageLimits?.unavailable, { reason: "unsupported" });
+      }),
+    );
+
     it.effect("returns ready with unknown auth when app-server does not require OpenAI auth", () =>
       Effect.gen(function* () {
         const status = yield* checkCodexProviderStatus(defaultCodexSettings, () =>
@@ -422,6 +472,7 @@ it.layer(
 
         assert.strictEqual(status.status, "ready");
         assert.strictEqual(status.auth.status, "unknown");
+        assert.deepStrictEqual(status.usageLimits?.unavailable, { reason: "unsupported" });
       }),
     );
   });
