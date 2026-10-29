@@ -3,13 +3,15 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import { effectiveSnoozed } from "@t3tools/client-runtime/state/thread-settled";
-import { createInboxReturnTracker } from "@t3tools/client-runtime/state/thread-inbox";
+import {
+  isThreadWorking as isSidebarThreadWorking,
+  createInboxReturnTracker,
+} from "@t3tools/client-runtime/state/thread-inbox";
 import { sortSettledThreads } from "@t3tools/client-runtime/state/thread-sort";
 import {
   applySidebarThreadDrop,
   filterSidebarV2VisibleThreads,
   firstValidTimestampMs,
-  isSidebarThreadWorking,
   orderItemsByPreferredIds,
   resolveSidebarThreadSection,
   sortInboxThreadsByReturn,
@@ -44,12 +46,14 @@ export interface SidebarThreadPartitionInput {
   // tick and the precise snooze-wake tick are inputs: a new key repartitions.
   readonly clockKey?: string;
   readonly now?: string;
+  readonly delegatedUnderParent?: ReadonlySet<string>;
+  readonly sortActiveBySend?: boolean;
 }
 
 export function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
   const { threads, scopedProjectKeys, serverConfigs, optimisticDrop, workingShelfEnabled } = input;
   const preciseNow = input.now ?? new Date().toISOString();
-  const visible = filterSidebarV2VisibleThreads(threads, null);
+  const visible = filterSidebarV2VisibleThreads(threads, null, input.delegatedUnderParent);
   const inboxObservation = inboxReturns.observe(workingShelfEnabled ? threads : null);
   const pinned: EnvironmentThreadShell[] = [];
   const active: EnvironmentThreadShell[] = [];
@@ -114,9 +118,11 @@ export function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
   // sort, or mixed-version fleets would render different pinned orders on
   // web and mobile from the same data.
   const sortedPinned = sortPinnedThreadsForSidebar(pinned);
-  const sortedActive = workingShelfEnabled
-    ? sortInboxThreadsByReturn(active, inboxObservation.returnedAt)
-    : sortThreadsForSidebar(active);
+  const sortedActive = input.sortActiveBySend
+    ? sortWorkingThreadsBySend(active)
+    : workingShelfEnabled
+      ? sortInboxThreadsByReturn(active, inboxObservation.returnedAt)
+      : sortThreadsForSidebar(active);
   return {
     pinnedThreads:
       optimisticDrop?.section !== "pinned" || optimisticDrop.order === null

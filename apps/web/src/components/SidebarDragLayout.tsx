@@ -26,7 +26,7 @@ export function SidebarDragLayout({
     >
   >(new Map());
   const reducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
-  // oxlint-disable-next-line t3code/react-effect-budget -- Measure committed sidebar geometry before animating drag chrome.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Measure committed sidebar geometry before animating drag chrome.
   useLayoutEffect(() => {
     const list = listRef.current;
     if (!list) return;
@@ -116,7 +116,7 @@ export function SidebarDragLayout({
     }
     return () => completion.abort();
   }, [layout, listRef, reducedMotion, measureDroppableContainers]);
-  // oxlint-disable-next-line t3code/react-effect-budget -- Cancel DOM animations when the drag layout unmounts.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Cancel DOM animations when the drag layout unmounts.
   useLayoutEffect(
     () => () => {
       for (const entry of animations.current.values()) {
@@ -139,7 +139,7 @@ export function SidebarSourceList({
   children: ReactNode;
 }) {
   const ref = useRef<HTMLLIElement>(null);
-  // oxlint-disable-next-line t3code/react-effect-budget -- Observe source-list scroll and size to keep edge fades aligned.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Observe source-list scroll and size to keep edge fades aligned.
   useLayoutEffect(() => {
     const element = ref.current;
     if (!source || !element) return;

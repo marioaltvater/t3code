@@ -11,7 +11,7 @@ import { createNewThreadHandler, resolveDefaultProjectRef } from "../hooks/useHa
 import { createScratchProjectActions } from "../hooks/useScratchProject";
 import { getClientSettings } from "../hooks/useSettings";
 import { startNewThreadFromContext } from "../lib/chatThreadActions";
-import { selectProjectGroupingSettings } from "../logicalProject";
+import { selectProjectGroupingSettings } from "@t3tools/client-runtime/state/project-grouping";
 import { selectActiveRightPanel, useRightPanelStore } from "../rightPanelStore";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { buildSidebarProjectSnapshots } from "../sidebarProjectGrouping";
@@ -39,6 +39,7 @@ export function installChatRouteCommands(router: AnyRouter): () => void {
       [...appAtomRegistry.get(environmentPresentations.presentationsAtom)].map(
         ([environmentId, presentation]) => ({ ...presentation, environmentId }),
       ),
+    primaryEnvironmentId: () => appAtomRegistry.get(primaryEnvironmentIdAtom),
     registry: appAtomRegistry,
     handleNewThread,
   });
@@ -126,8 +127,10 @@ export function installChatRouteCommands(router: AnyRouter): () => void {
         if (newWithoutProject()) claim(event);
       },
       "chat.new": (event) => {
-        // Pre-hydration settings are the defaults, where the legacy sidebar is off.
-        if (!getClientSettings().legacySidebarEnabled && readProjectGroupCount() > 1) {
+        // The boring sidebar's folders already show the context, so it starts in
+        // the current project like the legacy sidebar did.
+        const { boringSidebarEnabled, legacySidebarEnabled } = getClientSettings();
+        if (!boringSidebarEnabled && !legacySidebarEnabled && readProjectGroupCount() > 1) {
           claim(event);
           openCommandPalette({ open: "new-thread-in" });
           return;

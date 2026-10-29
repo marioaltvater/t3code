@@ -16,7 +16,6 @@ import {
 import { readLocalApi } from "../localApi";
 import { readThreadShell } from "../state/entities";
 import { useThreadActions } from "../hooks/useThreadActions";
-import { getClientSettings } from "../hooks/useSettings";
 import type { ThreadActionMenuId } from "./threadActionMenu.logic";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -49,7 +48,6 @@ function finishSectionRequest(id: string | null) {
 export function pinnedSectionMenuItems(
   threadKeys: readonly string[],
 ): ContextMenuItem<ThreadActionMenuId>[] {
-  if (getClientSettings().legacySidebarEnabled) return [];
   const sections = useUiStateStore.getState().sidebarPinnedSections;
   const current = sections.find((section) =>
     threadKeys.every((key) => section.threadKeys.includes(key)),
@@ -206,6 +204,9 @@ export function SidebarThreadSectionHeader({
     >
       <CollapsibleSectionHeader
         variant="sidebar"
+        role="treeitem"
+        tabIndex={-1}
+        data-sidebar-row={section ? `pinned-section:${section.id}` : `shelf:${shelf}`}
         expanded={section || onToggle ? isExpanded : menuOpen}
         aria-haspopup={section || onToggle || shelf === "active" ? undefined : "menu"}
         tone={tone}
@@ -266,7 +267,7 @@ export function SidebarThreadSectionHeader({
 
 export function PinnedSectionDialogHost() {
   const request = useSectionRequest((state) => state.request);
-  // oxlint-disable-next-line t3code/react-effect-budget -- Resolve pending dialog promises when their host unmounts.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Resolve pending dialog promises when their host unmounts.
   useEffect(() => () => finishSectionRequest(null), []);
   return request ? (
     <PinnedSectionDialog key={request.sectionId ?? "new"} sectionId={request.sectionId} />

@@ -71,6 +71,7 @@ export const PierreEntryIcon = memo(function PierreEntryIcon(props: {
   className?: string;
 }) {
   const maskId = useId();
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Install the shared SVG sprite before DOM icons render.
   useInsertionEffect(ensurePierreIconSprite, []);
   const icon = resolvePierreIconForEntry(props.pathValue, props.kind, props.mimeType);
 

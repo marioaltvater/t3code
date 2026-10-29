@@ -75,6 +75,7 @@ vi.mock("../state/entities", async (original) => ({
   readEnvironmentSupportsSettlement: () => true,
   readEnvironmentSupportsSnooze: (environmentId: string) =>
     !pinnedShells.noSnooze.has(environmentId),
+  readEnvironmentServerConfigLoaded: () => true,
   readThreadShell: () => threadShell,
   readThreadShells: () =>
     pinnedShells.current.map((shell) => ({
