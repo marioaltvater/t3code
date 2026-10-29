@@ -96,6 +96,10 @@ vi.mock("../state/vcs", () => ({
 }));
 vi.mock("../state/entities", () => ({
   readEnvironmentServerConfigLoaded: () => true,
+  readEnvironmentSupportsPinning: () => true,
+  readEnvironmentSupportsPinReorder: () => true,
+  readEnvironmentSupportsSettlement: () => true,
+  readEnvironmentSupportsSnooze: () => true,
   readThreadShell: (ref: ScopedThreadRef) =>
     state.threads.find(
       (thread) => thread.environmentId === ref.environmentId && thread.id === ref.threadId,
