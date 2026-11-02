@@ -20,6 +20,7 @@ import {
   SymphonyBusResult,
   EnvironmentId,
   ProviderSessionId,
+  RunId,
   ThreadId,
   type SymphonyBusConfiguration,
 } from "@t3tools/contracts";
@@ -33,6 +34,7 @@ import * as Sqlite from "../persistence/Sqlite.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as Participation from "./ThreadParticipationService.ts";
 import * as Gateway from "./SymphonyBusGateway.ts";
+import * as Delivery from "./SymphonyDeliveryService.ts";
 import * as Transport from "./SymphonyBusTransport.ts";
 
 const endpoint = "http://127.0.0.1:9999/private-mcp";
@@ -148,6 +150,7 @@ function fixture(
           acked_seq: 0,
           next_seq: Math.max(Number(args.after_seq ?? 0), seq),
           head_seq: seq,
+          gap: false,
         };
       } else {
         const key = `${identity}:${args.idempotency_key}`;
@@ -450,7 +453,11 @@ it.effect("production MCP registration derives identity from real conversation c
   }).pipe(Effect.provide(registeredFixture(f)));
 });
 
-function registeredFixture(f: ReturnType<typeof fixture>, isLive: () => boolean = () => true) {
+function registeredFixture(
+  f: ReturnType<typeof fixture>,
+  isLive: () => boolean = () => true,
+  activeRunId?: () => string,
+) {
   const registry = Layer.effect(
     McpSessionRegistry.McpSessionRegistry,
     McpSessionRegistry.__testing.make(),
@@ -471,13 +478,21 @@ function registeredFixture(f: ReturnType<typeof fixture>, isLive: () => boolean 
     Layer.provideMerge(McpServer.McpServer.layer),
     Layer.provide(NodeCrypto.layer),
     Layer.provideMerge(f.layer),
+    Layer.provide(Delivery.layer.pipe(Layer.provide(f.layer), Layer.provide(NodeCrypto.layer))),
     Layer.provideMerge(McpProviderSessions.layer),
     Layer.provideMerge(registry),
     Layer.provide(
       Layer.mock(ThreadManagement.ThreadManagementService)({
         getThreadShell: (id) =>
           Effect.succeed(
-            McpToolAccessTestkit.liveThreadShell(id, isLive() ? {} : { activeRunId: null }),
+            McpToolAccessTestkit.liveThreadShell(
+              id,
+              isLive()
+                ? activeRunId
+                  ? { activeRunId: RunId.make(activeRunId()) }
+                  : {}
+                : { activeRunId: null },
+            ),
           ),
       }),
     ),
@@ -576,6 +591,128 @@ const publishThroughMcp = (scope: McpInvocationContext.McpInvocationScope) =>
     Effect.provideService(McpInvocationContext.McpInvocationContext, scope),
     Effect.provideService(McpSchema.McpServerClient, mcpClient),
   );
+
+it.effect(
+  "production native hook emits exact hook JSON and requires a current caller-scoped receipt",
+  () => {
+    const f = fixture();
+    let live = true;
+    return Effect.gen(function* () {
+      const issuedA = yield* issueCaller(a, identityA);
+      const issuedB = yield* issueCaller(b, identityB);
+      yield* (yield* Gateway.SymphonyBusGateway).call(issuedB.caller, {
+        operation: "publish",
+        publication: {
+          type: "note",
+          subject: "Directed fixture",
+          body: "Private rendered receipt test.",
+          topics: [`agent:${identityA}`],
+          deliverTo: [identityA],
+          idempotencyKey: "receipt-fixture",
+        },
+      });
+      const server = yield* McpServer.McpServer;
+      const call = (
+        scope: McpInvocationContext.McpInvocationScope,
+        name: string,
+        args: Record<string, unknown>,
+      ) =>
+        server
+          .callTool({ name, arguments: args })
+          .pipe(
+            Effect.provideService(McpInvocationContext.McpInvocationContext, scope),
+            Effect.provideService(McpSchema.McpServerClient, mcpClient),
+          );
+      const output = yield* call(issuedA.scope, "t3_symphony_hook", {
+        event: "UserPromptSubmit",
+        sessionId: "hook-coordinator",
+        turnId: "native-turn",
+      });
+      assert.equal(output.isError, false);
+      assert.equal(output.content.length, 1);
+      assert.equal(output.content[0]?.type, "text");
+      const json = JSON.parse(output.content[0]?.type === "text" ? output.content[0].text : "{}");
+      assert.deepEqual(json, output.structuredContent);
+      assert.equal(json.hookSpecificOutput.hookEventName, "UserPromptSubmit");
+      const token = /\{"token":"([^"]+)"\}/.exec(json.hookSpecificOutput.additionalContext)?.[1];
+      assert.isDefined(token);
+      const sql = yield* SqlClient.SqlClient;
+      const cursor = Effect.gen(function* () {
+        const [row] = yield* sql<{
+          record_json: string;
+        }>`SELECT record_json FROM symphony_delivery_state`;
+        return JSON.parse(row!.record_json).cursor;
+      });
+      assert.equal(yield* cursor, 0);
+      assert.equal(
+        (yield* call(issuedB.scope, "t3_symphony_delivery_receipt", { token })).isError,
+        true,
+      );
+      live = false;
+      assert.equal(
+        (yield* call(issuedA.scope, "t3_symphony_delivery_receipt", { token })).isError,
+        true,
+      );
+      assert.equal(yield* cursor, 0);
+      live = true;
+      const before = f.calls.length;
+      const received = yield* call(issuedA.scope, "t3_symphony_delivery_receipt", { token });
+      assert.equal(received.isError, false);
+      assert.deepEqual(received.structuredContent, { state: "received" });
+      assert.equal(yield* cursor, 1);
+      assert.equal(f.calls.length, before);
+      assert.deepEqual(
+        (yield* call(issuedA.scope, "t3_symphony_delivery_receipt", { token })).structuredContent,
+        { state: "already_received" },
+      );
+    }).pipe(Effect.provide(registeredFixture(f, () => live)));
+  },
+);
+
+it.effect(
+  "a run replacement revokes an in-flight native display without advancing or storing output",
+  () => {
+    const arrived = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const f = fixture({
+      pauseInbox: { arrived: () => arrived.resolve(), release: release.promise },
+    });
+    let run = "first-run";
+    return Effect.gen(function* () {
+      const issued = yield* issueCaller();
+      const server = yield* McpServer.McpServer;
+      const request = server
+        .callTool({
+          name: "t3_symphony_hook",
+          arguments: {
+            event: "UserPromptSubmit",
+            sessionId: "hook-coordinator",
+            turnId: "native-turn",
+          },
+        })
+        .pipe(
+          Effect.provideService(McpInvocationContext.McpInvocationContext, issued.scope),
+          Effect.provideService(McpSchema.McpServerClient, mcpClient),
+        );
+      const pending = yield* Effect.forkChild(request);
+      yield* Effect.promise(() => arrived.promise);
+      run = "replacement-run";
+      release.resolve();
+      assert.equal((yield* Fiber.join(pending)).isError, true);
+      const sql = yield* SqlClient.SqlClient;
+      assert.equal((yield* sql`SELECT 1 FROM symphony_delivery_batches`).length, 0);
+      assert.equal((yield* sql`SELECT 1 FROM symphony_delivery_state`).length, 0);
+    }).pipe(
+      Effect.provide(
+        registeredFixture(
+          f,
+          () => true,
+          () => run,
+        ),
+      ),
+    );
+  },
+);
 
 // P1-BUS-01: an admitted MCP request must not retain publication rights after revocation or stop.
 it.effect("rechecks real credential authority and caller liveness before publishing", () =>

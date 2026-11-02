@@ -1,3 +1,4 @@
+import * as SymphonyDeliveryService from "./SymphonyDeliveryService.ts";
 import * as McpSessionRegistry from "../mcp/McpSessionRegistry.ts";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
 import * as SymphonyBusGateway from "./SymphonyBusGateway.ts";
@@ -215,6 +216,7 @@ it.effect(
           Layer.provide(Layer.mock(McpSessionRegistry.McpSessionRegistry)({})),
           Layer.provide(McpProviderSessions.layer),
           Layer.provide(Layer.mock(SymphonyBusGateway.SymphonyBusGateway)({})),
+          Layer.provide(Layer.mock(SymphonyDeliveryService.SymphonyDeliveryService)({})),
           Layer.provideMerge(McpServer.McpServer.layer),
           Layer.provide(NodeCrypto.layer),
           Layer.provideMerge(layer),

@@ -5,6 +5,8 @@ import {
   type SymphonyBusConfiguration,
   type SymphonyParticipationScope,
   type SymphonyRuntimeIdentity,
+  type SymphonyParticipation,
+  type SymphonyNativeBinding,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -17,18 +19,38 @@ import * as Transport from "./SymphonyBusTransport.ts";
 
 export const symphonyBusConfigurationRevision = (configuration: SymphonyBusConfiguration) =>
   `native-mcp-v1:${configuration.endpoint}`;
-interface Caller extends SymphonyParticipationScope {
+export interface SymphonyBusCaller extends SymphonyParticipationScope {
   readonly mcpCredentialId: string;
   readonly authorization: Effect.Effect<void, SymphonyBusError>;
 }
+export type SymphonyBusAccess =
+  | {
+      readonly state: "quiet" | "pending";
+      readonly reason: string | null;
+      readonly record: SymphonyParticipation;
+    }
+  | {
+      readonly state: "ready";
+      readonly reason: null;
+      readonly record: SymphonyParticipation;
+      readonly binding: Extract<SymphonyNativeBinding, { readonly kind: "native-mcp" }>;
+      readonly identity: string;
+      readonly principal: string;
+      readonly role: string;
+      readonly configuration: SymphonyBusConfiguration;
+      readonly assertCurrent: Effect.Effect<void, SymphonyBusError>;
+    };
 export class SymphonyBusGateway extends Context.Service<
   SymphonyBusGateway,
   {
+    readonly access: (
+      caller: SymphonyBusCaller,
+    ) => Effect.Effect<SymphonyBusAccess, SymphonyBusError>;
     readonly runtimeIdentity: (
-      caller: Caller & Pick<SymphonyRuntimeIdentity, "providerInstanceId">,
+      caller: SymphonyBusCaller & Pick<SymphonyRuntimeIdentity, "providerInstanceId">,
     ) => Effect.Effect<SymphonyRuntimeIdentity, SymphonyBusError>;
     readonly call: (
-      caller: Caller,
+      caller: SymphonyBusCaller,
       input: SymphonyBusRequest,
     ) => Effect.Effect<SymphonyBusResult, SymphonyBusError>;
   }
@@ -54,7 +76,7 @@ const make = Effect.gen(function* () {
   const transport = yield* Transport.SymphonyBusTransport;
   const environmentId = yield* environment.getEnvironmentId;
   const runtimeIdentity = Effect.fn("SymphonyBusGateway.runtimeIdentity")(function* (
-    caller: Caller & Pick<SymphonyRuntimeIdentity, "providerInstanceId">,
+    caller: SymphonyBusCaller & Pick<SymphonyRuntimeIdentity, "providerInstanceId">,
   ) {
     yield* caller.authorization;
     if (caller.environmentId !== environmentId || !caller.mcpCredentialId)
@@ -69,8 +91,71 @@ const make = Effect.gen(function* () {
       mcpCredentialId: caller.mcpCredentialId,
     } satisfies SymphonyRuntimeIdentity;
   });
+  const access = Effect.fn("SymphonyBusGateway.access")(function* (
+    caller: SymphonyBusCaller,
+  ): Effect.fn.Return<SymphonyBusAccess, SymphonyBusError> {
+    yield* caller.authorization;
+    if (caller.environmentId !== environmentId || !caller.mcpCredentialId)
+      return yield* new SymphonyBusError({
+        code: "forbidden",
+        message: "Use the authenticated MCP credential for this conversation and environment.",
+      });
+    const record = yield* participation.status(caller).pipe(Effect.mapError(unavailable));
+    if (record.desiredState !== "joined") return { state: "quiet", reason: null, record };
+    const binding = record.nativeBinding;
+    if (
+      binding?.kind !== "native-mcp" ||
+      record.nativeState !== "applied" ||
+      record.appliedGeneration !== record.desiredGeneration
+    )
+      return { state: "pending", reason: "native_reconfigure_required", record };
+    if (
+      binding.mcpCredentialId !== caller.mcpCredentialId ||
+      binding.nativeGeneration !== record.nativeGeneration
+    )
+      return yield* revoked();
+    const configuration = (yield* settings.getSettings.pipe(Effect.mapError(unavailable)))
+      .symphonyBus;
+    if (configuration === null) return { state: "pending", reason: "bus_not_configured", record };
+    if (binding.configurationRevision !== symphonyBusConfigurationRevision(configuration))
+      return { state: "pending", reason: "native_reconfigure_required", record };
+    if (!record.identity || !record.principal || !record.role) return yield* unavailable(null);
+    const [, principal, role] = record.identity.split(":");
+    if (principal !== record.principal || role !== record.role) return yield* unavailable(null);
+    const assertCurrent = Effect.gen(function* () {
+      yield* caller.authorization;
+      const current = yield* participation.status(caller).pipe(Effect.mapError(unavailable));
+      const currentConfiguration = (yield* settings.getSettings.pipe(Effect.mapError(unavailable)))
+        .symphonyBus;
+      if (
+        current.desiredState !== "joined" ||
+        current.nativeState !== "applied" ||
+        current.identity !== record.identity ||
+        current.desiredGeneration !== record.desiredGeneration ||
+        current.appliedGeneration !== record.appliedGeneration ||
+        current.nativeGeneration !== record.nativeGeneration ||
+        current.nativeBinding?.kind !== "native-mcp" ||
+        current.nativeBinding.mcpCredentialId !== caller.mcpCredentialId ||
+        currentConfiguration === null ||
+        current.nativeBinding.configurationRevision !==
+          symphonyBusConfigurationRevision(currentConfiguration)
+      )
+        return yield* revoked();
+    });
+    return {
+      state: "ready",
+      reason: null,
+      record,
+      binding,
+      identity: record.identity,
+      principal: record.principal,
+      role: record.role,
+      configuration,
+      assertCurrent,
+    };
+  });
   const call = Effect.fn("SymphonyBusGateway.call")(function* (
-    caller: Caller,
+    caller: SymphonyBusCaller,
     raw: SymphonyBusRequest,
   ): Effect.fn.Return<SymphonyBusResult, SymphonyBusError> {
     yield* caller.authorization;
@@ -89,7 +174,8 @@ const make = Effect.gen(function* () {
           }),
       ),
     );
-    const record = yield* participation.status(caller).pipe(Effect.mapError(unavailable));
+    const admitted = yield* access(caller);
+    const { record } = admitted;
     const result = (
       state: SymphonyBusResult["state"],
       reason: string | null,
@@ -100,27 +186,8 @@ const make = Effect.gen(function* () {
       generation: record.desiredGeneration,
       payload: null,
     });
-    if (record.desiredState !== "joined") return result("quiet", null);
-    const binding = record.nativeBinding;
-    if (
-      binding?.kind !== "native-mcp" ||
-      record.nativeState !== "applied" ||
-      record.appliedGeneration !== record.desiredGeneration
-    )
-      return result("pending", "native_reconfigure_required");
-    if (
-      binding.mcpCredentialId !== caller.mcpCredentialId ||
-      binding.nativeGeneration !== record.nativeGeneration
-    )
-      return yield* revoked();
-    const configuration = (yield* settings.getSettings.pipe(Effect.mapError(unavailable)))
-      .symphonyBus;
-    if (configuration === null) return result("pending", "bus_not_configured");
-    if (binding.configurationRevision !== symphonyBusConfigurationRevision(configuration))
-      return result("pending", "native_reconfigure_required");
-    if (!record.identity || !record.principal || !record.role) return yield* unavailable(null);
-    const [, principal, role] = record.identity.split(":");
-    if (principal !== record.principal || role !== record.role) return yield* unavailable(null);
+    if (admitted.state !== "ready") return result(admitted.state, admitted.reason);
+    const { configuration, assertCurrent } = admitted;
     const publication = input.publication;
     if (input.operation === "publish") {
       if (
@@ -155,26 +222,6 @@ const make = Effect.gen(function* () {
             "Publish only within this conversation's topics or an explicitly addressed direct handoff.",
         });
     }
-    const assertCurrent = Effect.gen(function* () {
-      yield* caller.authorization;
-      const current = yield* participation.status(caller).pipe(Effect.mapError(unavailable));
-      const currentConfiguration = (yield* settings.getSettings.pipe(Effect.mapError(unavailable)))
-        .symphonyBus;
-      if (
-        current.desiredState !== "joined" ||
-        current.nativeState !== "applied" ||
-        current.identity !== record.identity ||
-        current.desiredGeneration !== record.desiredGeneration ||
-        current.appliedGeneration !== record.appliedGeneration ||
-        current.nativeGeneration !== record.nativeGeneration ||
-        current.nativeBinding?.kind !== "native-mcp" ||
-        current.nativeBinding.mcpCredentialId !== caller.mcpCredentialId ||
-        currentConfiguration === null ||
-        current.nativeBinding.configurationRevision !==
-          symphonyBusConfigurationRevision(currentConfiguration)
-      )
-        return yield* revoked();
-    });
     const args =
       input.operation === "inbox"
         ? { after_seq: input.afterSeq ?? 0, limit: input.limit ?? 12, ack: false }
@@ -196,9 +243,9 @@ const make = Effect.gen(function* () {
           : {};
     const payload = yield* transport.exchange({
       endpoint: configuration.endpoint,
-      identity: record.identity,
-      principal: record.principal,
-      role: record.role,
+      identity: admitted.identity,
+      principal: admitted.principal,
+      role: admitted.role,
       topics: record.topics,
       operation: input.operation,
       args,
@@ -207,6 +254,6 @@ const make = Effect.gen(function* () {
     yield* assertCurrent;
     return { ...result("ready", null), payload };
   });
-  return SymphonyBusGateway.of({ call, runtimeIdentity });
+  return SymphonyBusGateway.of({ call, access, runtimeIdentity });
 });
 export const layer = Layer.effect(SymphonyBusGateway, make);

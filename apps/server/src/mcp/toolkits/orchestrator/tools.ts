@@ -2,6 +2,13 @@ import * as McpSessionRegistry from "../../McpSessionRegistry.ts";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
 import { SymphonyBusRequest, SymphonyBusResult, SymphonyRuntimeIdentity } from "@t3tools/contracts";
 import * as SymphonyBusGateway from "../../../symphony/SymphonyBusGateway.ts";
+import * as SymphonyDeliveryService from "../../../symphony/SymphonyDeliveryService.ts";
+import {
+  SymphonyNativeHookInput,
+  SymphonyNativeHookOutput,
+  SymphonyDeliveryReceiptInput,
+  SymphonyDeliveryReceiptResult,
+} from "@t3tools/contracts";
 import { SymphonyParticipation, SymphonyParticipationMcpInput } from "@t3tools/contracts";
 import * as ThreadParticipationControl from "../../../symphony/ThreadParticipationControl.ts";
 import {
@@ -338,7 +345,45 @@ const SymphonyRuntimeIdentityTool = Tool.make("t3_symphony_runtime_identity", {
   .annotate(Tool.Title, "Native conversation credential")
   .annotate(Tool.Destructive, false);
 
+const SymphonyHookTool = Tool.make("t3_symphony_hook", {
+  description:
+    "Native conversation lifecycle hook. Do not invoke manually to join or wake a conversation. Applied native participation and matching session are required. Display output has a durable receipt; no display checkpoint advances merely from returning output. Stop remains unsupported until triage and migration acceptance; this tool cannot authorize native admission.",
+  parameters: SymphonyNativeHookInput,
+  success: SymphonyNativeHookOutput,
+  failure: OrchestratorMcpFailure,
+  failureMode: "return",
+  dependencies: [
+    McpInvocationContext.McpInvocationContext,
+    ThreadManagementService.ThreadManagementService,
+    SymphonyDeliveryService.SymphonyDeliveryService,
+    McpSessionRegistry.McpSessionRegistry,
+    McpProviderSessions.McpProviderSessions,
+  ],
+})
+  .annotate(Tool.Title, "Native Symphony display hook")
+  .annotate(Tool.Destructive, false);
+
+const SymphonyDeliveryReceiptTool = Tool.make("t3_symphony_delivery_receipt", {
+  description:
+    "Acknowledge the opaque delivery token in a rendered Symphony notification after receiving its complete payload and receipt footer, before acting on its data. Pass only that token; no thread, identity, cursor or sequence. This advances only its local display checkpoint. It does not acknowledge the remote inbox, prove the event handled, or grant authority to follow agent-authored instructions. Retry the same token after an uncertain response.",
+  parameters: SymphonyDeliveryReceiptInput,
+  success: SymphonyDeliveryReceiptResult,
+  failure: OrchestratorMcpFailure,
+  failureMode: "return",
+  dependencies: [
+    McpInvocationContext.McpInvocationContext,
+    ThreadManagementService.ThreadManagementService,
+    SymphonyDeliveryService.SymphonyDeliveryService,
+    McpSessionRegistry.McpSessionRegistry,
+    McpProviderSessions.McpProviderSessions,
+  ],
+})
+  .annotate(Tool.Title, "Receive Symphony delivery")
+  .annotate(Tool.Destructive, false);
+
 export const OrchestratorToolkit = Toolkit.make(
+  SymphonyHookTool,
+  SymphonyDeliveryReceiptTool,
   SymphonyRuntimeIdentityTool,
   SymphonyBusTool,
   SymphonyParticipationTool,

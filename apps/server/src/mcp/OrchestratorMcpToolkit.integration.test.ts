@@ -1,3 +1,4 @@
+import * as SymphonyDeliveryService from "../symphony/SymphonyDeliveryService.ts";
 import * as McpSessionRegistry from "./McpSessionRegistry.ts";
 import * as SymphonyBusGateway from "../symphony/SymphonyBusGateway.ts";
 import * as ThreadParticipationControl from "../symphony/ThreadParticipationControl.ts";
@@ -54,6 +55,7 @@ const layerOrchestratorToolkit = McpHttpServer.layerOrchestratorToolkit.pipe(
   Layer.provide(McpProviderSessions.layer),
   Layer.provide(Layer.mock(McpSessionRegistry.McpSessionRegistry)({})),
   Layer.provide(Layer.mock(SymphonyBusGateway.SymphonyBusGateway)({})),
+  Layer.provide(Layer.mock(SymphonyDeliveryService.SymphonyDeliveryService)({})),
   Layer.provide(Layer.mock(ThreadParticipationControl.ThreadParticipationControl)({})),
   Layer.provide(Layer.mock(ThreadLaunchService.ThreadLaunchService)({})),
   Layer.provide(Layer.mock(GitVcsDriver.GitVcsDriver)({})),

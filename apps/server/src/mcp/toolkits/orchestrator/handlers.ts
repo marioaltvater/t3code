@@ -1,5 +1,6 @@
 import { SymphonyBusError, SymphonyBusRequest } from "@t3tools/contracts";
 import * as SymphonyBusGateway from "../../../symphony/SymphonyBusGateway.ts";
+import * as SymphonyDeliveryService from "../../../symphony/SymphonyDeliveryService.ts";
 import * as ThreadParticipationControl from "../../../symphony/ThreadParticipationControl.ts";
 import { OrchestratorMcpFailure, SymphonyParticipationMcpInput } from "@t3tools/contracts";
 import { OrchestratorToolkit } from "./tools.ts";
@@ -121,7 +122,81 @@ const runtimeIdentity = Effect.fn("mcp.symphonyRuntimeIdentity")(function* () {
     );
 });
 
+const deliveryFailure = (cause: SymphonyBusError | OrchestratorMcpFailure) =>
+  cause._tag === "OrchestratorMcpFailure"
+    ? cause
+    : new OrchestratorMcpFailure({
+        code: cause.code === "forbidden" ? "capability_denied" : "orchestration_error",
+        message: cause.message,
+      });
+const deliveryCaller = Effect.fn("mcp.symphonyDeliveryCaller")(function* () {
+  const original = yield* readCaller();
+  const { thread } = yield* McpInvocationContext.requireThreadScope(
+    original.scope,
+    "Symphony delivery",
+  );
+  const runId = original.caller?.activeRunId;
+  if (!runId)
+    return yield* new OrchestratorMcpFailure({
+      code: "parent_not_active",
+      message: "Delivery requires the current active conversation run.",
+    });
+  const credentialAuthority = yield* captureThreadAuthority(true);
+  const authorization = Effect.gen(function* () {
+    yield* credentialAuthority;
+    const latest = yield* original.threads.getThreadShell(thread.threadId).pipe(
+      Effect.mapError(
+        () =>
+          new OrchestratorMcpFailure({
+            code: "orchestration_error",
+            message: "Could not verify the calling conversation run.",
+          }),
+      ),
+    );
+    if (
+      !latest ||
+      latest.activeRunId !== runId ||
+      latest.activeProviderThreadId !== original.caller?.activeProviderThreadId
+    )
+      return yield* new OrchestratorMcpFailure({
+        code: "parent_not_active",
+        message: "The calling conversation run changed during delivery.",
+      });
+  }).pipe(
+    Effect.mapError(
+      (cause) =>
+        new SymphonyBusError({
+          code: "revoked",
+          message: "The calling conversation run or credential is no longer current.",
+          cause,
+        }),
+    ),
+  );
+  return {
+    environmentId: original.scope.environmentId,
+    threadId: thread.threadId,
+    mcpCredentialId: thread.providerSessionId,
+    runId,
+    authorization,
+  };
+});
+
 const handlers = {
+  t3_symphony_hook: McpToolAccess.actsAsCaller((input) =>
+    Effect.gen(function* () {
+      const caller = yield* deliveryCaller();
+      return yield* (yield* SymphonyDeliveryService.SymphonyDeliveryService).offer(caller, input);
+    }).pipe(Effect.mapError(deliveryFailure)),
+  ),
+  t3_symphony_delivery_receipt: McpToolAccess.actsAsCaller((input) =>
+    Effect.gen(function* () {
+      const caller = yield* deliveryCaller();
+      return yield* (yield* SymphonyDeliveryService.SymphonyDeliveryService).receipt(
+        caller,
+        input.token,
+      );
+    }).pipe(Effect.mapError(deliveryFailure)),
+  ),
   t3_symphony_runtime_identity: McpToolAccess.readsAsCaller(runtimeIdentity),
   t3_symphony_bus: McpToolAccess.either(
     (input) => input.operation === "publish",

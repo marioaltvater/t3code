@@ -167,6 +167,31 @@ export const SymphonyRuntimeIdentity = Schema.Struct({
   mcpCredentialId: TrimmedNonEmptyString,
 });
 export type SymphonyRuntimeIdentity = typeof SymphonyRuntimeIdentity.Type;
+const NativeHookId = TrimmedNonEmptyString.check(Schema.isMaxLength(256));
+export const SymphonyNativeHookInput = Schema.Struct({
+  event: Schema.Literals(["UserPromptSubmit", "PostToolUse", "Stop"]),
+  sessionId: NativeHookId,
+  turnId: NativeHookId,
+  agentId: Schema.optional(NativeHookId),
+  toolName: Schema.optional(NativeHookId),
+  toolUseId: Schema.optional(NativeHookId),
+  stopHookActive: Schema.optional(Schema.Boolean),
+});
+export type SymphonyNativeHookInput = typeof SymphonyNativeHookInput.Type;
+export const SymphonyNativeHookOutput = Schema.Struct({
+  hookSpecificOutput: Schema.optional(
+    Schema.Struct({
+      hookEventName: Schema.Literals(["UserPromptSubmit", "PostToolUse"]),
+      additionalContext: Schema.String,
+    }),
+  ),
+});
+export type SymphonyNativeHookOutput = typeof SymphonyNativeHookOutput.Type;
+export const SymphonyDeliveryReceiptInput = Schema.Struct({ token: NativeHookId });
+export const SymphonyDeliveryReceiptResult = Schema.Struct({
+  state: Schema.Literals(["received", "already_received"]),
+});
+export type SymphonyDeliveryReceiptResult = typeof SymphonyDeliveryReceiptResult.Type;
 export class SymphonyBusError extends Schema.TaggedError<SymphonyBusError>()("SymphonyBusError", {
   code: Schema.Literals([
     "unavailable",
