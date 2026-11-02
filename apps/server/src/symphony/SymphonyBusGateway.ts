@@ -4,6 +4,7 @@ import {
   type SymphonyBusResult,
   type SymphonyBusConfiguration,
   type SymphonyParticipationScope,
+  type SymphonyRuntimeIdentity,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -23,6 +24,9 @@ interface Caller extends SymphonyParticipationScope {
 export class SymphonyBusGateway extends Context.Service<
   SymphonyBusGateway,
   {
+    readonly runtimeIdentity: (
+      caller: Caller & Pick<SymphonyRuntimeIdentity, "providerInstanceId">,
+    ) => Effect.Effect<SymphonyRuntimeIdentity, SymphonyBusError>;
     readonly call: (
       caller: Caller,
       input: SymphonyBusRequest,
@@ -49,6 +53,22 @@ const make = Effect.gen(function* () {
   const environment = yield* ServerEnvironment.ServerEnvironment;
   const transport = yield* Transport.SymphonyBusTransport;
   const environmentId = yield* environment.getEnvironmentId;
+  const runtimeIdentity = Effect.fn("SymphonyBusGateway.runtimeIdentity")(function* (
+    caller: Caller & Pick<SymphonyRuntimeIdentity, "providerInstanceId">,
+  ) {
+    yield* caller.authorization;
+    if (caller.environmentId !== environmentId || !caller.mcpCredentialId)
+      return yield* new SymphonyBusError({
+        code: "forbidden",
+        message: "Use the authenticated MCP credential for this conversation and environment.",
+      });
+    return {
+      environmentId,
+      threadId: caller.threadId,
+      providerInstanceId: caller.providerInstanceId,
+      mcpCredentialId: caller.mcpCredentialId,
+    } satisfies SymphonyRuntimeIdentity;
+  });
   const call = Effect.fn("SymphonyBusGateway.call")(function* (
     caller: Caller,
     raw: SymphonyBusRequest,
@@ -187,6 +207,6 @@ const make = Effect.gen(function* () {
     yield* assertCurrent;
     return { ...result("ready", null), payload };
   });
-  return SymphonyBusGateway.of({ call });
+  return SymphonyBusGateway.of({ call, runtimeIdentity });
 });
 export const layer = Layer.effect(SymphonyBusGateway, make);

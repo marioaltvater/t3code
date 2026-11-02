@@ -1,6 +1,6 @@
 import * as McpSessionRegistry from "../../McpSessionRegistry.ts";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
-import { SymphonyBusRequest, SymphonyBusResult } from "@t3tools/contracts";
+import { SymphonyBusRequest, SymphonyBusResult, SymphonyRuntimeIdentity } from "@t3tools/contracts";
 import * as SymphonyBusGateway from "../../../symphony/SymphonyBusGateway.ts";
 import { SymphonyParticipation, SymphonyParticipationMcpInput } from "@t3tools/contracts";
 import * as ThreadParticipationControl from "../../../symphony/ThreadParticipationControl.ts";
@@ -320,7 +320,26 @@ const SymphonyBusTool = Tool.make("t3_symphony_bus", {
   .annotate(Tool.Title, "Conversation Symphony bus")
   .annotate(Tool.Destructive, false);
 
+const SymphonyRuntimeIdentityTool = Tool.make("t3_symphony_runtime_identity", {
+  description:
+    "Read this native connection's authenticated T3 conversation, provider instance and opaque MCP credential reference. Takes no target or identity. Does not expose the bearer token, join Symphony, contact the bus or attest isolation, subscriptions, delivery or wake-ups. Use for native lifecycle verification; ordinary work needs no probe.",
+  parameters: Tool.EmptyParams,
+  success: SymphonyRuntimeIdentity,
+  failure: OrchestratorMcpFailure,
+  failureMode: "return",
+  dependencies: [
+    McpInvocationContext.McpInvocationContext,
+    ThreadManagementService.ThreadManagementService,
+    SymphonyBusGateway.SymphonyBusGateway,
+    McpSessionRegistry.McpSessionRegistry,
+    McpProviderSessions.McpProviderSessions,
+  ],
+})
+  .annotate(Tool.Title, "Native conversation credential")
+  .annotate(Tool.Destructive, false);
+
 export const OrchestratorToolkit = Toolkit.make(
+  SymphonyRuntimeIdentityTool,
   SymphonyBusTool,
   SymphonyParticipationTool,
   OrchestratorCapabilitiesTool,

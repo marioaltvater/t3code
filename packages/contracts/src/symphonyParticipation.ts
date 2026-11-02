@@ -8,6 +8,7 @@ import {
   PositiveInt,
   IsoDateTime,
 } from "./baseSchemas.ts";
+import { ProviderInstanceId } from "./providerInstance.ts";
 
 export const SymphonyParticipantIdentity = TrimmedNonEmptyString.check(
   Schema.isPattern(
@@ -160,6 +161,12 @@ export const SymphonyBusResult = Schema.Struct({
   payload: Schema.NullOr(Schema.Json),
 });
 export type SymphonyBusResult = typeof SymphonyBusResult.Type;
+export const SymphonyRuntimeIdentity = Schema.Struct({
+  ...SymphonyParticipationScope.fields,
+  providerInstanceId: ProviderInstanceId,
+  mcpCredentialId: TrimmedNonEmptyString,
+});
+export type SymphonyRuntimeIdentity = typeof SymphonyRuntimeIdentity.Type;
 export class SymphonyBusError extends Schema.TaggedError<SymphonyBusError>()("SymphonyBusError", {
   code: Schema.Literals([
     "unavailable",

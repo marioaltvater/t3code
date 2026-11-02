@@ -489,6 +489,7 @@ function registeredFixture(f: ReturnType<typeof fixture>, isLive: () => boolean 
 const issueCaller = Effect.fn("fixture.issueCaller")(function* (
   target: typeof a = a,
   identity = identityA,
+  joined = true,
 ) {
   const registry = yield* McpSessionRegistry.McpSessionRegistry;
   const credential = yield* registry.issue({
@@ -501,8 +502,60 @@ const issueCaller = Effect.fn("fixture.issueCaller")(function* (
   );
   if (!scope) return yield* Effect.die("Fixture credential failed to resolve");
   const caller = { ...target, mcpCredentialId: credential.config.providerSessionId };
-  yield* admit(caller, identity);
+  if (joined) yield* admit(caller, identity);
   return { scope, caller, registry };
+});
+
+it.effect("reads native credential identity without joining or contacting the bus", () => {
+  const f = fixture({ configuration: () => null });
+  return Effect.gen(function* () {
+    const issuedA = yield* issueCaller(a, identityA, false);
+    const issuedB = yield* issueCaller(b, identityB, false);
+    const server = yield* McpServer.McpServer;
+    const call = (scope: McpInvocationContext.McpInvocationScope) =>
+      server
+        .callTool({ name: "t3_symphony_runtime_identity", arguments: {} })
+        .pipe(
+          Effect.provideService(McpInvocationContext.McpInvocationContext, scope),
+          Effect.provideService(McpSchema.McpServerClient, mcpClient),
+        );
+    for (const issued of [issuedA, issuedB]) {
+      const result = yield* call(issued.scope);
+      assert.equal(result.isError, false);
+      assert.deepEqual(result.structuredContent, {
+        environmentId,
+        threadId: issued.caller.threadId,
+        providerInstanceId: "codex",
+        mcpCredentialId: issued.caller.mcpCredentialId,
+      });
+    }
+    assert.notEqual(issuedA.caller.mcpCredentialId, issuedB.caller.mcpCredentialId);
+    const session = yield* (yield* McpProviderSessions.McpProviderSessions).read(a.threadId);
+    assert.isDefined(session);
+    const exposed = JSON.stringify((yield* call(issuedA.scope)).structuredContent);
+    assert.notInclude(exposed, session!.authorizationHeader.replace(/^Bearer\s+/, ""));
+    assert.equal(
+      (yield* call({
+        ...issuedA.scope,
+        thread: { ...issuedA.scope.thread, providerSessionId: issuedB.caller.mcpCredentialId },
+      })).isError,
+      true,
+    );
+    yield* issuedA.registry.revokeProviderSession(issuedA.caller.mcpCredentialId);
+    assert.equal((yield* call(issuedA.scope)).isError, true);
+    assert.equal(
+      (yield* call({
+        ...issuedB.scope,
+        thread: undefined,
+        client: { sessionId: "external", label: "external", access: "full-access" as const },
+      })).isError,
+      true,
+    );
+    assert.equal(f.calls.length, 0);
+    const sql = yield* SqlClient.SqlClient;
+    assert.equal((yield* sql`SELECT 1 FROM symphony_thread_participation`).length, 0);
+    assert.equal((yield* sql`SELECT 1 FROM symphony_participation_requests`).length, 0);
+  }).pipe(Effect.provide(registeredFixture(f, () => false)));
 });
 const publishThroughMcp = (scope: McpInvocationContext.McpInvocationScope) =>
   Effect.flatMap(McpServer.McpServer, (server) =>

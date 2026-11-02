@@ -86,7 +86,43 @@ const bus = Effect.fn("mcp.symphonyBus")(function* (input: SymphonyBusRequest) {
     );
 });
 
+const runtimeIdentity = Effect.fn("mcp.symphonyRuntimeIdentity")(function* () {
+  const { scope } = yield* readCaller();
+  const caller = yield* McpInvocationContext.requireThreadScope(
+    scope,
+    "t3_symphony_runtime_identity",
+  );
+  const authorization = (yield* captureThreadAuthority(false)).pipe(
+    Effect.mapError(
+      (cause) =>
+        new SymphonyBusError({
+          code: "revoked",
+          message: "The conversation's MCP credential is no longer current.",
+          cause,
+        }),
+    ),
+  );
+  return yield* (yield* SymphonyBusGateway.SymphonyBusGateway)
+    .runtimeIdentity({
+      environmentId: scope.environmentId,
+      threadId: caller.thread.threadId,
+      providerInstanceId: caller.thread.providerInstanceId,
+      mcpCredentialId: caller.thread.providerSessionId,
+      authorization,
+    })
+    .pipe(
+      Effect.mapError(
+        (cause) =>
+          new OrchestratorMcpFailure({
+            code: cause.code === "forbidden" ? "capability_denied" : "orchestration_error",
+            message: cause.message,
+          }),
+      ),
+    );
+});
+
 const handlers = {
+  t3_symphony_runtime_identity: McpToolAccess.readsAsCaller(runtimeIdentity),
   t3_symphony_bus: McpToolAccess.either(
     (input) => input.operation === "publish",
     McpToolAccess.actsAsCaller(bus),
