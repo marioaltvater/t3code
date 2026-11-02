@@ -1,4 +1,11 @@
 import {
+  SymphonyParticipation,
+  SymphonyParticipationError,
+  SymphonyParticipationStatusInput,
+  SymphonyParticipationJoinRequest,
+  SymphonyParticipationLeaveRequest,
+} from "./symphonyParticipation.ts";
+import {
   SidebarClientRegistration,
   SidebarSectionEvent,
   SidebarSectionResponse,
@@ -519,6 +526,10 @@ export const WS_METHODS = {
   serverGetBackgroundPolicy: "server.getBackgroundPolicy",
   serverGetUsageSummary: "server.getUsageSummary",
   serverRefreshUsageRates: "server.refreshUsageRates",
+
+  symphonyParticipationStatus: "symphonyParticipation.status",
+  symphonyParticipationJoin: "symphonyParticipation.join",
+  symphonyParticipationLeave: "symphonyParticipation.leave",
 
   scheduledTasksList: "scheduledTasks.list",
   scheduledTasksSubscribe: "scheduledTasks.subscribe",
@@ -1832,6 +1843,22 @@ const WsSubscribeServerLifecycleRpc = Rpc.make(WS_METHODS.subscribeServerLifecyc
   stream: true,
 });
 
+const WsSymphonyParticipationStatusRpc = Rpc.make(WS_METHODS.symphonyParticipationStatus, {
+  payload: SymphonyParticipationStatusInput,
+  success: SymphonyParticipation,
+  error: Schema.Union([SymphonyParticipationError, EnvironmentAuthorizationError]),
+});
+const WsSymphonyParticipationJoinRpc = Rpc.make(WS_METHODS.symphonyParticipationJoin, {
+  payload: SymphonyParticipationJoinRequest,
+  success: SymphonyParticipation,
+  error: Schema.Union([SymphonyParticipationError, EnvironmentAuthorizationError]),
+});
+const WsSymphonyParticipationLeaveRpc = Rpc.make(WS_METHODS.symphonyParticipationLeave, {
+  payload: SymphonyParticipationLeaveRequest,
+  success: SymphonyParticipation,
+  error: Schema.Union([SymphonyParticipationError, EnvironmentAuthorizationError]),
+});
+
 const WsScheduledTasksListRpc = Rpc.make(WS_METHODS.scheduledTasksList, {
   payload: ScheduledTaskListInput,
   success: ScheduledTaskListResult,
@@ -1986,6 +2013,9 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerGetUsageSummaryRpc,
   WsServerRefreshUsageRatesRpc,
   WsServerSignalProcessRpc,
+  WsSymphonyParticipationStatusRpc,
+  WsSymphonyParticipationJoinRpc,
+  WsSymphonyParticipationLeaveRpc,
   WsScheduledTasksListRpc,
   WsScheduledTasksSubscribeRpc,
   WsScheduledTasksUpsertRpc,

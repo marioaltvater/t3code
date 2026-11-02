@@ -118,6 +118,8 @@ const McpToolUseExpect = Schema.Struct({
   notCalls: Schema.optional(Schema.Array(Schema.String)),
   /** First calls of these tools happen in this order. */
   order: Schema.optional(Schema.Array(Schema.String)),
+  /** Ordered calls can distinguish actions on the same tool. */
+  callOrder: Schema.optional(Schema.Array(McpToolUseCall)),
   minCalls: Schema.optional(Schema.Record(Schema.String, Schema.Number)),
   maxCalls: Schema.optional(Schema.Record(Schema.String, Schema.Number)),
   /** The last step with tool calls includes this tool, then the turn ends. */
@@ -777,6 +779,43 @@ const pullRequest = (repo: string, input: Readonly<Record<string, unknown>>) => 
 const t3Default = (sample: Sample, name: string, input: Readonly<Record<string, unknown>>) => {
   const pr = () => pullRequest(sample.repo, input);
   switch (name) {
+    case "t3_symphony_participation":
+      if (
+        input.action !== "status" &&
+        (typeof input.clientRequestId !== "string" ||
+          !input.clientRequestId.trim() ||
+          !Number.isSafeInteger(input.expectedGeneration) ||
+          Number(input.expectedGeneration) < 0)
+      )
+        return {
+          code: "invalid_request",
+          message: "Join and leave require a stable request ID and generation from status.",
+        };
+      if (
+        input.action === "join" &&
+        (typeof input.identity !== "string" || !Array.isArray(input.topics))
+      )
+        return {
+          code: "invalid_request",
+          message: "Join requires an explicit identity and topics array.",
+        };
+      return {
+        environmentId: uuid(8),
+        threadId: input.threadId ?? uuid(9),
+        identity: input.action === "join" ? input.identity : null,
+        principal: input.action === "join" ? "alice" : null,
+        role: input.action === "join" ? "orchestrator" : null,
+        topics: input.action === "join" ? input.topics : [],
+        appliedTopics: [],
+        desiredState: input.action === "join" ? "joined" : "left",
+        desiredGeneration: input.action === "status" ? 0 : 1,
+        appliedGeneration: 0,
+        nativeGeneration: 0,
+        nativeState: "detached",
+        nativeBinding: null,
+        pendingReason: input.action === "join" ? "native_reconfigure_required" : null,
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      };
     case "orchestrator_capabilities":
       return {
         inheritedProviderInstanceId: "claudeAgent",
@@ -1164,6 +1203,18 @@ export const gradeSample = (expect: McpToolUseCase["expect"], run: SampleRun) =>
     const firsts = expect.order.map((tool) => calls.findIndex((call) => call.tool === tool));
     const inOrder = firsts.every((at, i) => at > (firsts[i - 1] ?? -1));
     add(`order ${expect.order.join(" > ")}`, inOrder);
+  }
+  if (expect.callOrder !== undefined) {
+    let after = -1;
+    const ordered = expect.callOrder.every(({ tool, args = {} }) => {
+      const next = calls.findIndex(
+        (call, index) =>
+          index > after && tool.split("|").includes(call.tool) && matches(args, call.input),
+      );
+      after = next;
+      return next >= 0;
+    });
+    add(`callOrder ${expect.callOrder.map(label).join(" > ")}`, ordered);
   }
   for (const [t, n] of Object.entries(expect.minCalls ?? {}))
     add(`minCalls ${t} >= ${n}`, count(t) >= n);

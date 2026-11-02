@@ -1,4 +1,5 @@
-import { OrchestratorMcpFailure } from "@t3tools/contracts";
+import * as ThreadParticipationControl from "../../../symphony/ThreadParticipationControl.ts";
+import { OrchestratorMcpFailure, SymphonyParticipationMcpInput } from "@t3tools/contracts";
 import { OrchestratorToolkit } from "./tools.ts";
 import * as Effect from "effect/Effect";
 
@@ -8,7 +9,51 @@ import * as McpToolAccess from "../../McpToolAccess.ts";
 import * as OrchestratorMcpService from "../../OrchestratorMcpService.ts";
 import * as ThreadMetadataMcpService from "../../ThreadMetadataMcpService.ts";
 
+const participation = Effect.fn("mcp.symphonyParticipation")(
+  function* (input: typeof SymphonyParticipationMcpInput.Type) {
+    const { scope } = yield* readCaller();
+    const threadId = input.threadId ?? scope.thread?.threadId;
+    if (threadId === undefined)
+      return yield* new OrchestratorMcpFailure({
+        code: "target_required",
+        message: "Pass threadId: this MCP client is not running inside a T3 conversation.",
+      });
+    const service = yield* ThreadParticipationControl.ThreadParticipationControl;
+    if (input.action === "status") return yield* service.status({ threadId });
+    if (input.clientRequestId === undefined || input.expectedGeneration === undefined)
+      return yield* new OrchestratorMcpFailure({
+        code: "invalid_request",
+        message: "Join and leave need clientRequestId and expectedGeneration from status.",
+      });
+    const mutation = {
+      threadId,
+      clientRequestId: input.clientRequestId,
+      expectedGeneration: input.expectedGeneration,
+    };
+    if (input.action === "leave") return yield* service.leave(mutation);
+    if (input.identity === undefined || input.topics === undefined)
+      return yield* new OrchestratorMcpFailure({
+        code: "invalid_request",
+        message: "Join needs an explicit v12 identity and topics array.",
+      });
+    return yield* service.join({ ...mutation, identity: input.identity, topics: input.topics });
+  },
+  Effect.mapError((cause) =>
+    cause._tag === "OrchestratorMcpFailure"
+      ? cause
+      : new OrchestratorMcpFailure({
+          code: cause.code === "forbidden" ? "capability_denied" : "invalid_request",
+          message: cause.message,
+        }),
+  ),
+);
+
 const handlers = {
+  t3_symphony_participation: McpToolAccess.either(
+    (input) => input.action === "status",
+    McpToolAccess.reads(participation),
+    McpToolAccess.writesThreads((input) => [input.threadId], participation),
+  ),
   orchestrator_capabilities: McpToolAccess.reads((input) =>
     Effect.gen(function* () {
       const scope = yield* McpInvocationContext.McpInvocationContext;

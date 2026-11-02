@@ -1,3 +1,8 @@
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
+import * as Path from "effect/Path";
+import * as Schema from "effect/Schema";
 import { assert, expect, it } from "@effect/vitest";
 
 import {
@@ -8,7 +13,7 @@ import {
   gradeSample,
   makeSample,
   ranCalls,
-  type McpToolUseCase,
+  McpToolUseCase,
   mockOutput,
   normalizeToolInput,
   normalizeToolName,
@@ -368,3 +373,45 @@ it("stops a sample only once a must-not check has failed", () => {
   assert.isTrue(failedEarly(expect, run("watch_pull_request")));
   assert.isTrue(failedEarly({ textMustNot: ["paste"] }, run("Bash", "paste it here")));
 });
+
+const decodeCase = Schema.decodeUnknownEffect(Schema.fromJsonString(McpToolUseCase));
+it.effect(
+  "grades the real participation case and rejects a join before status without a request key",
+  () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const fixturePath = yield* path.fromFileUrl(
+        new URL("./cases/symphony-participation.jsonl", import.meta.url),
+      );
+      const fixture = yield* decodeCase((yield* fs.readFileString(fixturePath)).split("\n")[0]);
+      const status = { step: 1, tool: "t3_symphony_participation", input: { action: "status" } };
+      const join = {
+        step: 2,
+        tool: "t3_symphony_participation",
+        input: {
+          action: "join",
+          identity: "v12:alice:orchestrator",
+          topics: ["graph:github-2607", "agent:loomia-cos"],
+          expectedGeneration: 0,
+          clientRequestId: "join-phase3-1",
+        },
+      };
+      assert.deepEqual(
+        failed(fixture.expect, {
+          calls: [status, join],
+          text: "Native delivery is pending.",
+          stopReason: "end_turn",
+        }),
+        [],
+      );
+      const { clientRequestId: _omitted, ...missingKey } = join.input;
+      const bad = failed(fixture.expect, {
+        calls: [{ ...join, input: missingKey }, status],
+        text: "Native delivery is pending.",
+        stopReason: "end_turn",
+      });
+      assert.isTrue(bad.some((check) => check.includes("clientRequestId")));
+      assert.isTrue(bad.some((check) => check.startsWith("callOrder")));
+    }).pipe(Effect.provide(NodeServices.layer)),
+);

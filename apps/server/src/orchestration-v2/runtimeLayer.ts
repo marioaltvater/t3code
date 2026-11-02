@@ -1,3 +1,5 @@
+import * as ThreadParticipationControl from "../symphony/ThreadParticipationControl.ts";
+import * as ThreadParticipationService from "../symphony/ThreadParticipationService.ts";
 import * as GuestShareService from "../guest/GuestShareService.ts";
 import * as UsageLimitRecoveryWorker from "./UsageLimitRecoveryWorker.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
@@ -361,7 +363,12 @@ export const layer = Layer.mergeAll(
   layerLegacyV1ThreadImporterProvided,
 );
 
+const layerParticipationControl = ThreadParticipationControl.layer.pipe(
+  Layer.provide(Layer.merge(ProjectionStore.layer, ThreadParticipationService.layer)),
+);
+
 export const layerProduction = Layer.mergeAll(
+  layerParticipationControl,
   layer.pipe(Layer.provide(layerProjectService)),
   layerProjectService,
   layerManagedProjectFoldersProvided,

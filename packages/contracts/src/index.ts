@@ -70,3 +70,5 @@ export * from "./worktreeSetup.ts";
 export * from "./secretRequest.ts";
 export * from "./clientRpcPermissions.ts";
 export * from "./sidebarSections.ts";
+
+export * from "./symphonyParticipation.ts";

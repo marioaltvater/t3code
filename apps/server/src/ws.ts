@@ -1,3 +1,4 @@
+import * as ThreadParticipationControl from "./symphony/ThreadParticipationControl.ts";
 import * as SidebarSections from "./sidebar/SidebarSections.ts";
 import { OrchestrationDispatchCommandError } from "@t3tools/contracts";
 import * as Context from "effect/Context";
@@ -1282,6 +1283,7 @@ export const layerWsRpc = (
       const threadLaunch = yield* ThreadLaunchService.ThreadLaunchService;
       const commandOutputHub = yield* CommandOutputHub.CommandOutputHub;
       const providerSessionManager = yield* ProviderSessionManager.ProviderSessionManagerV2;
+      const participation = yield* ThreadParticipationControl.ThreadParticipationControl;
       const scheduledTasks = yield* ScheduledTasks.ScheduledTaskService;
       const secretRequests = yield* SecretRequests.SecretRequests;
       const guestShares = yield* GuestShareService.GuestShareService;
@@ -2179,6 +2181,9 @@ export const layerWsRpc = (
               Effect.as(commandOutputHub.subscribe(input)),
             ),
           ),
+        [WS_METHODS.symphonyParticipationStatus]: (input) => participation.status(input),
+        [WS_METHODS.symphonyParticipationJoin]: (input) => participation.join(input),
+        [WS_METHODS.symphonyParticipationLeave]: (input) => participation.leave(input),
         [WS_METHODS.scheduledTasksList]: (_input) =>
           scheduledTasks.list().pipe(Effect.map(withVisibleWebhookUrls)),
         [WS_METHODS.scheduledTasksSubscribe]: (_input) =>

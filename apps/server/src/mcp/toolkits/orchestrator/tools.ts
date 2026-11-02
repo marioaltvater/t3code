@@ -1,3 +1,5 @@
+import { SymphonyParticipation, SymphonyParticipationMcpInput } from "@t3tools/contracts";
+import * as ThreadParticipationControl from "../../../symphony/ThreadParticipationControl.ts";
 import {
   OrchestratorMcpCapabilitiesInput,
   OrchestratorMcpCapabilitiesResult,
@@ -280,7 +282,24 @@ const ThreadInterruptTool = Tool.make("t3_thread_interrupt", {
   .annotate(Tool.Title, "Interrupt a T3 thread")
   .annotate(Tool.Destructive, true);
 
+const SymphonyParticipationTool = Tool.make("t3_symphony_participation", {
+  description:
+    "Read or explicitly join/leave one conversation's Symphony bus scope. Omit threadId for your conversation; external clients must name it. Join needs a unique v12 identity and explicit topics. Read status first; use its desiredGeneration as expectedGeneration and keep clientRequestId stable on retry. A pending result does not mean native delivery is active. Children and forks need their own explicit join. This does not install hooks or create automatic wake-ups.",
+  parameters: SymphonyParticipationMcpInput,
+  success: SymphonyParticipation,
+  failure: OrchestratorMcpFailure,
+  failureMode: "return",
+  dependencies: [
+    McpInvocationContext.McpInvocationContext,
+    ThreadManagementService.ThreadManagementService,
+    ThreadParticipationControl.ThreadParticipationControl,
+  ],
+})
+  .annotate(Tool.Title, "Conversation bus participation")
+  .annotate(Tool.Destructive, false);
+
 export const OrchestratorToolkit = Toolkit.make(
+  SymphonyParticipationTool,
   OrchestratorCapabilitiesTool,
   DelegateTaskTool,
   TaskStatusTool,
