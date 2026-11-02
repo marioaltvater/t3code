@@ -556,6 +556,7 @@ function codexReplayPreamble(input: {
   readonly nativeThreadId: string;
   readonly nativeTurnId: string;
   readonly prompt: string;
+  readonly nativeSessionId?: string;
   readonly sentPrompt?: string;
 }): Array<CodexReplay.CodexAppServerReplayEntry> {
   return [
@@ -608,7 +609,7 @@ function codexReplayPreamble(input: {
         result: {
           thread: {
             id: input.nativeThreadId,
-            sessionId: input.nativeThreadId,
+            sessionId: input.nativeSessionId ?? input.nativeThreadId,
             forkedFromId: null,
             preview: "",
             ephemeral: false,
@@ -915,6 +916,7 @@ describe("CodexAdapterV2 post-settle continuation", () => {
       Effect.void,
     onRequest: (method: string, params: unknown) => Effect.Effect<void> = () => Effect.void,
     readChildMetadata?: Parameters<typeof withCodexReplayChildMetadata>[2],
+    harnessPid?: number,
   ) =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
@@ -943,6 +945,7 @@ describe("CodexAdapterV2 post-settle continuation", () => {
                   (client) =>
                     ({
                       ...client,
+                      ...(harnessPid === undefined ? {} : { harnessPid }),
                       request: (method, params) =>
                         onRequest(method, params).pipe(
                           Effect.andThen(client.request(method, params)),
@@ -1144,6 +1147,71 @@ describe("CodexAdapterV2 post-settle continuation", () => {
           Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
         ),
       ),
+  );
+
+  it.effect("retains the actual hook session independently of native thread id across resume", () =>
+    Effect.gen(function* () {
+      const nativeThreadId = "thread-with-distinct-hook-session";
+      const entries = codexReplayPreamble({
+        nativeThreadId,
+        nativeSessionId: "first-hook-session",
+        nativeTurnId: "unused",
+        prompt: "unused",
+      }).slice(0, 5);
+      for (const [index, sessionId] of ["resumed-hook-session", undefined].entries()) {
+        entries.push({
+          type: "expect_outbound",
+          frame: {
+            id: 3 + index,
+            method: "thread/resume",
+            params: {
+              threadId: nativeThreadId,
+              excludeTurns: true,
+              config: CodexAdapterV2.CODEX_THREAD_CONFIG,
+            },
+          },
+        });
+        entries.push({
+          type: "emit_inbound",
+          frame: {
+            id: 3 + index,
+            result: {
+              thread: {
+                id: nativeThreadId,
+                updatedAt: 1782622441 + index,
+                ...(sessionId === undefined ? {} : { sessionId }),
+              },
+            },
+          },
+        });
+      }
+      const harness = yield* makeCodexReplayHarness(
+        makeCodexReplayTranscript({ scenario: "distinct-hook-session", entries }),
+        () => Effect.void,
+        () => Effect.void,
+        undefined,
+        12345,
+      );
+      assert.equal(harness.providerThread.nativeThreadRef?.nativeId, nativeThreadId);
+      assert.equal(harness.providerThread.nativeMetadata?.codexSessionId, "first-hook-session");
+      assert.equal(harness.providerThread.nativeMetadata?.codexHarnessPid, 12345);
+      const resumed = yield* harness.runtime.resumeThread({
+        providerThread: harness.providerThread,
+      });
+      assert.equal(resumed.nativeMetadata?.codexSessionId, "resumed-hook-session");
+      assert.equal(resumed.nativeThreadRef?.nativeId, nativeThreadId);
+      const missing = yield* harness.runtime.resumeThread({ providerThread: resumed });
+      assert.isUndefined(
+        missing.nativeMetadata?.codexSessionId,
+        "an omitted session cannot reuse stale hook authority",
+      );
+      assert.equal(missing.nativeThreadRef?.nativeId, nativeThreadId);
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+      ),
+    ),
   );
 
   it.effect("adds the session MCP server without replacing launch-argument servers", () =>

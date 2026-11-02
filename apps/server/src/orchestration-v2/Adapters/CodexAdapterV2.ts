@@ -836,13 +836,28 @@ const getNativeThreadId = Effect.fn("CodexAdapterV2.getNativeThreadId")(function
   return nativeThreadId;
 });
 
+function codexNativeMetadata(
+  thread: { readonly sessionId?: string | null | undefined },
+  harnessPid: number | undefined,
+  previous: OrchestrationV2ProviderThread["nativeMetadata"] = {},
+): OrchestrationV2ProviderThread["nativeMetadata"] {
+  const { codexSessionId: _oldSession, codexHarnessPid: _oldPid, ...retained } = previous ?? {};
+  return {
+    ...retained,
+    ...(thread.sessionId ? { codexSessionId: thread.sessionId } : {}),
+    ...(harnessPid === undefined ? {} : { codexHarnessPid: harnessPid }),
+  };
+}
+
 function providerThreadFromCodexThread(input: {
   readonly appThreadId: ThreadId | null;
   readonly idAllocator: IdAllocator.IdAllocatorV2["Service"];
   readonly ownerNodeId: OrchestrationV2ProviderThread["ownerNodeId"];
   readonly providerSessionId: OrchestrationV2ProviderThread["providerSessionId"];
   readonly providerInstanceId: ProviderInstanceId;
+  readonly harnessPid?: number;
   readonly thread: {
+    readonly sessionId?: string | null;
     readonly createdAt: number;
     readonly forkedFromId?: string | null;
     readonly id: string;
@@ -866,6 +881,7 @@ function providerThreadFromCodexThread(input: {
       strength: "strong" as const,
     },
     nativeConversationHeadRef: null,
+    nativeMetadata: codexNativeMetadata(input.thread, input.harnessPid),
     status: "idle",
     firstRunOrdinal: null,
     lastRunOrdinal: null,
@@ -1280,7 +1296,7 @@ export interface CodexAppServerClientFactoryShape {
     readonly settings: CodexSettings;
     readonly environment: NodeJS.ProcessEnv;
   }) => Effect.Effect<
-    CodexClient.CodexAppServerClient["Service"],
+    CodexClient.CodexAppServerClient["Service"] & { readonly harnessPid?: number },
     ProviderAdapter.ProviderAdapterOpenSessionError,
     Scope.Scope
   >;
@@ -1332,7 +1348,13 @@ function codexThreadRuntimeParams(input: {
 }
 
 const decodeCodexResumeMetadata = Schema.decodeUnknownEffect(
-  Schema.Struct({ thread: Schema.Struct({ id: Schema.String, updatedAt: Schema.Number }) }),
+  Schema.Struct({
+    thread: Schema.Struct({
+      id: Schema.String,
+      sessionId: Schema.optional(Schema.NullOr(Schema.String)),
+      updatedAt: Schema.Number,
+    }),
+  }),
 );
 
 const CodexChildSelection = Schema.Struct({
@@ -1508,9 +1530,10 @@ export const layerAppServerClientFactory: Layer.Layer<
                 logger: protocolLogger,
               };
         const context = yield* Layer.build(CodexClient.layerChildProcess(handle, clientOptions));
-        return yield* Effect.service(CodexClient.CodexAppServerClient).pipe(
+        const client = yield* Effect.service(CodexClient.CodexAppServerClient).pipe(
           Effect.provide(context),
         );
+        return { ...client, harnessPid: handle.pid };
       }),
     });
   }),
@@ -6600,6 +6623,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                   providerSessionId: input.providerSessionId,
                   providerInstanceId: adapterOptions.instanceId,
                   thread: response.thread,
+                  ...(client.harnessPid === undefined ? {} : { harnessPid: client.harnessPid }),
                 }),
               ),
               Effect.mapError(
@@ -6662,6 +6686,11 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                   strength: "strong",
                 },
                 nativeConversationHeadRef: threadInput.providerThread.nativeConversationHeadRef,
+                nativeMetadata: codexNativeMetadata(
+                  response.thread,
+                  client.harnessPid,
+                  threadInput.providerThread.nativeMetadata,
+                ),
                 updatedAt: codexTimestamp(response.thread.updatedAt),
               } satisfies OrchestrationV2ProviderThread;
             },
@@ -7296,6 +7325,11 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                     strength: "strong" as const,
                   },
                   nativeConversationHeadRef: threadInput.providerThread.nativeConversationHeadRef,
+                  nativeMetadata: codexNativeMetadata(
+                    response.thread,
+                    client.harnessPid,
+                    threadInput.providerThread.nativeMetadata,
+                  ),
                   updatedAt: codexTimestamp(response.thread.updatedAt),
                 },
                 providerTurns: [],
@@ -7371,6 +7405,11 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                     strength: "strong" as const,
                   },
                   nativeConversationHeadRef,
+                  nativeMetadata: codexNativeMetadata(
+                    response.thread,
+                    client.harnessPid,
+                    threadInput.providerThread.nativeMetadata,
+                  ),
                   status: "idle" as const,
                   updatedAt: codexTimestamp(response.thread.updatedAt),
                 },
@@ -7456,6 +7495,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                 providerSessionId: input.providerSessionId,
                 providerInstanceId: adapterOptions.instanceId,
                 thread: forkedThread,
+                ...(client.harnessPid === undefined ? {} : { harnessPid: client.harnessPid }),
                 forkedFrom: {
                   providerThreadId: threadInput.sourceProviderThread.id,
                   ...(threadInput.providerTurnId === undefined
