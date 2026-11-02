@@ -312,3 +312,60 @@ it.effect("rejects missing and invalid generation tokens before native mutation"
     }),
   ),
 );
+
+// Native MCP does not have a plugin-owner or hook PID acknowledgement.
+it.effect("persists native MCP authority without manufacturing plugin or harness facts", () =>
+  program((service, sql) =>
+    Effect.gen(function* () {
+      yield* join(service);
+      const reserved = yield* service.reserveNative({ ...scope, expectedGeneration: 1 });
+      const native = {
+        kind: "native-mcp" as const,
+        nativeThreadId: "native-thread-distinct",
+        nativeSessionId: "hook-session-distinct",
+        providerSessionId: ProviderSessionId.make("runtime-session"),
+        mcpCredentialId: "thread-mcp-credential",
+        configurationRevision: "native-bus-v1",
+        nativeGeneration: reserved.nativeGeneration,
+      };
+      const applied = yield* service.applied({
+        ...scope,
+        expectedGeneration: 1,
+        nativeGeneration: reserved.nativeGeneration,
+        binding: native,
+      });
+      assert.deepEqual(applied.nativeBinding, native);
+      const restarted = yield* Participation.ThreadParticipationService.pipe(
+        Effect.provide(
+          Participation.layer.pipe(Layer.provide(Layer.succeed(SqlClient.SqlClient, sql))),
+        ),
+      );
+      assert.deepEqual((yield* restarted.status(scope)).nativeBinding, native);
+      const wrong = yield* service
+        .applied({
+          ...scope,
+          expectedGeneration: 1,
+          nativeGeneration: reserved.nativeGeneration,
+          binding: { ...native, nativeGeneration: reserved.nativeGeneration + 1 },
+        })
+        .pipe(Effect.flip);
+      assert.equal(wrong.code, "invalid");
+      yield* service.detached({
+        ...scope,
+        expectedGeneration: 1,
+        nativeGeneration: reserved.nativeGeneration,
+      });
+      assert.equal(
+        (yield* service
+          .applied({
+            ...scope,
+            expectedGeneration: 1,
+            nativeGeneration: reserved.nativeGeneration,
+            binding: native,
+          })
+          .pipe(Effect.flip)).code,
+        "conflict",
+      );
+    }),
+  ),
+);

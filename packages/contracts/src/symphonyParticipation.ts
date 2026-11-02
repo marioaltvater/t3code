@@ -19,7 +19,8 @@ export const SymphonyParticipationScope = Schema.Struct({
   threadId: ThreadId,
 });
 export type SymphonyParticipationScope = typeof SymphonyParticipationScope.Type;
-export const SymphonyNativeBinding = Schema.Struct({
+const SymphonyPluginBinding = Schema.Struct({
+  kind: Schema.optional(Schema.Literal("plugin-session")),
   nativeThreadId: TrimmedNonEmptyString,
   nativeSessionId: TrimmedNonEmptyString,
   providerSessionId: ProviderSessionId,
@@ -27,6 +28,18 @@ export const SymphonyNativeBinding = Schema.Struct({
   harnessStart: TrimmedNonEmptyString,
   pluginGeneration: PositiveInt,
 });
+const SymphonyMcpBinding = Schema.Struct({
+  kind: Schema.Literal("native-mcp"),
+  nativeThreadId: TrimmedNonEmptyString,
+  nativeSessionId: TrimmedNonEmptyString,
+  providerSessionId: ProviderSessionId,
+  // A credential reference, never the bearer token. It is distinct from the provider runtime ID.
+  mcpCredentialId: TrimmedNonEmptyString,
+  configurationRevision: TrimmedNonEmptyString,
+  nativeGeneration: PositiveInt,
+  launcherPid: Schema.optional(PositiveInt),
+});
+export const SymphonyNativeBinding = Schema.Union([SymphonyPluginBinding, SymphonyMcpBinding]);
 export type SymphonyNativeBinding = typeof SymphonyNativeBinding.Type;
 export const SymphonyParticipation = Schema.Struct({
   ...SymphonyParticipationScope.fields,
@@ -98,3 +111,64 @@ export class SymphonyParticipationError extends Schema.TaggedError<SymphonyParti
     cause: Schema.optional(Schema.Defect()),
   },
 ) {}
+
+export const SymphonyBusConfiguration = Schema.Struct({
+  endpoint: TrimmedNonEmptyString.check(Schema.isMaxLength(2048)).check(
+    Schema.makeFilter(
+      (value) => {
+        try {
+          const url = new URL(value);
+          return (
+            ["http:", "https:"].includes(url.protocol) &&
+            !url.username &&
+            !url.password &&
+            !url.search &&
+            !url.hash
+          );
+        } catch {
+          return false;
+        }
+      },
+      { message: "Use an HTTP MCP endpoint without credentials, query or fragment." },
+    ),
+  ),
+});
+export type SymphonyBusConfiguration = typeof SymphonyBusConfiguration.Type;
+
+export const SymphonyBusRequest = Schema.Struct({
+  operation: Schema.Literals(["whoami", "inbox", "publish"]),
+  afterSeq: Schema.optional(NonNegativeInt),
+  limit: Schema.optional(PositiveInt.check(Schema.isLessThanOrEqualTo(100))),
+  publication: Schema.optional(
+    Schema.Struct({
+      type: TrimmedNonEmptyString.check(Schema.isPattern(/^[a-z_]{1,32}$/)),
+      subject: TrimmedNonEmptyString.check(Schema.isMaxLength(200)),
+      body: Schema.String.check(Schema.isMaxLength(20000)),
+      topics: Schema.Array(TrimmedNonEmptyString),
+      deliverTo: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
+      idempotencyKey: TrimmedNonEmptyString.check(Schema.isMaxLength(200)),
+      inReplyTo: Schema.optional(PositiveInt),
+    }),
+  ),
+});
+export type SymphonyBusRequest = typeof SymphonyBusRequest.Type;
+export const SymphonyBusResult = Schema.Struct({
+  state: Schema.Literals(["quiet", "pending", "ready"]),
+  reason: Schema.NullOr(TrimmedNonEmptyString),
+  identity: Schema.NullOr(SymphonyParticipantIdentity),
+  generation: NonNegativeInt,
+  payload: Schema.NullOr(Schema.Json),
+});
+export type SymphonyBusResult = typeof SymphonyBusResult.Type;
+export class SymphonyBusError extends Schema.TaggedError<SymphonyBusError>()("SymphonyBusError", {
+  code: Schema.Literals([
+    "unavailable",
+    "identity_mismatch",
+    "scope_mismatch",
+    "revoked",
+    "forbidden",
+    "invalid_request",
+  ]),
+  message: Schema.String,
+  cause: Schema.optional(Schema.Defect()),
+}) {}

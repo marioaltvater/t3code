@@ -1,3 +1,5 @@
+import * as McpSessionRegistry from "./McpSessionRegistry.ts";
+import * as SymphonyBusGateway from "../symphony/SymphonyBusGateway.ts";
 import * as ThreadParticipationControl from "../symphony/ThreadParticipationControl.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
@@ -49,6 +51,9 @@ import * as McpHttpServer from "./McpHttpServer.ts";
 import * as McpInvocationContext from "./McpInvocationContext.ts";
 
 const layerOrchestratorToolkit = McpHttpServer.layerOrchestratorToolkit.pipe(
+  Layer.provide(McpProviderSessions.layer),
+  Layer.provide(Layer.mock(McpSessionRegistry.McpSessionRegistry)({})),
+  Layer.provide(Layer.mock(SymphonyBusGateway.SymphonyBusGateway)({})),
   Layer.provide(Layer.mock(ThreadParticipationControl.ThreadParticipationControl)({})),
   Layer.provide(Layer.mock(ThreadLaunchService.ThreadLaunchService)({})),
   Layer.provide(Layer.mock(GitVcsDriver.GitVcsDriver)({})),

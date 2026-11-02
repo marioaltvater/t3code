@@ -1,3 +1,5 @@
+import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
+import * as McpSessionRegistry from "./McpSessionRegistry.ts";
 import type { ProjectionRecordField } from "../orchestration-v2/ProjectionStore.ts";
 import {
   CommandId,
@@ -177,4 +179,48 @@ export const readThread = Effect.fn("mcp.readThread")(function* <
 export const newCommandId = Effect.fn("mcp.newCommandId")(function* () {
   const crypto = yield* Crypto.Crypto;
   return CommandId.make(`mcp:${yield* crypto.randomUUIDv4().pipe(Effect.orDie)}`);
+});
+
+/** Capture a repeatable check for long-running thread tools; never expose the bearer token. */
+export const captureThreadAuthority = Effect.fn("mcp.captureThreadAuthority")(function* (
+  publishing: boolean,
+) {
+  const original = yield* readCaller();
+  const threadScope = yield* McpInvocationContext.requireThreadScope(original.scope, "This tool");
+  const sessions = yield* McpProviderSessions.McpProviderSessions;
+  const registry = yield* McpSessionRegistry.McpSessionRegistry;
+  const assertCurrent = Effect.fn("mcp.assertThreadAuthority")(function* () {
+    const config = yield* sessions.read(threadScope.thread.threadId);
+    const current =
+      config?.providerSessionId === threadScope.thread.providerSessionId
+        ? yield* registry.resolve(config.authorizationHeader.replace(/^Bearer\s+/, ""))
+        : undefined;
+    if (
+      !current ||
+      current.environmentId !== original.scope.environmentId ||
+      current.thread.threadId !== threadScope.thread.threadId ||
+      current.thread.providerSessionId !== threadScope.thread.providerSessionId ||
+      current.thread.providerInstanceId !== threadScope.thread.providerInstanceId ||
+      current.requestNamespace !== original.scope.requestNamespace ||
+      current.issuedAt !== original.scope.issuedAt ||
+      !current.capabilities.has("orchestration")
+    ) {
+      return yield* new OrchestratorMcpFailure({
+        code: "capability_denied",
+        message: "The conversation's MCP credential is no longer current.",
+      });
+    }
+    if (publishing) {
+      const caller = yield* original.threads
+        .getThreadShell(threadScope.thread.threadId)
+        .pipe(Effect.mapError(unavailable));
+      if (caller === null || caller.deletedAt !== null)
+        return yield* new OrchestratorMcpFailure({
+          code: "thread_not_found",
+          message: "The calling conversation is no longer available.",
+        });
+      yield* assertLiveCaller({ ...original, caller });
+    }
+  });
+  return assertCurrent();
 });

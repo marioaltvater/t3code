@@ -1,9 +1,11 @@
+import { SymphonyBusError, SymphonyBusRequest } from "@t3tools/contracts";
+import * as SymphonyBusGateway from "../../../symphony/SymphonyBusGateway.ts";
 import * as ThreadParticipationControl from "../../../symphony/ThreadParticipationControl.ts";
 import { OrchestratorMcpFailure, SymphonyParticipationMcpInput } from "@t3tools/contracts";
 import { OrchestratorToolkit } from "./tools.ts";
 import * as Effect from "effect/Effect";
 
-import { readCaller } from "../../threadAccess.ts";
+import { readCaller, captureThreadAuthority } from "../../threadAccess.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import * as OrchestratorMcpService from "../../OrchestratorMcpService.ts";
@@ -48,7 +50,48 @@ const participation = Effect.fn("mcp.symphonyParticipation")(
   ),
 );
 
+const bus = Effect.fn("mcp.symphonyBus")(function* (input: SymphonyBusRequest) {
+  const { scope } = yield* readCaller();
+  const caller = yield* McpInvocationContext.requireThreadScope(scope, "t3_symphony_bus");
+  const authority = yield* captureThreadAuthority(input.operation === "publish");
+  const authorization = authority.pipe(
+    Effect.mapError(
+      (cause) =>
+        new SymphonyBusError({
+          code: "revoked",
+          message:
+            "The conversation's credential or publication authority changed. Reconcile any uncertain publication with its original key.",
+          cause,
+        }),
+    ),
+  );
+  return yield* (yield* SymphonyBusGateway.SymphonyBusGateway)
+    .call(
+      {
+        environmentId: scope.environmentId,
+        threadId: caller.thread.threadId,
+        mcpCredentialId: caller.thread.providerSessionId,
+        authorization,
+      },
+      input,
+    )
+    .pipe(
+      Effect.mapError(
+        (cause) =>
+          new OrchestratorMcpFailure({
+            code: cause.code === "forbidden" ? "capability_denied" : "orchestration_error",
+            message: cause.message,
+          }),
+      ),
+    );
+});
+
 const handlers = {
+  t3_symphony_bus: McpToolAccess.either(
+    (input) => input.operation === "publish",
+    McpToolAccess.actsAsCaller(bus),
+    McpToolAccess.readsAsCaller(bus),
+  ),
   t3_symphony_participation: McpToolAccess.either(
     (input) => input.action === "status",
     McpToolAccess.reads(participation),

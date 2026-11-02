@@ -1,3 +1,6 @@
+import * as McpSessionRegistry from "../mcp/McpSessionRegistry.ts";
+import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
+import * as SymphonyBusGateway from "./SymphonyBusGateway.ts";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { assert, it } from "@effect/vitest";
 import {
@@ -209,6 +212,9 @@ it.effect(
     }).pipe(
       Effect.provide(
         toolkitRegistration(OrchestratorToolkit, Handlers.layer).pipe(
+          Layer.provide(Layer.mock(McpSessionRegistry.McpSessionRegistry)({})),
+          Layer.provide(McpProviderSessions.layer),
+          Layer.provide(Layer.mock(SymphonyBusGateway.SymphonyBusGateway)({})),
           Layer.provideMerge(McpServer.McpServer.layer),
           Layer.provide(NodeCrypto.layer),
           Layer.provideMerge(layer),

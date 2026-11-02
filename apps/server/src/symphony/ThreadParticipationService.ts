@@ -306,14 +306,18 @@ const make = Effect.gen(function* () {
           "conflict",
           "Native binding does not match the desired participation state.",
         );
-      if (
-        input.binding &&
-        (input.binding.pluginGeneration !== input.nativeGeneration || input.binding.harnessPid <= 1)
-      )
-        return yield* failure(
-          "invalid",
-          "Native acknowledgement must match this reserved generation and a live harness identity.",
-        );
+      if (input.binding) {
+        const validAcknowledgement =
+          input.binding.kind === "native-mcp"
+            ? input.binding.nativeGeneration === input.nativeGeneration
+            : input.binding.pluginGeneration === input.nativeGeneration &&
+              input.binding.harnessPid > 1;
+        if (!validAcknowledgement)
+          return yield* failure(
+            "invalid",
+            "Native acknowledgement must match the reserved operation and binding kind.",
+          );
+      }
       if (current.appliedGeneration === current.desiredGeneration) {
         if ((yield* encodeBinding(current.nativeBinding)) !== (yield* encodeBinding(input.binding)))
           return yield* failure(

@@ -1,3 +1,5 @@
+import * as SymphonyBusGateway from "../symphony/SymphonyBusGateway.ts";
+import * as SymphonyBusTransport from "../symphony/SymphonyBusTransport.ts";
 import * as ThreadParticipationControl from "../symphony/ThreadParticipationControl.ts";
 import * as ThreadParticipationService from "../symphony/ThreadParticipationService.ts";
 import * as GuestShareService from "../guest/GuestShareService.ts";
@@ -367,7 +369,12 @@ const layerParticipationControl = ThreadParticipationControl.layer.pipe(
   Layer.provide(Layer.merge(ProjectionStore.layer, ThreadParticipationService.layer)),
 );
 
+const layerSymphonyBusGateway = SymphonyBusGateway.layer.pipe(
+  Layer.provide(Layer.merge(ThreadParticipationService.layer, SymphonyBusTransport.layer)),
+);
+
 export const layerProduction = Layer.mergeAll(
+  layerSymphonyBusGateway,
   layerParticipationControl,
   layer.pipe(Layer.provide(layerProjectService)),
   layerProjectService,

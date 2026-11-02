@@ -370,3 +370,19 @@ describe("server model preferences", () => {
     expect(decodeServerSettingsPatch(input)).toEqual(input);
   });
 });
+
+// Routing is an explicit product configuration; existing installs cannot gain bus traffic on upgrade.
+it("keeps native Symphony disabled by default and excludes credentials from its endpoint", () => {
+  expect(decodeServerSettings({}).symphonyBus).toBeNull();
+  expect(
+    decodeServerSettingsPatch({ symphonyBus: { endpoint: "https://bus.example/mcp" } }),
+  ).toEqual({ symphonyBus: { endpoint: "https://bus.example/mcp" } });
+  for (const endpoint of [
+    "file:///tmp/bus",
+    "https://user:password@bus.example/mcp",
+    "https://bus.example/mcp?token=fixture",
+    "https://bus.example/mcp#fragment",
+  ]) {
+    expect(() => decodeServerSettingsPatch({ symphonyBus: { endpoint } })).toThrow();
+  }
+});

@@ -1,3 +1,5 @@
+import * as McpSessionRegistry from "../McpSessionRegistry.ts";
+import * as SymphonyBusGateway from "../../symphony/SymphonyBusGateway.ts";
 import * as ThreadParticipationControl from "../../symphony/ThreadParticipationControl.ts";
 import * as DocumentText from "../../provider/DocumentText.ts";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
@@ -57,6 +59,9 @@ import * as EnvironmentHandlers from "./environment/handlers.ts";
 import * as AttachmentHandlers from "./attachment/handlers.ts";
 
 const layerOrchestratorToolkit = McpHttpServer.layerOrchestratorToolkit.pipe(
+  Layer.provide(McpProviderSessions.layer),
+  Layer.provide(Layer.mock(McpSessionRegistry.McpSessionRegistry)({})),
+  Layer.provide(Layer.mock(SymphonyBusGateway.SymphonyBusGateway)({})),
   Layer.provide(Layer.mock(ThreadParticipationControl.ThreadParticipationControl)({})),
   Layer.provide(Layer.mock(ThreadLaunchService.ThreadLaunchService)({})),
   Layer.provide(Layer.mock(GitVcsDriver.GitVcsDriver)({})),
