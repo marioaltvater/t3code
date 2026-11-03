@@ -5,7 +5,6 @@ import {
   replaceDescriptorCurrentValue,
   selectableProviderOptionChoices,
   REASONING_SELECT_DESCRIPTOR_IDS,
-  ULTRATHINK_PROMPT_PREFIX,
 } from "@t3tools/client-runtime/model-traits";
 import {
   type ModelSelection,
@@ -18,6 +17,7 @@ import {
 } from "@t3tools/contracts";
 import type { EffortDisplay } from "@t3tools/contracts/settings";
 import {
+  applyClaudePromptEffortPrefix,
   buildProviderOptionSelectionsFromDescriptors,
   getProviderOptionCurrentLabel,
   getProviderOptionDescriptors,
@@ -44,6 +44,8 @@ import { ComposerControl, ComposerControlIcon, type ComposerControlSize } from "
 import { focusRequestedPermission, useComposerMenuProps } from "./composerEventScope";
 import { useComposerMenuState } from "./useComposerMenuState";
 import { EffortGlyph, resolveEffortGlyph } from "./EffortGlyph";
+
+const ULTRATHINK_PROMPT_PREFIX = "Ultrathink:\n";
 
 type ProviderOptions = ReadonlyArray<ProviderOptionSelection>;
 
@@ -277,7 +279,14 @@ export function getReasoningTraitStep(input: {
       .map((value) => ordered.findIndex((option) => option.id === value))
       .find((index) => index >= 0) ?? -1;
   for (const option of ordered.slice(position + 1)) {
-    const change = getTraitSelectChange(selected, descriptor, input.prompt, option.id);
+    const change = descriptor.promptInjectedValues?.includes(option.id)
+      ? {
+          prompt:
+            input.prompt.trim().length === 0
+              ? ULTRATHINK_PROMPT_PREFIX
+              : applyClaudePromptEffortPrefix(input.prompt, "ultrathink"),
+        }
+      : getTraitSelectChange(selected, descriptor, input.prompt, option.id);
     if (!change) return null;
     if ("modelOptions" in change) {
       return change.modelOptions

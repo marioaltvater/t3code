@@ -40,6 +40,7 @@ export interface SidebarThreadPartitionInput {
   readonly threads: readonly EnvironmentThreadShell[];
   readonly scopedProjectKeys: ReadonlySet<string> | null;
   readonly serverConfigs: ReadonlyMap<EnvironmentId, EnvironmentServerConfig>;
+  readonly connectedEnvironmentIds?: readonly EnvironmentId[];
   readonly optimisticDrop: SidebarOptimisticDrop | null;
   readonly workingShelfEnabled: boolean;
   // Snooze wakes and the queued-turn grace depend on the clock, so the minute
@@ -72,8 +73,13 @@ export function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
     const supportsSettlement = capabilities?.threadSettlement === true;
     const supportsSnooze = capabilities?.threadSnooze === true;
     const threadKey = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
-    if (capabilities?.threadActiveReorder === true) activeReorderable.add(threadKey);
-    if (capabilities?.threadPinning === true && capabilities.threadPinReorder === true) {
+    const connected = input.connectedEnvironmentIds?.includes(thread.environmentId) ?? true;
+    if (connected && capabilities?.threadActiveReorder === true) activeReorderable.add(threadKey);
+    if (
+      connected &&
+      capabilities?.threadPinning === true &&
+      capabilities.threadPinReorder === true
+    ) {
       draggable.add(threadKey);
     }
     if (

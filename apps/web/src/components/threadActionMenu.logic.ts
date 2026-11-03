@@ -5,6 +5,7 @@ export type ThreadActionMenuId =
   | "pinned-section"
   | "pinned-section:new"
   | `pinned-section:move:${string}`
+  | "find"
   | "new-thread-on-branch"
   | "filter-by-project"
   | "turn-into-project"
@@ -74,6 +75,7 @@ export function buildDraftActionMenuItems(options: {
 
 export interface ThreadActionMenuState {
   readonly canOperate: boolean;
+  readonly canFind?: boolean;
   readonly branch: string | null;
   readonly projectFilter: {
     readonly label: string;
@@ -107,6 +109,7 @@ export function threadActionRequiresOperate(action: ThreadActionMenuId): boolean
   if (action.startsWith("pinned-section")) return false;
   if (action.startsWith("pr-badge")) return false;
   return ![
+    "find",
     "new-thread-on-branch",
     "project-settings",
     "mark-unread",
@@ -135,6 +138,9 @@ export function buildThreadActionMenuItems(
   state: ThreadActionMenuState,
 ): ReadonlyArray<ContextMenuItem<ThreadActionMenuId>> {
   const items: ReadonlyArray<ContextMenuItem<ThreadActionMenuId>> = [
+    ...(state.canFind
+      ? [{ id: "find" as const, label: "Find in thread", icon: "text-search" }]
+      : []),
     ...(state.branch
       ? [
           {
