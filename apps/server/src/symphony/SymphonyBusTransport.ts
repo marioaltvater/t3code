@@ -14,7 +14,7 @@ interface Exchange {
   readonly principal: string;
   readonly role: string;
   readonly topics: ReadonlyArray<string>;
-  readonly operation: "whoami" | "inbox" | "publish";
+  readonly operation: "whoami" | "inbox" | "publish" | "claim_context";
   readonly args: Readonly<Record<string, unknown>>;
   readonly assertCurrent: Effect.Effect<void, SymphonyBusError>;
 }
@@ -41,6 +41,63 @@ const WhoAmI = Schema.Struct({
 });
 const decodeWhoAmI = Schema.decodeUnknownEffect(WhoAmI);
 const decodeInboxIdentity = Schema.decodeUnknownEffect(Schema.Struct({ agent_id: Schema.String }));
+const Sequence = Schema.Int.check(
+  Schema.isBetween({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER }),
+);
+const ClaimPage = Schema.Struct({
+  events: Schema.Array(Schema.Json).check(Schema.isMaxLength(500)),
+  next_seq: Sequence,
+  head_seq: Sequence,
+  oldest_seq: Schema.NullOr(
+    Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER })),
+  ),
+  gap: Schema.Boolean,
+  truncated: Schema.Boolean,
+  generated_at: Schema.String,
+});
+const decodeClaimPage = Schema.decodeUnknownEffect(ClaimPage);
+const ClaimDate = Schema.String.check(
+  Schema.makeFilter((value) => Number.isFinite(Date.parse(value)), {
+    expected: "an authoritative claim timestamp",
+  }),
+);
+const ClaimPrincipal = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._@-]{0,63}$/));
+const ClaimAgent = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,127}$/));
+// Match the frozen publisher's issue-reference grammar, including non-GitHub lanes.
+const ClaimIssue = Schema.String.check(
+  Schema.makeFilter(
+    (value) =>
+      /^(?:#?\d{1,9}|github[-:]\d{1,9}|[a-z][a-z0-9_]*(?:-[a-z0-9_]+)*-\d{1,9})$/i.test(
+        value.trim(),
+      ) ||
+      /^https?:\/\/github\.com\/[^/\s]+\/[^/\s]+\/(?:issues|pull)\/\d{1,9}(?:[/#?].*)?$/i.test(
+        value.trim(),
+      ),
+    { expected: "a publisher-supported issue reference" },
+  ),
+);
+const decodeClaimEvent = Schema.decodeUnknownEffect(
+  Schema.Struct({
+    seq: Sequence,
+    type: Schema.Literal("claim"),
+    ts: ClaimDate,
+    from: Schema.Struct({ principal: ClaimPrincipal, agent_id: ClaimAgent }),
+    topics: Schema.Array(Schema.String),
+    data: Schema.Struct({
+      claim: Schema.Struct({
+        issues: Schema.Array(ClaimIssue),
+        paths: Schema.Array(Schema.String),
+        expires_at: ClaimDate,
+      }),
+    }),
+  }),
+);
+export const SymphonyClaimRead = Schema.Struct({
+  events: Schema.Array(Schema.Json).check(Schema.isMaxLength(20_000)),
+  next_seq: Sequence,
+  head_seq: Sequence,
+  generated_at: Schema.String,
+});
 const unavailable = (cause: unknown) =>
   new SymphonyBusError({
     code: "unavailable",
@@ -171,6 +228,58 @@ const make = Effect.gen(function* () {
       });
     }
     if (input.operation === "whoami") return whoPayload;
+    if (input.operation === "claim_context") {
+      const events: Array<Schema.Json> = [];
+      let cursor = 0;
+      let head = 0;
+      for (let page = 0; page < 40; page++) {
+        const result = yield* call("symphony_changes_since", {
+          after_seq: cursor,
+          types: ["claim"],
+          limit: 500,
+        });
+        const read = yield* decodeClaimPage(result).pipe(Effect.mapError(unavailable));
+        if (
+          read.gap ||
+          read.next_seq < cursor ||
+          read.head_seq < read.next_seq ||
+          read.head_seq < head ||
+          // gap:false at after_seq:0 does not establish an unpruned journal.
+          (read.oldest_seq === null
+            ? read.head_seq !== 0 || read.events.length !== 0
+            : read.oldest_seq > read.head_seq || read.oldest_seq - 1 > cursor) ||
+          !Number.isFinite(Date.parse(read.generated_at))
+        )
+          return yield* unavailable(null);
+        let previous = cursor;
+        for (const raw of read.events) {
+          const event = yield* decodeClaimEvent(raw).pipe(Effect.mapError(unavailable));
+          if (event.seq <= previous || event.seq > read.next_seq) return yield* unavailable(null);
+          previous = event.seq;
+          if (read.oldest_seq === null || event.seq < read.oldest_seq)
+            return yield* unavailable(null);
+        }
+        // Filtered reads may skip non-claim events, but never a returned claim.
+        if (
+          read.events.length > 0
+            ? read.next_seq !== previous
+            : read.truncated || read.next_seq !== Math.max(cursor, read.head_seq)
+        )
+          return yield* unavailable(null);
+        events.push(...read.events);
+        head = read.head_seq;
+        if (!read.truncated)
+          return {
+            events,
+            next_seq: read.next_seq,
+            head_seq: head,
+            generated_at: read.generated_at,
+          };
+        if (read.next_seq === cursor) return yield* unavailable(null);
+        cursor = read.next_seq;
+      }
+      return yield* unavailable(null);
+    }
     const payload = yield* call(`symphony_${input.operation}`, { ...input.args });
     if (input.operation === "inbox") {
       const inbox = yield* decodeInboxIdentity(payload).pipe(Effect.mapError(unavailable));

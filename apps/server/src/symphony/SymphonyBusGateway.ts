@@ -16,6 +16,7 @@ import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as Participation from "./ThreadParticipationService.ts";
 import * as Transport from "./SymphonyBusTransport.ts";
+import { triageContext, type SymphonyTriageContext } from "./SymphonyTriage.ts";
 
 export const symphonyBusConfigurationRevision = (configuration: SymphonyBusConfiguration) =>
   `native-mcp-v1:${configuration.endpoint}`;
@@ -46,6 +47,9 @@ export class SymphonyBusGateway extends Context.Service<
     readonly access: (
       caller: SymphonyBusCaller,
     ) => Effect.Effect<SymphonyBusAccess, SymphonyBusError>;
+    readonly claimContext: (
+      caller: SymphonyBusCaller,
+    ) => Effect.Effect<SymphonyTriageContext | null, SymphonyBusError>;
     readonly runtimeIdentity: (
       caller: SymphonyBusCaller & Pick<SymphonyRuntimeIdentity, "providerInstanceId">,
     ) => Effect.Effect<SymphonyRuntimeIdentity, SymphonyBusError>;
@@ -56,6 +60,7 @@ export class SymphonyBusGateway extends Context.Service<
   }
 >()("t3/symphony/SymphonyBusGateway") {}
 const decodeRequest = Schema.decodeUnknownEffect(SymphonyBusRequest);
+const decodeClaimRead = Schema.decodeUnknownEffect(Transport.SymphonyClaimRead);
 const unavailable = (cause: unknown) =>
   new SymphonyBusError({
     code: "unavailable",
@@ -254,6 +259,39 @@ const make = Effect.gen(function* () {
     yield* assertCurrent;
     return { ...result("ready", null), payload };
   });
-  return SymphonyBusGateway.of({ call, access, runtimeIdentity });
+  const claimContext = Effect.fn("SymphonyBusGateway.claimContext")(function* (
+    caller: SymphonyBusCaller,
+  ) {
+    const admitted = yield* access(caller);
+    if (admitted.state !== "ready") return null;
+    const raw = yield* transport
+      .exchange({
+        endpoint: admitted.configuration.endpoint,
+        identity: admitted.identity,
+        principal: admitted.principal,
+        role: admitted.role,
+        topics: admitted.record.topics,
+        operation: "claim_context",
+        args: {},
+        assertCurrent: admitted.assertCurrent,
+      })
+      .pipe(Effect.timeout("3 seconds"), Effect.mapError(unavailable));
+    const read = yield* decodeClaimRead(raw).pipe(Effect.mapError(unavailable));
+    const now = Date.parse(read.generated_at);
+    if (!Number.isFinite(now)) return yield* unavailable(null);
+    yield* admitted.assertCurrent;
+    const graphs = admitted.record.topics.flatMap((t) => {
+      const m = /^graph:github-(\d{1,9})$/.exec(t);
+      return m ? [Number(m[1])] : [];
+    });
+    return triageContext({
+      target: admitted.identity,
+      principal: admitted.principal,
+      claimEvents: read.events,
+      now,
+      graphs,
+    });
+  });
+  return SymphonyBusGateway.of({ call, access, runtimeIdentity, claimContext });
 });
 export const layer = Layer.effect(SymphonyBusGateway, make);

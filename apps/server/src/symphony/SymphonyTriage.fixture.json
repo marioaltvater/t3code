@@ -1,0 +1,1449 @@
+{
+  "reference": "203089bd35c17d3f2afeb8f76d4972246c4cc015",
+  "claimCases": [
+    {
+      "name": "single live claim",
+      "events": [
+        {
+          "seq": 1,
+          "type": "claim",
+          "ts": "2026-01-01T00:00:00.000Z",
+          "from": {
+            "agent_id": "v12:alice:implementer:7",
+            "principal": "alice"
+          },
+          "topics": ["graph:github-9"],
+          "data": {
+            "claim": {
+              "issues": ["7"],
+              "paths": ["src/api"],
+              "expires_at": "2026-01-01T02:00:00.000Z"
+            }
+          }
+        }
+      ],
+      "now": 1767225700000,
+      "expected": [
+        {
+          "issue": 7,
+          "principal": "alice",
+          "agent_id": "v12:alice:implementer:7",
+          "tenure_seq": 1,
+          "seq": 1,
+          "ts": "2026-01-01T00:00:00.000Z",
+          "expires_at": "2026-01-01T02:00:00.000Z",
+          "paths": ["src/api"],
+          "topics": ["graph:github-9"]
+        }
+      ]
+    },
+    {
+      "name": "same principal renewal keeps tenure",
+      "events": [
+        {
+          "seq": 1,
+          "type": "claim",
+          "ts": "2026-01-01T00:00:00.000Z",
+          "from": {
+            "agent_id": "v12:alice:implementer:7",
+            "principal": "alice"
+          },
+          "topics": ["graph:github-9"],
+          "data": {
+            "claim": {
+              "issues": ["7"],
+              "paths": ["src/api"],
+              "expires_at": "2026-01-01T02:00:00.000Z"
+            }
+          }
+        },
+        {
+          "seq": 2,
+          "type": "claim",
+          "ts": "2026-01-01T00:08:20.000Z",
+          "from": {
+            "agent_id": "v12:bob:implementer:7",
+            "principal": "bob"
+          },
+          "topics": ["graph:github-9"],
+          "data": {
+            "claim": {
+              "issues": ["7"],
+              "paths": ["src/api"],
+              "expires_at": "2026-01-01T02:00:00.000Z"
+            }
+          }
+        },
+        {
+          "seq": 3,
+          "type": "claim",
+          "ts": "2026-01-01T00:16:40.000Z",
+          "from": {
+            "agent_id": "v12:ALICE:implementer:7",
+            "principal": "ALICE"
+          },
+          "topics": ["graph:github-9"],
+          "data": {
+            "claim": {
+              "issues": ["7"],
+              "paths": ["src/api"],
+              "expires_at": "2026-01-01T02:46:40.000Z"
+            }
+          }
+        }
+      ],
+      "now": 1767226700000,
+      "expected": [
+        {
+          "issue": 7,
+          "principal": "ALICE",
+          "agent_id": "v12:ALICE:implementer:7",
+          "tenure_seq": 1,
+          "seq": 3,
+          "ts": "2026-01-01T00:16:40.000Z",
+          "expires_at": "2026-01-01T02:46:40.000Z",
+          "paths": ["src/api"],
+          "topics": ["graph:github-9"]
+        },
+        {
+          "issue": 7,
+          "principal": "bob",
+          "agent_id": "v12:bob:implementer:7",
+          "tenure_seq": 2,
+          "seq": 2,
+          "ts": "2026-01-01T00:08:20.000Z",
+          "expires_at": "2026-01-01T02:00:00.000Z",
+          "paths": ["src/api"],
+          "topics": ["graph:github-9"]
+        }
+      ]
+    },
+    {
+      "name": "release then reacquire",
+      "events": [
+        {
+          "seq": 1,
+          "type": "claim",
+          "ts": "2026-01-01T00:00:00.000Z",
+          "from": {
+            "agent_id": "v12:alice:implementer:7",
+            "principal": "alice"
+          },
+          "topics": ["graph:github-9"],
+          "data": {
+            "claim": {
+              "issues": ["7"],
+              "paths": ["src/api"],
+              "expires_at": "2026-01-01T02:00:00.000Z"
+            }
+          }
+        },
+        {
+          "seq": 2,
+          "type": "claim",
+          "ts": "2026-01-01T00:01:40.000Z",
+          "from": {
+            "agent_id": "v12:alice:implementer:7",
+            "principal": "alice"
+          },
+          "topics": ["graph:github-9"],
+          "data": {
+            "claim": {
+              "issues": ["7"],
+              "paths": ["src/api"],
+              "expires_at": "2026-01-01T00:01:41.000Z"
+            }
+          }
+        },
+        {
+          "seq": 3,
+          "type": "claim",
+          "ts": "2026-01-01T00:03:20.000Z",
+          "from": {
+            "agent_id": "v12:alice:implementer:7",
+            "principal": "alice"
+          },
+          "topics": ["graph:github-9"],
+          "data": {
+            "claim": {
+              "issues": ["7"],
+              "paths": ["src/api"],
+              "expires_at": "2026-01-01T02:03:20.000Z"
+            }
+          }
+        }
+      ],
+      "now": 1767225900000,
+      "expected": [
+        {
+          "issue": 7,
+          "principal": "alice",
+          "agent_id": "v12:alice:implementer:7",
+          "tenure_seq": 3,
+          "seq": 3,
+          "ts": "2026-01-01T00:03:20.000Z",
+          "expires_at": "2026-01-01T02:03:20.000Z",
+          "paths": ["src/api"],
+          "topics": ["graph:github-9"]
+        }
+      ]
+    },
+    {
+      "name": "expires with sixty seconds left",
+      "events": [
+        {
+          "seq": 1,
+          "type": "claim",
+          "ts": "2026-01-01T00:00:00.000Z",
+          "from": {
+            "agent_id": "v12:alice:implementer:7",
+            "principal": "alice"
+          },
+          "topics": ["graph:github-9"],
+          "data": {
+            "claim": {
+              "issues": ["7"],
+              "paths": ["src/api"],
+              "expires_at": "2026-01-01T02:00:00.000Z"
+            }
+          }
+        }
+      ],
+      "now": 1767232740000,
+      "expected": []
+    },
+    {
+      "name": "renewal at sixty-second margin starts new tenure",
+      "events": [
+        {
+          "seq": 1,
+          "type": "claim",
+          "ts": "2026-01-01T00:00:00.000Z",
+          "from": {
+            "agent_id": "v12:alice:implementer:7",
+            "principal": "alice"
+          },
+          "topics": ["graph:github-9"],
+          "data": {
+            "claim": {
+              "issues": ["7"],
+              "paths": ["src/api"],
+              "expires_at": "2026-01-01T02:00:00.000Z"
+            }
+          }
+        },
+        {
+          "seq": 2,
+          "type": "claim",
+          "ts": "2026-01-01T01:59:00.000Z",
+          "from": {
+            "agent_id": "v12:alice:implementer:7",
+            "principal": "alice"
+          },
+          "topics": ["graph:github-9"],
+          "data": {
+            "claim": {
+              "issues": ["7"],
+              "paths": ["src/api"],
+              "expires_at": "2026-01-01T04:10:00.000Z"
+            }
+          }
+        }
+      ],
+      "now": 1767232800000,
+      "expected": [
+        {
+          "issue": 7,
+          "principal": "alice",
+          "agent_id": "v12:alice:implementer:7",
+          "tenure_seq": 2,
+          "seq": 2,
+          "ts": "2026-01-01T01:59:00.000Z",
+          "expires_at": "2026-01-01T04:10:00.000Z",
+          "paths": ["src/api"],
+          "topics": ["graph:github-9"]
+        }
+      ]
+    },
+    {
+      "name": "path-only claims remain per agent",
+      "events": [
+        {
+          "seq": 1,
+          "type": "claim",
+          "ts": "2026-01-01T00:00:00.000Z",
+          "from": {
+            "agent_id": "v12:alice:implementer:7",
+            "principal": "alice"
+          },
+          "topics": ["graph:github-9"],
+          "data": {
+            "claim": {
+              "issues": [],
+              "paths": ["src/x"],
+              "expires_at": "2026-01-01T02:00:00.000Z"
+            }
+          }
+        },
+        {
+          "seq": 2,
+          "type": "claim",
+          "ts": "2026-01-01T00:00:00.000Z",
+          "from": {
+            "agent_id": "v12:alice:reviewer",
+            "principal": "alice"
+          },
+          "topics": ["graph:github-9"],
+          "data": {
+            "claim": {
+              "issues": [],
+              "paths": ["src/y"],
+              "expires_at": "2026-01-01T02:00:00.000Z"
+            }
+          }
+        }
+      ],
+      "now": 1767225700000,
+      "expected": [
+        {
+          "issue": null,
+          "principal": "alice",
+          "agent_id": "v12:alice:implementer:7",
+          "tenure_seq": 1,
+          "seq": 1,
+          "ts": "2026-01-01T00:00:00.000Z",
+          "expires_at": "2026-01-01T02:00:00.000Z",
+          "paths": ["src/x"],
+          "topics": ["graph:github-9"]
+        },
+        {
+          "issue": null,
+          "principal": "alice",
+          "agent_id": "v12:alice:reviewer",
+          "tenure_seq": 2,
+          "seq": 2,
+          "ts": "2026-01-01T00:00:00.000Z",
+          "expires_at": "2026-01-01T02:00:00.000Z",
+          "paths": ["src/y"],
+          "topics": ["graph:github-9"]
+        }
+      ]
+    },
+    {
+      "name": "path-only release drops the last path claim",
+      "events": [
+        {
+          "seq": 1,
+          "type": "claim",
+          "ts": "2026-01-01T00:00:00.000Z",
+          "from": {
+            "agent_id": "v12:alice:implementer:7",
+            "principal": "alice"
+          },
+          "topics": ["graph:github-9"],
+          "data": {
+            "claim": {
+              "issues": [],
+              "paths": ["src/x"],
+              "expires_at": "2026-01-01T02:00:00.000Z"
+            }
+          }
+        },
+        {
+          "seq": 2,
+          "type": "claim",
+          "ts": "2026-01-01T00:01:40.000Z",
+          "from": {
+            "agent_id": "v12:alice:implementer:7",
+            "principal": "alice"
+          },
+          "topics": ["graph:github-9"],
+          "data": {
+            "claim": {
+              "issues": [],
+              "paths": [],
+              "expires_at": "2026-01-01T00:01:41.000Z"
+            }
+          }
+        }
+      ],
+      "now": 1767225800000,
+      "expected": []
+    },
+    {
+      "name": "duplicate and shuffled events",
+      "events": [
+        {
+          "seq": 3,
+          "type": "claim",
+          "ts": "2026-01-01T00:01:40.000Z",
+          "from": {
+            "agent_id": "v12:alice:implementer:7",
+            "principal": "alice"
+          },
+          "topics": ["graph:github-9"],
+          "data": {
+            "claim": {
+              "issues": ["7"],
+              "paths": ["src/api"],
+              "expires_at": "2026-01-01T02:13:20.000Z"
+            }
+          }
+        },
+        {
+          "seq": 1,
+          "type": "claim",
+          "ts": "2026-01-01T00:00:00.000Z",
+          "from": {
+            "agent_id": "v12:alice:implementer:7",
+            "principal": "alice"
+          },
+          "topics": ["graph:github-9"],
+          "data": {
+            "claim": {
+              "issues": ["7"],
+              "paths": ["src/api"],
+              "expires_at": "2026-01-01T02:00:00.000Z"
+            }
+          }
+        },
+        {
+          "seq": 1,
+          "type": "claim",
+          "ts": "2026-01-01T00:00:00.000Z",
+          "from": {
+            "agent_id": "v12:alice:implementer:7",
+            "principal": "alice"
+          },
+          "topics": ["graph:github-9"],
+          "data": {
+            "claim": {
+              "issues": ["7"],
+              "paths": ["src/api"],
+              "expires_at": "2026-01-01T02:00:00.000Z"
+            }
+          }
+        },
+        {
+          "seq": 2,
+          "type": "claim",
+          "ts": "2026-01-01T00:00:50.000Z",
+          "from": {
+            "agent_id": "v12:alice:implementer:7",
+            "principal": "alice"
+          },
+          "topics": ["graph:github-9"],
+          "data": {
+            "claim": {
+              "issues": ["7"],
+              "paths": ["src/api"],
+              "expires_at": "2026-01-01T02:01:40.000Z"
+            }
+          }
+        }
+      ],
+      "now": 1767225900000,
+      "expected": [
+        {
+          "issue": 7,
+          "principal": "alice",
+          "agent_id": "v12:alice:implementer:7",
+          "tenure_seq": 1,
+          "seq": 3,
+          "ts": "2026-01-01T00:01:40.000Z",
+          "expires_at": "2026-01-01T02:13:20.000Z",
+          "paths": ["src/api"],
+          "topics": ["graph:github-9"]
+        }
+      ]
+    },
+    {
+      "name": "malformed claim facts are ignored",
+      "events": [
+        {
+          "seq": 1,
+          "type": "claim",
+          "ts": "invalid",
+          "from": {
+            "agent_id": "v12:alice:implementer:7",
+            "principal": "alice"
+          },
+          "topics": ["graph:github-9"],
+          "data": {
+            "claim": {
+              "issues": ["7"],
+              "paths": ["src/api"],
+              "expires_at": "2026-01-01T02:00:00.000Z"
+            }
+          }
+        },
+        {
+          "seq": 2,
+          "type": "claim",
+          "ts": "2026-01-01T00:00:00.000Z",
+          "from": {},
+          "topics": ["graph:github-9"],
+          "data": {
+            "claim": {
+              "issues": ["7"],
+              "paths": ["src/api"],
+              "expires_at": "2026-01-01T02:00:00.000Z"
+            }
+          }
+        },
+        {
+          "seq": "3",
+          "type": "claim",
+          "ts": "2026-01-01T00:00:00.000Z",
+          "from": {
+            "agent_id": "v12:alice:implementer:7",
+            "principal": "alice"
+          },
+          "topics": ["graph:github-9"],
+          "data": {
+            "claim": {
+              "issues": ["7"],
+              "paths": ["src/api"],
+              "expires_at": "2026-01-01T02:00:00.000Z"
+            }
+          }
+        }
+      ],
+      "now": 1767225900000,
+      "expected": []
+    },
+    {
+      "name": "multi-issue claim and expired rival",
+      "events": [
+        {
+          "seq": 1,
+          "type": "claim",
+          "ts": "2026-01-01T00:00:00.000Z",
+          "from": {
+            "agent_id": "v12:alice:implementer:7",
+            "principal": "alice"
+          },
+          "topics": ["graph:github-9"],
+          "data": {
+            "claim": {
+              "issues": ["7", "#8", "github-9"],
+              "paths": ["src/api"],
+              "expires_at": "2026-01-01T02:00:00.000Z"
+            }
+          }
+        },
+        {
+          "seq": 2,
+          "type": "claim",
+          "ts": "2026-01-01T00:00:00.000Z",
+          "from": {
+            "agent_id": "v12:bob:implementer:7",
+            "principal": "bob"
+          },
+          "topics": ["graph:github-9"],
+          "data": {
+            "claim": {
+              "issues": ["7"],
+              "paths": ["src/api"],
+              "expires_at": "2026-01-01T00:01:10.000Z"
+            }
+          }
+        }
+      ],
+      "now": 1767225700000,
+      "expected": [
+        {
+          "issue": 7,
+          "principal": "alice",
+          "agent_id": "v12:alice:implementer:7",
+          "tenure_seq": 1,
+          "seq": 1,
+          "ts": "2026-01-01T00:00:00.000Z",
+          "expires_at": "2026-01-01T02:00:00.000Z",
+          "paths": ["src/api"],
+          "topics": ["graph:github-9"]
+        },
+        {
+          "issue": 8,
+          "principal": "alice",
+          "agent_id": "v12:alice:implementer:7",
+          "tenure_seq": 1,
+          "seq": 1,
+          "ts": "2026-01-01T00:00:00.000Z",
+          "expires_at": "2026-01-01T02:00:00.000Z",
+          "paths": ["src/api"],
+          "topics": ["graph:github-9"]
+        },
+        {
+          "issue": 9,
+          "principal": "alice",
+          "agent_id": "v12:alice:implementer:7",
+          "tenure_seq": 1,
+          "seq": 1,
+          "ts": "2026-01-01T00:00:00.000Z",
+          "expires_at": "2026-01-01T02:00:00.000Z",
+          "paths": ["src/api"],
+          "topics": ["graph:github-9"]
+        }
+      ]
+    }
+  ],
+  "context": {
+    "input": {
+      "target": "v12:alice:orchestrator",
+      "principal": "alice",
+      "claimEvents": [
+        {
+          "seq": 1,
+          "type": "claim",
+          "ts": "2026-01-01T00:00:00.000Z",
+          "from": {
+            "agent_id": "v12:alice:implementer:7",
+            "principal": "alice"
+          },
+          "topics": ["graph:github-9"],
+          "data": {
+            "claim": {
+              "issues": ["7"],
+              "paths": ["src/api"],
+              "expires_at": "2026-01-01T02:00:00.000Z"
+            }
+          }
+        }
+      ],
+      "now": 1767225700000,
+      "graphs": [7],
+      "aliases": ["codex:alice:legacy"]
+    },
+    "expected": {
+      "target": "v12:alice:orchestrator",
+      "principal": "alice",
+      "issues": [7],
+      "paths": ["src/api"],
+      "graphs": [9, 7],
+      "aliases": ["codex:alice:legacy"]
+    }
+  },
+  "classifications": [
+    {
+      "name": "quiet ordinary note",
+      "event": {
+        "seq": 20,
+        "ts": "2026-01-01T00:01:40.000Z",
+        "type": "note",
+        "from": {
+          "agent_id": "v12:bob:orchestrator",
+          "principal": "bob"
+        },
+        "topics": [],
+        "subject": "Generic fixture",
+        "body": "fixture"
+      },
+      "expected": null
+    },
+    {
+      "name": "symphony events ignored",
+      "event": {
+        "seq": 20,
+        "ts": "2026-01-01T00:01:40.000Z",
+        "type": "symphony.heartbeat",
+        "from": {
+          "agent_id": "v12:bob:orchestrator",
+          "principal": "bob"
+        },
+        "topics": [],
+        "subject": "Generic fixture",
+        "body": "fixture",
+        "for_role": "human:alice"
+      },
+      "expected": null
+    },
+    {
+      "name": "own watcher ignored",
+      "event": {
+        "seq": 20,
+        "ts": "2026-01-01T00:01:40.000Z",
+        "type": "note",
+        "from": {
+          "agent_id": "v12:alice:watcher",
+          "principal": "alice"
+        },
+        "topics": [],
+        "subject": "Generic fixture",
+        "body": "fixture",
+        "for_role": "human:alice"
+      },
+      "expected": null
+    },
+    {
+      "name": "human question",
+      "event": {
+        "seq": 20,
+        "ts": "2026-01-01T00:01:40.000Z",
+        "type": "question",
+        "from": {
+          "agent_id": "v12:bob:orchestrator",
+          "principal": "bob"
+        },
+        "topics": [],
+        "subject": "Generic fixture",
+        "body": "fixture",
+        "for_role": "human:alice"
+      },
+      "expected": {
+        "reason": "human",
+        "human": true,
+        "message": true
+      }
+    },
+    {
+      "name": "own human question does not relay",
+      "event": {
+        "seq": 20,
+        "ts": "2026-01-01T00:01:40.000Z",
+        "type": "question",
+        "from": {
+          "agent_id": "v12:alice:orchestrator",
+          "principal": "alice"
+        },
+        "topics": [],
+        "subject": "Generic fixture",
+        "body": "fixture",
+        "for_role": "human:alice"
+      },
+      "expected": {
+        "reason": "human",
+        "human": true,
+        "message": false
+      }
+    },
+    {
+      "name": "direct topic",
+      "event": {
+        "seq": 20,
+        "ts": "2026-01-01T00:01:40.000Z",
+        "type": "note",
+        "from": {
+          "agent_id": "v12:bob:orchestrator",
+          "principal": "bob"
+        },
+        "topics": ["agent:v12:alice:orchestrator"],
+        "subject": "Generic fixture",
+        "body": "fixture"
+      },
+      "expected": {
+        "reason": "addressed",
+        "human": false,
+        "message": true
+      }
+    },
+    {
+      "name": "direct recipient",
+      "event": {
+        "seq": 20,
+        "ts": "2026-01-01T00:01:40.000Z",
+        "type": "note",
+        "from": {
+          "agent_id": "v12:bob:orchestrator",
+          "principal": "bob"
+        },
+        "topics": [],
+        "subject": "Generic fixture",
+        "body": "fixture",
+        "deliver_to": ["v12:alice:orchestrator"]
+      },
+      "expected": {
+        "reason": "addressed",
+        "human": false,
+        "message": true
+      }
+    },
+    {
+      "name": "explicit alias topic",
+      "event": {
+        "seq": 20,
+        "ts": "2026-01-01T00:01:40.000Z",
+        "type": "note",
+        "from": {
+          "agent_id": "v12:bob:orchestrator",
+          "principal": "bob"
+        },
+        "topics": ["agent:codex:alice:legacy"],
+        "subject": "Generic fixture",
+        "body": "fixture"
+      },
+      "expected": {
+        "reason": "addressed",
+        "human": false,
+        "message": true
+      }
+    },
+    {
+      "name": "explicit alias recipient",
+      "event": {
+        "seq": 20,
+        "ts": "2026-01-01T00:01:40.000Z",
+        "type": "note",
+        "from": {
+          "agent_id": "v12:bob:orchestrator",
+          "principal": "bob"
+        },
+        "topics": [],
+        "subject": "Generic fixture",
+        "body": "fixture",
+        "deliver_to": ["codex:alice:legacy"]
+      },
+      "expected": {
+        "reason": "addressed",
+        "human": false,
+        "message": true
+      }
+    },
+    {
+      "name": "own direct note ignored",
+      "event": {
+        "seq": 20,
+        "ts": "2026-01-01T00:01:40.000Z",
+        "type": "note",
+        "from": {
+          "agent_id": "v12:alice:orchestrator",
+          "principal": "alice"
+        },
+        "topics": ["agent:v12:alice:orchestrator"],
+        "subject": "Generic fixture",
+        "body": "fixture"
+      },
+      "expected": null
+    },
+    {
+      "name": "same-principal other session direct",
+      "event": {
+        "seq": 20,
+        "ts": "2026-01-01T00:01:40.000Z",
+        "type": "note",
+        "from": {
+          "agent_id": "v12:alice:reviewer",
+          "principal": "alice"
+        },
+        "topics": ["agent:v12:alice:orchestrator"],
+        "subject": "Generic fixture",
+        "body": "fixture"
+      },
+      "expected": {
+        "reason": "addressed",
+        "human": false,
+        "message": true
+      }
+    },
+    {
+      "name": "generic orchestrator role",
+      "event": {
+        "seq": 20,
+        "ts": "2026-01-01T00:01:40.000Z",
+        "type": "note",
+        "from": {
+          "agent_id": "v12:bob:orchestrator",
+          "principal": "bob"
+        },
+        "topics": [],
+        "subject": "Generic fixture",
+        "body": "fixture",
+        "for_role": "orchestrator"
+      },
+      "expected": {
+        "reason": "addressed",
+        "human": false,
+        "message": true
+      }
+    },
+    {
+      "name": "principal orchestrator role",
+      "event": {
+        "seq": 20,
+        "ts": "2026-01-01T00:01:40.000Z",
+        "type": "note",
+        "from": {
+          "agent_id": "v12:bob:orchestrator",
+          "principal": "bob"
+        },
+        "topics": [],
+        "subject": "Generic fixture",
+        "body": "fixture",
+        "for_role": " Orchestrator:ALICE "
+      },
+      "expected": {
+        "reason": "addressed",
+        "human": false,
+        "message": true
+      }
+    },
+    {
+      "name": "nested question role fallback",
+      "event": {
+        "seq": 20,
+        "ts": "2026-01-01T00:01:40.000Z",
+        "type": "question",
+        "from": {
+          "agent_id": "v12:bob:orchestrator",
+          "principal": "bob"
+        },
+        "topics": [],
+        "subject": "Generic fixture",
+        "body": "fixture",
+        "data": {
+          "question": {
+            "for_role": "orchestrator:alice"
+          }
+        }
+      },
+      "expected": {
+        "reason": "addressed",
+        "human": false,
+        "message": true
+      }
+    },
+    {
+      "name": "top role overrides nested",
+      "event": {
+        "seq": 20,
+        "ts": "2026-01-01T00:01:40.000Z",
+        "type": "question",
+        "from": {
+          "agent_id": "v12:bob:orchestrator",
+          "principal": "bob"
+        },
+        "topics": [],
+        "subject": "Generic fixture",
+        "body": "fixture",
+        "for_role": "reviewer:bob",
+        "data": {
+          "question": {
+            "for_role": "orchestrator:alice"
+          }
+        }
+      },
+      "expected": null
+    },
+    {
+      "name": "blank top role uses nested",
+      "event": {
+        "seq": 20,
+        "ts": "2026-01-01T00:01:40.000Z",
+        "type": "question",
+        "from": {
+          "agent_id": "v12:bob:orchestrator",
+          "principal": "bob"
+        },
+        "topics": [],
+        "subject": "Generic fixture",
+        "body": "fixture",
+        "for_role": " ",
+        "data": {
+          "question": {
+            "for_role": "reviewer:alice"
+          }
+        }
+      },
+      "expected": {
+        "reason": "review",
+        "human": false,
+        "message": true
+      }
+    },
+    {
+      "name": "same-principal engine update",
+      "event": {
+        "seq": 20,
+        "ts": "2026-01-01T00:01:40.000Z",
+        "type": "note",
+        "from": {
+          "agent_id": "v12:alice:planner",
+          "principal": "ALICE"
+        },
+        "topics": [],
+        "subject": "Generic fixture",
+        "body": " symphony:engine_update\r\nengine_version: 2"
+      },
+      "expected": {
+        "reason": "engine_update",
+        "human": false,
+        "message": true
+      }
+    },
+    {
+      "name": "own engine update ignored",
+      "event": {
+        "seq": 20,
+        "ts": "2026-01-01T00:01:40.000Z",
+        "type": "note",
+        "from": {
+          "agent_id": "v12:alice:orchestrator",
+          "principal": "alice"
+        },
+        "topics": [],
+        "subject": "Generic fixture",
+        "body": "symphony:engine_update"
+      },
+      "expected": null
+    },
+    {
+      "name": "marker on later line ignored",
+      "event": {
+        "seq": 20,
+        "ts": "2026-01-01T00:01:40.000Z",
+        "type": "note",
+        "from": {
+          "agent_id": "v12:bob:orchestrator",
+          "principal": "bob"
+        },
+        "topics": [],
+        "subject": "Generic fixture",
+        "body": "intro\nsymphony:engine_update"
+      },
+      "expected": null
+    },
+    {
+      "name": "cross-principal review",
+      "event": {
+        "seq": 20,
+        "ts": "2026-01-01T00:01:40.000Z",
+        "type": "review",
+        "from": {
+          "agent_id": "v12:bob:orchestrator",
+          "principal": "bob"
+        },
+        "topics": [],
+        "subject": "Generic fixture",
+        "body": "fixture"
+      },
+      "expected": {
+        "reason": "review",
+        "human": false,
+        "message": true
+      }
+    },
+    {
+      "name": "same-principal review ignored",
+      "event": {
+        "seq": 20,
+        "ts": "2026-01-01T00:01:40.000Z",
+        "type": "review",
+        "from": {
+          "agent_id": "v12:alice:reviewer",
+          "principal": "Alice"
+        },
+        "topics": [],
+        "subject": "Generic fixture",
+        "body": "fixture"
+      },
+      "expected": null
+    },
+    {
+      "name": "reviewer question",
+      "event": {
+        "seq": 20,
+        "ts": "2026-01-01T00:01:40.000Z",
+        "type": "question",
+        "from": {
+          "agent_id": "v12:bob:orchestrator",
+          "principal": "bob"
+        },
+        "topics": [],
+        "subject": "Generic fixture",
+        "body": "fixture",
+        "for_role": "reviewer"
+      },
+      "expected": {
+        "reason": "review",
+        "human": false,
+        "message": true
+      }
+    },
+    {
+      "name": "reviewer principal question",
+      "event": {
+        "seq": 20,
+        "ts": "2026-01-01T00:01:40.000Z",
+        "type": "question",
+        "from": {
+          "agent_id": "v12:bob:orchestrator",
+          "principal": "bob"
+        },
+        "topics": [],
+        "subject": "Generic fixture",
+        "body": "fixture",
+        "data": {
+          "question": {
+            "for_role": "reviewer:ALICE"
+          }
+        }
+      },
+      "expected": {
+        "reason": "review",
+        "human": false,
+        "message": true
+      }
+    },
+    {
+      "name": "same issue collision",
+      "event": {
+        "seq": 20,
+        "ts": "2026-01-01T00:01:40.000Z",
+        "type": "claim",
+        "from": {
+          "agent_id": "v12:bob:implementer:7",
+          "principal": "bob"
+        },
+        "topics": ["graph:github-9"],
+        "subject": "Generic fixture",
+        "body": "fixture",
+        "data": {
+          "claim": {
+            "issues": ["#7"],
+            "paths": [],
+            "expires_at": "2026-01-01T02:01:40.000Z"
+          }
+        }
+      },
+      "expected": {
+        "reason": "collision",
+        "human": false,
+        "message": true
+      }
+    },
+    {
+      "name": "segment path collision",
+      "event": {
+        "seq": 20,
+        "ts": "2026-01-01T00:01:40.000Z",
+        "type": "claim",
+        "from": {
+          "agent_id": "v12:bob:implementer:7",
+          "principal": "bob"
+        },
+        "topics": ["graph:github-9"],
+        "subject": "Generic fixture",
+        "body": "fixture",
+        "data": {
+          "claim": {
+            "issues": ["99"],
+            "paths": ["./src//api/endpoints/"],
+            "expires_at": "2026-01-01T02:01:40.000Z"
+          }
+        }
+      },
+      "expected": {
+        "reason": "collision",
+        "human": false,
+        "message": true
+      }
+    },
+    {
+      "name": "path prefix is not collision",
+      "event": {
+        "seq": 20,
+        "ts": "2026-01-01T00:01:40.000Z",
+        "type": "claim",
+        "from": {
+          "agent_id": "v12:bob:implementer:7",
+          "principal": "bob"
+        },
+        "topics": ["graph:github-9"],
+        "subject": "Generic fixture",
+        "body": "fixture",
+        "data": {
+          "claim": {
+            "issues": ["99"],
+            "paths": ["src/apis"],
+            "expires_at": "2026-01-01T02:01:40.000Z"
+          }
+        }
+      },
+      "expected": null
+    },
+    {
+      "name": "release is not collision",
+      "event": {
+        "seq": 20,
+        "ts": "2026-01-01T00:01:40.000Z",
+        "type": "claim",
+        "from": {
+          "agent_id": "v12:bob:implementer:7",
+          "principal": "bob"
+        },
+        "topics": ["graph:github-9"],
+        "subject": "Generic fixture",
+        "body": "fixture",
+        "data": {
+          "claim": {
+            "issues": ["7"],
+            "paths": ["src/api"],
+            "expires_at": "2026-01-01T00:01:41.000Z"
+          }
+        }
+      },
+      "expected": null
+    },
+    {
+      "name": "sixty second claim is release",
+      "event": {
+        "seq": 20,
+        "ts": "2026-01-01T00:01:40.000Z",
+        "type": "claim",
+        "from": {
+          "agent_id": "v12:bob:implementer:7",
+          "principal": "bob"
+        },
+        "topics": ["graph:github-9"],
+        "subject": "Generic fixture",
+        "body": "fixture",
+        "data": {
+          "claim": {
+            "issues": ["7"],
+            "paths": ["src/api"],
+            "expires_at": "2026-01-01T00:02:40.000Z"
+          }
+        }
+      },
+      "expected": null
+    },
+    {
+      "name": "invalid claim expiry ignored",
+      "event": {
+        "seq": 20,
+        "ts": "2026-01-01T00:01:40.000Z",
+        "type": "claim",
+        "from": {
+          "agent_id": "v12:bob:implementer:7",
+          "principal": "bob"
+        },
+        "topics": ["graph:github-9"],
+        "subject": "Generic fixture",
+        "body": "fixture",
+        "data": {
+          "claim": {
+            "issues": ["7"],
+            "paths": ["src/api"],
+            "expires_at": "invalid"
+          }
+        }
+      },
+      "expected": null
+    },
+    {
+      "name": "same-principal claim ignored",
+      "event": {
+        "seq": 20,
+        "ts": "2026-01-01T00:01:40.000Z",
+        "type": "claim",
+        "from": {
+          "agent_id": "v12:alice:implementer:7",
+          "principal": "alice"
+        },
+        "topics": ["graph:github-9"],
+        "subject": "Generic fixture",
+        "body": "fixture",
+        "data": {
+          "claim": {
+            "issues": ["7"],
+            "paths": ["src/api"],
+            "expires_at": "2026-01-01T02:01:40.000Z"
+          }
+        }
+      },
+      "expected": null
+    },
+    {
+      "name": "landing claimed issue",
+      "event": {
+        "seq": 20,
+        "ts": "2026-01-01T00:01:40.000Z",
+        "type": "landing",
+        "from": {
+          "agent_id": "v12:bob:orchestrator",
+          "principal": "bob"
+        },
+        "topics": [],
+        "subject": "Generic fixture",
+        "body": "fixture",
+        "refs": {
+          "issue": "#7"
+        }
+      },
+      "expected": {
+        "reason": "landing",
+        "human": false,
+        "message": true
+      }
+    },
+    {
+      "name": "handoff held graph",
+      "event": {
+        "seq": 20,
+        "ts": "2026-01-01T00:01:40.000Z",
+        "type": "handoff",
+        "from": {
+          "agent_id": "v12:bob:orchestrator",
+          "principal": "bob"
+        },
+        "topics": ["graph:github-9"],
+        "subject": "Generic fixture",
+        "body": "fixture"
+      },
+      "expected": {
+        "reason": "handoff",
+        "human": false,
+        "message": true
+      }
+    },
+    {
+      "name": "handoff explicit graph",
+      "event": {
+        "seq": 20,
+        "ts": "2026-01-01T00:01:40.000Z",
+        "type": "handoff",
+        "from": {
+          "agent_id": "v12:bob:orchestrator",
+          "principal": "bob"
+        },
+        "topics": ["graph:7"],
+        "subject": "Generic fixture",
+        "body": "fixture"
+      },
+      "expected": {
+        "reason": "handoff",
+        "human": false,
+        "message": true
+      }
+    },
+    {
+      "name": "unrelated landing ignored",
+      "event": {
+        "seq": 20,
+        "ts": "2026-01-01T00:01:40.000Z",
+        "type": "landing",
+        "from": {
+          "agent_id": "v12:bob:orchestrator",
+          "principal": "bob"
+        },
+        "topics": ["issue:99"],
+        "subject": "Generic fixture",
+        "body": "fixture"
+      },
+      "expected": null
+    },
+    {
+      "name": "same-principal landing ignored",
+      "event": {
+        "seq": 20,
+        "ts": "2026-01-01T00:01:40.000Z",
+        "type": "landing",
+        "from": {
+          "agent_id": "v12:alice:implementer:7",
+          "principal": "alice"
+        },
+        "topics": ["issue:7"],
+        "subject": "Generic fixture",
+        "body": "fixture"
+      },
+      "expected": null
+    },
+    {
+      "name": "superseding decision",
+      "event": {
+        "seq": 20,
+        "ts": "2026-01-01T00:01:40.000Z",
+        "type": "decision",
+        "from": {
+          "agent_id": "v12:bob:orchestrator",
+          "principal": "bob"
+        },
+        "topics": ["issue:github-7"],
+        "subject": "Generic fixture",
+        "body": "fixture",
+        "data": {
+          "decision": {
+            "supersedes": "prior"
+          }
+        }
+      },
+      "expected": {
+        "reason": "supersedes",
+        "human": false,
+        "message": true
+      }
+    },
+    {
+      "name": "unsuperseding decision ignored",
+      "event": {
+        "seq": 20,
+        "ts": "2026-01-01T00:01:40.000Z",
+        "type": "decision",
+        "from": {
+          "agent_id": "v12:bob:orchestrator",
+          "principal": "bob"
+        },
+        "topics": ["issue:github-7"],
+        "subject": "Generic fixture",
+        "body": "fixture",
+        "data": {
+          "decision": {
+            "supersedes": " "
+          }
+        }
+      },
+      "expected": null
+    },
+    {
+      "name": "missing sender principal review",
+      "event": {
+        "seq": 20,
+        "ts": "2026-01-01T00:01:40.000Z",
+        "type": "review",
+        "from": {
+          "agent_id": "generic-builder"
+        },
+        "topics": [],
+        "subject": "Generic fixture",
+        "body": "fixture"
+      },
+      "expected": {
+        "reason": "review",
+        "human": false,
+        "message": true
+      }
+    }
+  ],
+  "paths": [
+    {
+      "a": "./src//api/",
+      "b": "src/api/client",
+      "expected": true
+    },
+    {
+      "a": "src/api",
+      "b": "src/apis",
+      "expected": false
+    },
+    {
+      "a": "",
+      "b": "src",
+      "expected": false
+    },
+    {
+      "a": "/",
+      "b": "/src",
+      "expected": false
+    },
+    {
+      "a": "a/b",
+      "b": "a/b",
+      "expected": true
+    },
+    {
+      "a": "a/b/c",
+      "b": "a/b",
+      "expected": true
+    }
+  ]
+}

@@ -21,6 +21,7 @@ import {
   EnvironmentId,
   ProviderSessionId,
   RunId,
+  SymphonyBusError,
   ThreadId,
   type SymphonyBusConfiguration,
 } from "@t3tools/contracts";
@@ -28,6 +29,7 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as SqlClient from "effect/sql/SqlClient";
+import { TestClock } from "effect/testing";
 import { FetchHttpClient, HttpServer } from "effect/http";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as Sqlite from "../persistence/Sqlite.ts";
@@ -66,6 +68,8 @@ function fixture(
     extraTopics?: string[];
     wrongWho?: boolean;
     pauseInbox?: { arrived: () => void; release: Promise<void> };
+    pauseClaims?: { arrived: () => void; release: Promise<void> };
+    claimPages?: ReadonlyArray<Record<string, unknown>>;
     configuration?: () => SymphonyBusConfiguration | null;
   } = {},
 ) {
@@ -138,6 +142,19 @@ function fixture(
         };
         options.pauseWho?.arrived();
         if (options.pauseWho) await options.pauseWho.release;
+      } else if (tool === "symphony_changes_since") {
+        options.pauseClaims?.arrived();
+        if (options.pauseClaims) await options.pauseClaims.release;
+        const index = calls.filter((c) => c.method === "symphony_changes_since").length - 1;
+        payload = options.claimPages?.[index] ?? {
+          events: [],
+          next_seq: 0,
+          head_seq: 0,
+          oldest_seq: null,
+          gap: false,
+          truncated: false,
+          generated_at: "2026-01-01T01:00:00.000Z",
+        };
       } else if (tool === "symphony_inbox") {
         options.pauseInbox?.arrived();
         if (options.pauseInbox) await options.pauseInbox.release;
@@ -838,3 +855,286 @@ it.effect("bounded bus calls do not open a notification GET stream", () => {
     assert.equal(f.closes(), 1);
   }).pipe(Effect.provide(f.layer));
 });
+
+const ownClaim = {
+  seq: 1,
+  type: "claim",
+  ts: "2026-01-01T00:00:00.000Z",
+  from: { principal: "alice", agent_id: "v12:alice:implementer:7" },
+  topics: ["graph:github-9"],
+  data: { claim: { issues: ["7"], paths: ["src/api"], expires_at: "2026-01-01T02:00:00.000Z" } },
+};
+const claimPage = (
+  events: ReadonlyArray<unknown>,
+  next: number,
+  head: number,
+  truncated = false,
+): Record<string, unknown> => ({
+  events,
+  next_seq: next,
+  head_seq: head,
+  oldest_seq: head === 0 ? null : 1,
+  gap: false,
+  truncated,
+  generated_at: "2026-01-01T01:00:00.000Z",
+});
+it.effect(
+  "complete claim context uses the admitted identity, paginates and never acknowledges",
+  () => {
+    const other = {
+      ...ownClaim,
+      seq: 2,
+      from: { principal: "bob", agent_id: "v12:bob:orchestrator" },
+      data: {
+        claim: { issues: ["99"], paths: ["private/other"], expires_at: "2026-01-01T02:00:00.000Z" },
+      },
+    };
+    const f = fixture({
+      claimPages: [claimPage([ownClaim], 1, 2, true), claimPage([other], 2, 2)],
+    });
+    return Effect.gen(function* () {
+      const gateway = yield* Gateway.SymphonyBusGateway;
+      assert.equal(yield* gateway.claimContext(a), null);
+      assert.equal(f.calls.length, 0);
+      yield* admit(a, identityA);
+      const context = yield* gateway.claimContext(a);
+      assert.deepEqual(context, {
+        target: identityA,
+        principal: "alice",
+        issues: [7],
+        paths: ["src/api"],
+        graphs: [9, 7],
+        aliases: [],
+      });
+      assert.deepEqual(
+        f.calls
+          .filter((c) => c.method === "symphony_changes_since")
+          .map((c) => [c.identity, c.args]),
+        [
+          [identityA, { after_seq: 0, types: ["claim"], limit: 500 }],
+          [identityA, { after_seq: 1, types: ["claim"], limit: 500 }],
+        ],
+      );
+      assert.equal(f.networkGets(), 0);
+      assert.equal(f.closes(), 1);
+      assert.isFalse(
+        f.calls.some(
+          (c) =>
+            c.method === "symphony_inbox" ||
+            c.method === "symphony_publish" ||
+            c.method === "symphony_subscribe",
+        ),
+      );
+    }).pipe(Effect.provide(f.layer));
+  },
+);
+
+it.effect("claim expiry follows the final sidecar clock rather than the reader's clock", () => {
+  const f = fixture({
+    claimPages: [
+      claimPage([ownClaim], 1, 2, true),
+      { ...claimPage([], 2, 2), generated_at: "2026-01-01T03:00:00.000Z" },
+    ],
+  });
+  return Effect.gen(function* () {
+    yield* admit(a, identityA);
+    const context = yield* (yield* Gateway.SymphonyBusGateway).claimContext(a);
+    assert.deepEqual(context?.issues, []);
+    assert.deepEqual(context?.paths, []);
+    assert.deepEqual(context?.graphs, [7]);
+  }).pipe(Effect.provide(f.layer));
+});
+
+it.effect("partial, stalled, malformed and exhausted claim reads never become empty context", () =>
+  Effect.gen(function* () {
+    const malformed = [
+      [{ ...claimPage([ownClaim], 1, 1), gap: true }],
+      [
+        {
+          events: [],
+          next_seq: 0,
+          head_seq: 0,
+          truncated: false,
+          generated_at: "2026-01-01T01:00:00Z",
+        },
+      ],
+      [{ ...claimPage([], 0, 0), generated_at: "invalid" }],
+      [claimPage([], 0, 2, true)],
+      [claimPage([ownClaim], 0, 1)],
+      [claimPage([ownClaim, ownClaim], 1, 1)],
+      [claimPage([{ ...ownClaim, type: "note" }], 1, 1)],
+      [claimPage([{ ...ownClaim, data: { claim: { expires_at: "invalid" } } }], 1, 1)],
+      [claimPage([{ ...ownClaim, from: { principal: " ", agent_id: "bad actor" } }], 1, 1)],
+      [claimPage([ownClaim], 1, 3, true), claimPage([], 2, 2)],
+      Array.from({ length: 40 }, (_, i) =>
+        claimPage([{ ...ownClaim, seq: i + 1 }], i + 1, 50, true),
+      ),
+    ];
+    for (const pages of malformed) {
+      const f = fixture({ claimPages: pages });
+      yield* Effect.gen(function* () {
+        yield* admit(a, identityA);
+        const error = yield* (yield* Gateway.SymphonyBusGateway).claimContext(a).pipe(Effect.flip);
+        assert.equal(error.code, "unavailable");
+        assert.equal(f.closes(), 1);
+        const sql = yield* SqlClient.SqlClient;
+        assert.equal((yield* sql`SELECT 1 FROM symphony_delivery_state`).length, 0);
+        assert.equal((yield* sql`SELECT 1 FROM symphony_delivery_batches`).length, 0);
+      }).pipe(Effect.provide(f.layer));
+    }
+  }),
+);
+
+it.effect("claim context rechecks caller authority after an in-flight page", () => {
+  const arrived = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  let active = true;
+  const f = fixture({
+    pauseClaims: { arrived: () => arrived.resolve(), release: release.promise },
+    claimPages: [claimPage([ownClaim], 1, 1)],
+  });
+  const caller = {
+    ...a,
+    authorization: Effect.suspend(() =>
+      active
+        ? Effect.void
+        : Effect.fail(
+            new SymphonyBusError({ code: "revoked", message: "Private fixture revocation." }),
+          ),
+    ),
+  };
+  return Effect.gen(function* () {
+    yield* admit(a, identityA);
+    const pending = yield* Effect.forkChild(
+      (yield* Gateway.SymphonyBusGateway).claimContext(caller).pipe(Effect.result),
+    );
+    yield* Effect.promise(() => arrived.promise);
+    active = false;
+    release.resolve();
+    assert.equal((yield* Fiber.join(pending))._tag, "Failure");
+  }).pipe(Effect.provide(f.layer));
+});
+
+it.effect("a stalled claim pull times out and closes its transient session", () => {
+  const arrived = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const f = fixture({
+    pauseClaims: { arrived: () => arrived.resolve(), release: release.promise },
+    claimPages: [claimPage([ownClaim], 1, 1)],
+  });
+  return Effect.gen(function* () {
+    yield* admit(a, identityA);
+    const pending = yield* Effect.forkChild(
+      (yield* Gateway.SymphonyBusGateway).claimContext(a).pipe(Effect.result),
+    );
+    yield* Effect.promise(() => arrived.promise);
+    yield* TestClock.adjust("3 seconds");
+    release.resolve();
+    const result = yield* Fiber.join(pending);
+    assert.equal(result._tag, "Failure");
+    assert.equal(f.closes(), 1);
+    assert.equal(f.allocated.size, 0);
+  }).pipe(Effect.provide(f.layer));
+});
+
+it.effect(
+  "P1-CLAIM-01 rejects a pruned or unknown initial retention boundary despite gap false",
+  () =>
+    Effect.gen(function* () {
+      const missingOldest = claimPage([], 2, 2);
+      delete missingOldest.oldest_seq;
+      const pages = [
+        [{ ...claimPage([], 2, 2), oldest_seq: 2 }],
+        [{ ...claimPage([{ ...ownClaim, seq: 2 }], 2, 2), oldest_seq: 2 }],
+        [{ ...claimPage([], 2, 2), oldest_seq: null }],
+        [missingOldest],
+        [claimPage([ownClaim], 1, 3, true), { ...claimPage([], 3, 3), oldest_seq: 3 }],
+      ];
+      for (const claimPages of pages) {
+        const f = fixture({ claimPages });
+        yield* Effect.gen(function* () {
+          yield* admit(a, identityA);
+          const error = yield* (yield* Gateway.SymphonyBusGateway)
+            .claimContext(a)
+            .pipe(Effect.flip);
+          assert.equal(error.code, "unavailable");
+          assert.equal(f.closes(), 1);
+        }).pipe(Effect.provide(f.layer));
+      }
+    }),
+);
+
+it.effect("P2-CLAIM-02 refuses next cursors that skip matching history", () =>
+  Effect.gen(function* () {
+    const pages = [
+      [claimPage([ownClaim], 3, 3)],
+      [claimPage([ownClaim], 3, 4, true), claimPage([{ ...ownClaim, seq: 4 }], 4, 4)],
+      [claimPage([], 0, 2)],
+      [claimPage([], 1, 2, true), claimPage([], 2, 2)],
+    ];
+    for (const claimPages of pages) {
+      const f = fixture({ claimPages });
+      yield* Effect.gen(function* () {
+        yield* admit(a, identityA);
+        const error = yield* (yield* Gateway.SymphonyBusGateway).claimContext(a).pipe(Effect.flip);
+        assert.equal(error.code, "unavailable");
+        assert.equal(f.closes(), 1);
+      }).pipe(Effect.provide(f.layer));
+    }
+  }),
+);
+
+it.effect("P2-CLAIM-03 rejects malformed issue references before ownership projection", () => {
+  const f = fixture({
+    claimPages: [
+      claimPage(
+        [{ ...ownClaim, data: { claim: { ...ownClaim.data.claim, issues: ["not-an-issue"] } } }],
+        1,
+        1,
+      ),
+    ],
+  });
+  return Effect.gen(function* () {
+    yield* admit(a, identityA);
+    const error = yield* (yield* Gateway.SymphonyBusGateway).claimContext(a).pipe(Effect.flip);
+    assert.equal(error.code, "unavailable");
+    assert.equal(f.closes(), 1);
+  }).pipe(Effect.provide(f.layer));
+});
+
+it.effect("accepts complete filtered claim history and pruning only already-read events", () =>
+  Effect.gen(function* () {
+    const supportedIssues = [
+      "#7",
+      "7",
+      "github:7",
+      "github-7",
+      "merge-pr-105",
+      "https://github.com/example/repo/pull/7#discussion",
+    ];
+    const valid = {
+      ...ownClaim,
+      data: { claim: { ...ownClaim.data.claim, issues: supportedIssues } },
+    };
+    const scenarios = [
+      [claimPage([], 0, 0)],
+      [claimPage([], 3, 3)],
+      [claimPage([valid], 1, 3)],
+      [
+        claimPage([valid], 1, 3, true),
+        { ...claimPage([{ ...ownClaim, seq: 2 }], 2, 3), oldest_seq: 2 },
+      ],
+      [claimPage([valid], 1, 3, true), { ...claimPage([], 3, 3), oldest_seq: 2 }],
+    ];
+    for (const claimPages of scenarios) {
+      const f = fixture({ claimPages });
+      yield* Effect.gen(function* () {
+        yield* admit(a, identityA);
+        const context = yield* (yield* Gateway.SymphonyBusGateway).claimContext(a);
+        assert.ok(context);
+        assert.equal(context.target, identityA);
+        assert.equal(f.closes(), 1);
+      }).pipe(Effect.provide(f.layer));
+    }
+  }),
+);
