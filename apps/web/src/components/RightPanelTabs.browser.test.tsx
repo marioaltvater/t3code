@@ -78,7 +78,7 @@ it("keeps pinning discoverable on an empty tab, then pins and unpins its loaded 
   await userEvent.click(screen.getByRole("button", { name: "Browser", exact: true }), {
     button: "right",
   });
-  await expect.element(page.getByRole("button", { name: "Pin page to thread" })).toBeDisabled();
+  await expect.element(page.getByRole("menuitem", { name: "Pin page to thread" })).toBeDisabled();
   await userEvent.keyboard("{Escape}");
 
   const snapshot: PreviewSessionSnapshot = {
@@ -100,13 +100,13 @@ it("keeps pinning discoverable on an empty tab, then pins and unpins its loaded 
   await userEvent.click(screen.getByRole("button", { name: "Docs", exact: true }), {
     button: "right",
   });
-  await userEvent.click(page.getByRole("button", { name: "Pin page to thread" }));
+  await userEvent.click(page.getByRole("menuitem", { name: "Pin page to thread" }));
   expect(usePinnedBrowserPagesStore.getState().byThreadKey[scopedThreadKey(ref)]).toEqual([
     { url: "https://example.com/docs", title: "Docs", profileId: DEFAULT_BROWSER_PROFILE_ID },
   ]);
   await userEvent.click(screen.getByRole("button", { name: "Docs", exact: true }), {
     button: "right",
   });
-  await userEvent.click(page.getByRole("button", { name: "Unpin page from thread" }));
+  await userEvent.click(page.getByRole("menuitem", { name: "Unpin page from thread" }));
   expect(usePinnedBrowserPagesStore.getState().byThreadKey[scopedThreadKey(ref)]).toBeUndefined();
 });
