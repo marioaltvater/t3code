@@ -44,11 +44,11 @@ export function cliArchiveFileName(version: string, platformKey: CliArchivePlatf
   return `t3-${version}-${platformKey}.${platformKey.startsWith("win32") ? "zip" : "tar.gz"}`;
 }
 
-const releaseBase = (version: string) =>
+export const cliReleaseBase = (version: string) =>
   `https://github.com/${isPersonalRelease(version) ? PERSONAL_RELEASE_REPOSITORY : CLI_RELEASE_REPOSITORY}/releases/download`;
 
 export function cliReleaseDownloadBaseUrl(version: string, baseUrl?: string): string {
-  return `${(baseUrl?.trim() || releaseBase(version)).replace(/\/+$/, "")}/v${version}`;
+  return `${(baseUrl?.trim() || cliReleaseBase(version)).replace(/\/+$/, "")}/v${version}`;
 }
 
 /** `segments` added to `baseUrl`'s path, keeping its query, such as a signed mirror URL's token. */
@@ -60,7 +60,7 @@ export function releaseAssetUrl(baseUrl: string, ...segments: ReadonlyArray<stri
 
 /** A file of release `version`, from `baseUrl` laid out as GitHub's release downloads. */
 export function cliReleaseAssetUrl(version: string, fileName: string, baseUrl?: string): string {
-  return releaseAssetUrl(baseUrl?.trim() || releaseBase(version), `v${version}`, fileName);
+  return releaseAssetUrl(baseUrl?.trim() || cliReleaseBase(version), `v${version}`, fileName);
 }
 
 export function parseChecksums(text: string): ReadonlyMap<string, string> {

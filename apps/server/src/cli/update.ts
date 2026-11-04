@@ -3,6 +3,7 @@ import {
   CLI_RELEASE_BASE_URL_ENV,
   CLI_RELEASE_CHANNELS,
   cliReleaseIndexPageUrl,
+  cliReleaseBase,
   isPersonalRelease,
   cliReleaseChannelOf,
   newestCliReleaseVersion,
@@ -504,7 +505,10 @@ export const runUpdate = Effect.fn("cli.update.run")(function* (input: {
     httpClient,
     platform,
     arch,
-    releaseBaseUrl: mirror?.feedUrl ?? (environment[CLI_RELEASE_BASE_URL_ENV]?.trim() || undefined),
+    releaseBaseUrl:
+      mirror?.feedUrl ??
+      (environment[CLI_RELEASE_BASE_URL_ENV]?.trim() ||
+        (isPersonalRelease(currentVersion) ? cliReleaseBase(currentVersion) : undefined)),
     requirePublishedRelease: mirror !== undefined,
     validate: (paths) =>
       runner

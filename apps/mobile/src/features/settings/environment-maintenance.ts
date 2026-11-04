@@ -9,6 +9,7 @@ import {
   CLI_RELEASES_PAGE_URL,
   cliReleaseChannelOf,
   cliReleaseIndexPageUrl,
+  isPersonalRelease,
   newestCliReleaseVersion,
 } from "@t3tools/shared/cliRelease";
 import { compareSemverVersions } from "@t3tools/shared/semver";
@@ -61,6 +62,21 @@ async function fetchReleases(url: string, accept: string, signal: AbortSignal) {
 
 export async function findEnvironmentUpdate(currentVersion: string, signal: AbortSignal) {
   const channel = cliReleaseChannelOf(currentVersion);
+  if (isPersonalRelease(currentVersion)) {
+    for (let page = 1; page <= 10; page++) {
+      const response = await fetchReleases(
+        cliReleaseIndexPageUrl(page, currentVersion),
+        "application/vnd.github+json",
+        signal,
+      );
+      const releases = decodeReleases(await response.json());
+      const version = newestCliReleaseVersion(releases, channel, true);
+      if (version !== undefined)
+        return compareSemverVersions(version, currentVersion) > 0 ? version : null;
+      if (releases.length < 100) break;
+    }
+    throw new Error("No personal release was found.");
+  }
   // Public release pages avoid the anonymous API quota shared by devices on the same network.
   const response = await fetchReleases(
     channel === "stable" ? `${CLI_RELEASES_PAGE_URL}/latest` : `${CLI_RELEASES_PAGE_URL}.atom`,
