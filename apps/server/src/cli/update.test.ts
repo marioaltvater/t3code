@@ -45,6 +45,25 @@ const unrelatedLsof = ProcessRunner.ProcessRunner.of({
 
 afterEach(() => vi.restoreAllMocks());
 
+it.effect("finds personal server releases on the fork", () =>
+  Effect.gen(function* () {
+    const httpClient = HttpClient.make((request) => {
+      assert.equal(new URL(request.url).pathname, "/repos/marioaltvater/t3code/releases");
+      return Effect.succeed(
+        HttpClientResponse.fromWeb(
+          request,
+          Response.json([{ tag_name: "v0.1.8" }, { tag_name: "v0.1.7-personal.2026110503" }]),
+        ),
+      );
+    });
+    const version = yield* resolveNewestVersion("stable", "0.1.7-personal.2026110502").pipe(
+      Effect.provideService(HostProcess.Environment, {}),
+      Effect.provideService(HttpClient.HttpClient, httpClient),
+    );
+    assert.equal(version, "0.1.7-personal.2026110503");
+  }),
+);
+
 it.effect("authenticates each release page until the requested channel is found", () =>
   Effect.gen(function* () {
     const pages: string[] = [];

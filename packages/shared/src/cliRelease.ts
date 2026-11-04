@@ -4,6 +4,9 @@ import * as Schema from "effect/Schema";
 import { compareSemverVersions } from "./semver.ts";
 
 const CLI_RELEASE_REPOSITORY = "pingdotgg/t3code";
+const PERSONAL_RELEASE_REPOSITORY = "marioaltvater/t3code";
+export const isPersonalRelease = (version: string): boolean =>
+  /^\d+\.\d+\.\d+-personal\.[0-9A-Za-z.-]+$/.test(version);
 export const CLI_RELEASES_PAGE_URL = `https://github.com/${CLI_RELEASE_REPOSITORY}/releases`;
 export const CLI_RELEASE_CHECKSUMS_FILE = "SHA256SUMS";
 export const CLI_RELEASE_BASE_URL_ENV = "T3CODE_RELEASE_BASE_URL";
@@ -41,13 +44,11 @@ export function cliArchiveFileName(version: string, platformKey: CliArchivePlatf
   return `t3-${version}-${platformKey}.${platformKey.startsWith("win32") ? "zip" : "tar.gz"}`;
 }
 
-const CLI_RELEASE_DEFAULT_BASE_URL = `https://github.com/${CLI_RELEASE_REPOSITORY}/releases/download`;
+const releaseBase = (version: string) =>
+  `https://github.com/${isPersonalRelease(version) ? PERSONAL_RELEASE_REPOSITORY : CLI_RELEASE_REPOSITORY}/releases/download`;
 
-export function cliReleaseDownloadBaseUrl(
-  version: string,
-  baseUrl: string | undefined = CLI_RELEASE_DEFAULT_BASE_URL,
-): string {
-  return `${(baseUrl?.trim() || CLI_RELEASE_DEFAULT_BASE_URL).replace(/\/+$/, "")}/v${version}`;
+export function cliReleaseDownloadBaseUrl(version: string, baseUrl?: string): string {
+  return `${(baseUrl?.trim() || releaseBase(version)).replace(/\/+$/, "")}/v${version}`;
 }
 
 /** `segments` added to `baseUrl`'s path, keeping its query, such as a signed mirror URL's token. */
@@ -58,12 +59,8 @@ export function releaseAssetUrl(baseUrl: string, ...segments: ReadonlyArray<stri
 }
 
 /** A file of release `version`, from `baseUrl` laid out as GitHub's release downloads. */
-export function cliReleaseAssetUrl(
-  version: string,
-  fileName: string,
-  baseUrl: string | undefined = CLI_RELEASE_DEFAULT_BASE_URL,
-): string {
-  return releaseAssetUrl(baseUrl?.trim() || CLI_RELEASE_DEFAULT_BASE_URL, `v${version}`, fileName);
+export function cliReleaseAssetUrl(version: string, fileName: string, baseUrl?: string): string {
+  return releaseAssetUrl(baseUrl?.trim() || releaseBase(version), `v${version}`, fileName);
 }
 
 export function parseChecksums(text: string): ReadonlyMap<string, string> {
@@ -131,8 +128,11 @@ export function acceptsTrackSwitchRelease(
 }
 
 /** Page until the channel matches; nightlies can push preview/stable releases past the first page. */
-export function cliReleaseIndexPageUrl(page: number): string {
-  return `https://api.github.com/repos/${CLI_RELEASE_REPOSITORY}/releases?per_page=100&page=${page}`;
+export function cliReleaseIndexPageUrl(page: number, currentVersion = ""): string {
+  const repository = isPersonalRelease(currentVersion)
+    ? PERSONAL_RELEASE_REPOSITORY
+    : CLI_RELEASE_REPOSITORY;
+  return `https://api.github.com/repos/${repository}/releases?per_page=100&page=${page}`;
 }
 
 /** Draft assets are not downloadable. */
@@ -142,11 +142,13 @@ export function newestCliReleaseVersion(
     readonly draft?: boolean | undefined;
   }>,
   channel: CliReleaseChannel,
+  personal = false,
 ): string | undefined {
   for (const release of releases) {
     if (release.draft) continue;
     const version = /^v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/.exec(release.tag_name)?.[1];
     if (version === undefined) continue;
+    if (personal && !isPersonalRelease(version)) continue;
     if (cliReleaseChannelOf(version) === channel) return version;
   }
   return undefined;
