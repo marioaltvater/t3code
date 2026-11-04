@@ -4,11 +4,21 @@ import {
   cliArchiveTarCommand,
   cliReleaseAssetUrl,
   cliReleaseIndexPageUrl,
+  personalReleaseBaseOverride,
   newestCliReleaseVersion,
   parseChecksums,
 } from "./cliRelease.ts";
 
 describe("cliRelease", () => {
+  it("keeps personal builds on the fork when the configured release source is blank", () => {
+    expect(personalReleaseBaseOverride("0.1.7-personal.2026110502", "   ")).toBe(
+      "https://github.com/marioaltvater/t3code/releases/download",
+    );
+    expect(
+      personalReleaseBaseOverride("0.1.7-personal.2026110502", " https://mirror.example "),
+    ).toBe("https://mirror.example");
+    expect(personalReleaseBaseOverride("0.1.7", " ")).toBeUndefined();
+  });
   it("uses the personal fork for personal server builds", () => {
     expect(cliReleaseAssetUrl("0.1.7-personal.2026110502", "SHA256SUMS")).toBe(
       "https://github.com/marioaltvater/t3code/releases/download/v0.1.7-personal.2026110502/SHA256SUMS",

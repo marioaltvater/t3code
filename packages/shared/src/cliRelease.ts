@@ -44,8 +44,12 @@ export function cliArchiveFileName(version: string, platformKey: CliArchivePlatf
   return `t3-${version}-${platformKey}.${platformKey.startsWith("win32") ? "zip" : "tar.gz"}`;
 }
 
-export const cliReleaseBase = (version: string) =>
+const cliReleaseBase = (version: string) =>
   `https://github.com/${isPersonalRelease(version) ? PERSONAL_RELEASE_REPOSITORY : CLI_RELEASE_REPOSITORY}/releases/download`;
+
+export const personalReleaseBaseOverride = (currentVersion: string, configured?: string) =>
+  configured?.trim() ||
+  (isPersonalRelease(currentVersion) ? cliReleaseBase(currentVersion) : undefined);
 
 export function cliReleaseDownloadBaseUrl(version: string, baseUrl?: string): string {
   return `${(baseUrl?.trim() || cliReleaseBase(version)).replace(/\/+$/, "")}/v${version}`;

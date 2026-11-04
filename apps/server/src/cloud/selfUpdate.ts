@@ -23,9 +23,8 @@ import { HttpClient } from "effect/http";
 import {
   CLI_RELEASE_BASE_URL_ENV,
   cliReleaseChannelOf,
-  cliReleaseBase,
   crossesReleaseTrack,
-  isPersonalRelease,
+  personalReleaseBaseOverride,
 } from "@t3tools/shared/cliRelease";
 
 import packageJson from "../../package.json" with { type: "json" };
@@ -138,8 +137,10 @@ export const make = Effect.fn("cloud.server_self_update.make")(function* () {
   const mirror = managedUpdateMirror(policy.document);
   const releaseBaseUrl =
     mirror?.feedUrl ??
-    Option.getOrUndefined(yield* Config.String(CLI_RELEASE_BASE_URL_ENV).pipe(Config.option)) ??
-    (isPersonalRelease(packageJson.version) ? cliReleaseBase(packageJson.version) : undefined);
+    personalReleaseBaseOverride(
+      packageJson.version,
+      Option.getOrUndefined(yield* Config.String(CLI_RELEASE_BASE_URL_ENV).pipe(Config.option)),
+    );
   const inFlight = yield* Ref.make(false);
 
   yield* pruneRuntimesOnStart({ baseDir: serverConfig.baseDir, managed: launcher.managed }).pipe(
