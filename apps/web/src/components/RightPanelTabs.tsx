@@ -1211,10 +1211,11 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       (usePinnedBrowserPagesStore.getState().byThreadKey[scopedThreadKey(pinRef)] ?? []).some(
         (page) => samePinnedPage(page, pinPage),
       );
-    if (pinPage && pinRef) {
+    if (surface.kind === "preview") {
       items.push({
         id: "toggle-pin-page",
         label: pagePinned ? "Unpin page from thread" : "Pin page to thread",
+        disabled: !pinPage || !pinRef,
       });
     }
     if (surface.kind === "preview") {

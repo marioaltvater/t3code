@@ -218,6 +218,15 @@ function setup() {
 }
 
 describe("PreviewView", () => {
+  it("shows pinning as unavailable until the browser has a page", async () => {
+    setup();
+    mocks.showEmptyState = true;
+    await using _screen = await render(view());
+    await userEvent.click(page.getByRole("button", { name: "Preview menu" }));
+    await expect.element(page.getByRole("menuitem", { name: "Pin page to thread" })).toBeDisabled();
+    expect(usePinnedBrowserPagesStore.getState().byThreadKey).toEqual({});
+  });
+
   it("pins the current page from More and offers to unpin it on the next visit", async () => {
     setup();
     await using _screen = await render(view());

@@ -18,7 +18,7 @@ A link that launches T3 Code waits until the app has connected to its environmen
 
 ## Keep pages with a thread
 
-Right-click a browser tab and choose **Pin page to thread**, or use the browser's More menu.
+Open a page, then right-click its browser tab and choose **Pin page to thread**, or use the browser's More menu.
 The page appears under **Pinned pages** in the thread details panel. Select it to return to an
 open tab or reopen it using its saved browser profile. Closing a tab keeps its pin; use
 **Unpin** to remove it.

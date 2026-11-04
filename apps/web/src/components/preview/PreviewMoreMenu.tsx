@@ -85,11 +85,9 @@ export function PreviewMoreMenu({
     <Menu>
       <MenuTriggerButton />
       <MenuPopup align="end" sideOffset={6}>
-        {pin ? (
-          <MenuItem onClick={pin.onToggle}>
-            {pin.pinned ? "Unpin page from thread" : "Pin page to thread"}
-          </MenuItem>
-        ) : null}
+        <MenuItem onClick={pin?.onToggle} disabled={!pin}>
+          {pin?.pinned ? "Unpin page from thread" : "Pin page to thread"}
+        </MenuItem>
         <MenuItem onClick={actions.hardReload} disabled={disabled}>
           Hard reload
         </MenuItem>
