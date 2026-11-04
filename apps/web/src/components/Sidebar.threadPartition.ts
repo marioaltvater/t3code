@@ -10,6 +10,7 @@ import {
 import { sortSettledThreads } from "@t3tools/client-runtime/state/thread-sort";
 import {
   applySidebarThreadDrop,
+  belongsInSidebarWorkingShelf,
   filterSidebarV2VisibleThreads,
   firstValidTimestampMs,
   orderItemsByPreferredIds,
@@ -43,6 +44,7 @@ export interface SidebarThreadPartitionInput {
   readonly connectedEnvironmentIds?: readonly EnvironmentId[];
   readonly optimisticDrop: SidebarOptimisticDrop | null;
   readonly workingShelfEnabled: boolean;
+  readonly disconnectedEnvironmentIds?: ReadonlySet<EnvironmentId>;
   // Snooze wakes and the queued-turn grace depend on the clock, so the minute
   // tick and the precise snooze-wake tick are inputs: a new key repartitions.
   readonly clockKey?: string;
@@ -60,8 +62,11 @@ export function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
   const active: EnvironmentThreadShell[] = [];
   const working: EnvironmentThreadShell[] = [];
   const inbox = (thread: EnvironmentThreadShell, manuallyMoved = false) =>
-    workingShelfEnabled &&
-    (manuallyMoved ? isSidebarThreadWorking(thread) : inboxObservation.isWorking(thread))
+    belongsInSidebarWorkingShelf(thread, {
+      enabled: workingShelfEnabled,
+      disconnectedEnvironmentIds: input.disconnectedEnvironmentIds ?? new Set(),
+      isWorking: manuallyMoved ? isSidebarThreadWorking : inboxObservation.isWorking,
+    })
       ? working
       : active;
   const snoozed: EnvironmentThreadShell[] = [];

@@ -1,6 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
 import { useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { isElectron } from "../../env";
 import { isCommandPaletteOpen } from "../../commandPaletteBus";
@@ -14,7 +14,10 @@ import { environmentServerConfigsAtom, primaryServerKeybindingsAtom } from "../.
 import { buildThreadRouteParams } from "../../threadRoutes";
 import { useThreadSelectionStore } from "../../threadSelectionStore";
 import { useUiStateStore } from "../../uiStateStore";
-import { partitionSidebarThreads } from "../Sidebar.threadPartition";
+import { inboxReturns, partitionSidebarThreads } from "../Sidebar.threadPartition";
+import { isSidebarEnvironmentDisconnected } from "../Sidebar.logic";
+import { useEnvironmentConnectionSummaries } from "../../state/environments";
+import { liveShellEnvironmentIdsAtom } from "../../state/shell";
 import { ControllerLightingCoordinator } from "./ControllerLightingCoordinator";
 import { controllerSnoozeWakeDelay } from "./ControllerLightingCoordinator.logic";
 import { useControllerUiSnapshot } from "./controllerUiState";
@@ -28,6 +31,22 @@ export function ControllerThreadCoordinator() {
   const threads = useThreadShells();
   const configs = useAtomValue(environmentServerConfigsAtom);
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
+  const connections = useEnvironmentConnectionSummaries();
+  const liveShellEnvironmentIds = useAtomValue(liveShellEnvironmentIdsAtom);
+  const disconnectedEnvironmentIds = new Set(
+    connections
+      .filter((connection) =>
+        isSidebarEnvironmentDisconnected(
+          connection.connectionState,
+          liveShellEnvironmentIds.has(connection.environmentId),
+        ),
+      )
+      .map((connection) => connection.environmentId),
+  );
+  const inboxReturnsVersion = useSyncExternalStore(
+    inboxReturns.subscribe,
+    inboxReturns.getSnapshot,
+  );
   const workingShelfEnabled = useClientSettings((settings) => settings.sidebarWorkingShelfEnabled);
   const pinnedSections = useUiStateStore((state) => state.sidebarPinnedSections);
   const ui = useControllerUiSnapshot();
@@ -50,7 +69,8 @@ export function ControllerThreadCoordinator() {
         serverConfigs: configs,
         optimisticDrop: null,
         workingShelfEnabled,
-        clockKey: String(wakeTime),
+        disconnectedEnvironmentIds,
+        clockKey: `${wakeTime}:${inboxReturnsVersion}`,
       }),
       pinnedSections,
     });

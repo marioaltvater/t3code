@@ -441,38 +441,25 @@ describe("getComposerReasoningStep", () => {
     ).toStrictEqual(selections(["thinking_level", "high"]));
   });
 
-  it("adds and strips the Ultrathink prefix while the caret stays on the same character", () => {
-    for (const { prompt, modelOptions, direction, expected } of [
-      {
-        prompt: "  Fix the bug \n",
-        modelOptions: selections(["effort", "high"]),
-        direction: 1,
-        expected: { prompt: "Ultrathink:\nFix the bug", cursor: 20 },
-      },
-      {
-        prompt: "Ultrathink:\n  Fix the bug",
-        modelOptions: selections(["effort", "medium"]),
-        direction: -1,
-        expected: {
-          prompt: "Fix the bug",
-          cursor: 8,
-          modelOptions: selections(["effort", "high"]),
-        },
-      },
-    ] as const) {
+  it("strips a typed Ultrathink prefix while the caret stays on the same character", () => {
+    for (const prompt of ["Ultrathink:\n  Fix the bug", "Ultrathink: Fix the bug"]) {
       const result = step({
         ...CLAUDE,
         prompt,
         cursor: prompt.indexOf("bug"),
-        modelOptions,
-        direction,
+        modelOptions: selections(["effort", "medium"]),
+        direction: -1,
       });
-      expect(result).toStrictEqual(expected);
+      expect(result).toStrictEqual({
+        prompt: "Fix the bug",
+        cursor: 8,
+        modelOptions: selections(["effort", "high"]),
+      });
       expect(result?.prompt.slice(result.cursor)).toMatch(/^bug/);
     }
     expect(
-      step({ ...CLAUDE, prompt: "   Fix", modelOptions: selections(["effort", "high"]) })?.cursor,
-    ).toBe("Ultrathink:\n".length);
+      step({ ...CLAUDE, prompt: "   Fix", modelOptions: selections(["effort", "high"]) }),
+    ).toBeNull();
   });
 
   it("skips Ultrathink for slash commands and does nothing when the prompt locks it", () => {

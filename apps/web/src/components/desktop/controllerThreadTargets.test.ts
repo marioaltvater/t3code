@@ -24,6 +24,7 @@ function partition(
   threads: ReturnType<typeof thread>[],
   options: {
     workingShelfEnabled?: boolean;
+    disconnectedEnvironmentIds?: ReadonlySet<EnvironmentId>;
     scopedProjectKeys?: ReadonlySet<string>;
     now?: string;
   } = {},
@@ -47,6 +48,7 @@ function partition(
     optimisticDrop: null,
     workingShelfEnabled: options.workingShelfEnabled ?? false,
     now: options.now ?? now,
+    disconnectedEnvironmentIds: options.disconnectedEnvironmentIds ?? new Set(),
   });
 }
 
@@ -112,6 +114,12 @@ it("follows Working shelf eligibility and return order across sidebar and fallba
   expect(
     partition([working, idle], { workingShelfEnabled: true }).activeThreads.map((t) => t.id),
   ).toEqual([idle.id]);
+  const disconnected = partition([working, idle], {
+    workingShelfEnabled: true,
+    disconnectedEnvironmentIds: new Set([environmentId]),
+  });
+  expect(disconnected.activeThreads.map((thread) => thread.id)).toEqual([idle.id, working.id]);
+  expect(disconnected.workingThreads).toEqual([]);
   const returned = { ...working, runtime: null };
   const held = partition([returned, idle], { workingShelfEnabled: true });
   expect(held.activeThreads.map((t) => t.id)).toEqual([idle.id]);

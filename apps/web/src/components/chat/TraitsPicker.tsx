@@ -4,7 +4,7 @@ import {
   getTraitSelectChange,
   replaceDescriptorCurrentValue,
   selectableProviderOptionChoices,
-  REASONING_SELECT_DESCRIPTOR_IDS,
+  isReasoningSelect,
 } from "@t3tools/client-runtime/model-traits";
 import {
   type ModelSelection,
@@ -17,7 +17,6 @@ import {
 } from "@t3tools/contracts";
 import type { EffortDisplay } from "@t3tools/contracts/settings";
 import {
-  applyClaudePromptEffortPrefix,
   buildProviderOptionSelectionsFromDescriptors,
   getProviderOptionCurrentLabel,
   getProviderOptionDescriptors,
@@ -44,8 +43,6 @@ import { ComposerControl, ComposerControlIcon, type ComposerControlSize } from "
 import { focusRequestedPermission, useComposerMenuProps } from "./composerEventScope";
 import { useComposerMenuState } from "./useComposerMenuState";
 import { EffortGlyph, resolveEffortGlyph } from "./EffortGlyph";
-
-const ULTRATHINK_PROMPT_PREFIX = "Ultrathink:\n";
 
 type ProviderOptions = ReadonlyArray<ProviderOptionSelection>;
 
@@ -260,9 +257,8 @@ export function getReasoningTraitStep(input: {
     input.planModeEnabled,
   );
   if (selected.modelIsUnavailable || selected.ultrathinkInBodyText) return null;
-  const descriptor = selected.selectDescriptors.find((entry) =>
-    REASONING_SELECT_DESCRIPTOR_IDS.has(entry.id),
-  );
+  const descriptor = selected.selectDescriptors.find(isReasoningSelect);
+  const choices = descriptor ? selectableProviderOptionChoices(descriptor) : [];
   if (!descriptor || descriptor.options.length < 2) return null;
   const isPrimary = descriptor.id === selected.primarySelectDescriptor?.id;
   const current =
@@ -278,25 +274,9 @@ export function getReasoningTraitStep(input: {
     [current, getDescriptorStringValue(descriptor)]
       .map((value) => ordered.findIndex((option) => option.id === value))
       .find((index) => index >= 0) ?? -1;
-  for (const option of ordered.slice(position + 1)) {
-    const change = descriptor.promptInjectedValues?.includes(option.id)
-      ? {
-          prompt:
-            input.prompt.trim().length === 0
-              ? ULTRATHINK_PROMPT_PREFIX
-              : applyClaudePromptEffortPrefix(input.prompt, "ultrathink"),
-        }
-      : getTraitSelectChange(selected, descriptor, input.prompt, option.id);
-    if (!change) return null;
-    if ("modelOptions" in change) {
-      return change.modelOptions
-        ? { prompt: change.prompt, modelOptions: change.modelOptions }
-        : null;
-    }
-    // A slash command refuses the Ultrathink prefix, so skip that level.
-    if (change.prompt.startsWith(ULTRATHINK_PROMPT_PREFIX)) return change;
-  }
-  return null;
+  const next = ordered.slice(position + 1).find((option) => choices.includes(option));
+  const change = next ? getTraitSelectChange(selected, descriptor, input.prompt, next.id) : null;
+  return change?.modelOptions ? { prompt: change.prompt, modelOptions: change.modelOptions } : null;
 }
 
 export function getReasoningTraitSnapshot(input: {
@@ -318,9 +298,7 @@ export function getReasoningTraitSnapshot(input: {
     true,
     input.planModeEnabled,
   );
-  const descriptor = selected.selectDescriptors.find((entry) =>
-    REASONING_SELECT_DESCRIPTOR_IDS.has(entry.id),
-  );
+  const descriptor = selected.selectDescriptors.find(isReasoningSelect);
   if (!descriptor || selected.modelIsUnavailable || selected.ultrathinkInBodyText) {
     return { effortIndex: null, effortCount: 0, canLowerEffort: false, canRaiseEffort: false };
   }
@@ -337,16 +315,19 @@ export function getReasoningTraitSnapshot(input: {
           },
           input.reportedModelSelection,
         );
-  let effortIndex = descriptor.options.findIndex((option) => option.id === value);
+  const choices = descriptor.options.filter(
+    (option) => option.id === value || !descriptor.promptInjectedValues?.includes(option.id),
+  );
+  let effortIndex = choices.findIndex((option) => option.id === value);
   if (effortIndex < 0) {
-    effortIndex = descriptor.options.findIndex((option) => option.isDefault);
+    effortIndex = choices.findIndex((option) => option.isDefault);
   }
   if (effortIndex < 0) {
     return { effortIndex: null, effortCount: 0, canLowerEffort: false, canRaiseEffort: false };
   }
   return {
     effortIndex,
-    effortCount: descriptor.options.length,
+    effortCount: choices.length,
     canLowerEffort: getReasoningTraitStep({ ...input, direction: -1 }) !== null,
     canRaiseEffort: getReasoningTraitStep({ ...input, direction: 1 }) !== null,
   };
@@ -660,9 +641,7 @@ export const TraitsPicker = memo(function TraitsPicker({
     ? [`Effort: ${triggerLabel}`, speedLabel, extraMenuHint].filter(Boolean).join(" · ")
     : triggerLabel;
   const effortGlyph =
-    isComposerOwned &&
-    primarySelectDescriptor &&
-    REASONING_SELECT_DESCRIPTOR_IDS.has(primarySelectDescriptor.id)
+    isComposerOwned && primarySelectDescriptor && isReasoningSelect(primarySelectDescriptor)
       ? resolveEffortGlyph(
           primarySelectDescriptor,
           ultrathinkPromptControlled
