@@ -186,7 +186,7 @@ function ThemeColorPickerPanel({
             <span className="px-1 text-3xs font-semibold uppercase tracking-widest text-muted-foreground">
               HEX
             </span>
-            <span className="flex min-w-0 items-center gap-2 rounded-lg border border-input bg-background px-2 focus-within:border-ring">
+            <span className="flex min-w-0 items-center gap-2 rounded-lg border border-input bg-background px-2 has-focus-visible:border-ring">
               <span
                 className="size-3.5 shrink-0 rounded-full"
                 style={{ backgroundColor: currentColor }}
@@ -212,7 +212,7 @@ function ThemeColorPickerPanel({
             <span className="px-1 text-3xs font-semibold uppercase tracking-widest text-muted-foreground">
               RGB
             </span>
-            <span className="flex min-w-0 items-center rounded-lg border border-input bg-background px-2 focus-within:border-ring">
+            <span className="flex min-w-0 items-center rounded-lg border border-input bg-background px-2 has-focus-visible:border-ring">
               <input
                 aria-label={`${label} picker RGB value`}
                 className="h-8 min-w-0 flex-1 bg-transparent font-mono text-xs text-foreground outline-none"
