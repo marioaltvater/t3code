@@ -5,8 +5,8 @@
 @custom-variant dark (&:is(.dark, .dark *));
 @custom-variant light (&:not(.dark, .dark *));
 @custom-variant keyboard-navigation (&:where([data-keyboard-navigation] *));
-/* Chromium also sets :focus-visible after non-navigation keys, including OS shortcuts. */
-@custom-variant focus-visible (&:focus-visible:where([data-keyboard-navigation] *));
+/* Forwarded desktop navigation has no DOM key event to update Chromium's focus heuristic. */
+@custom-variant focus-visible (&:focus:where([data-keyboard-navigation] *));
 /* Window Controls Overlay: active when Electron exposes native titlebar control geometry. */
 @custom-variant wco (&:is(.wco, .wco *));
 
@@ -723,7 +723,10 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   ::after {
     outline-offset: -2px;
   }
-  :root:not([data-keyboard-navigation]) :focus-visible {
+  :where([data-keyboard-navigation] :focus) {
+    outline: auto;
+  }
+  :root:not([data-keyboard-navigation]) :focus {
     outline: none;
   }
   :where([data-slot="menu-popup"], [data-slot="select-popup"], [data-slot="popover-popup"]):focus,
@@ -1047,17 +1050,17 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     transform: scale(0.94);
   }
 
-  .settings-slider:focus-visible {
+  .settings-slider:focus {
     outline: none;
   }
 
-  [data-keyboard-navigation] .settings-slider:focus-visible::-webkit-slider-thumb {
+  [data-keyboard-navigation] .settings-slider:focus::-webkit-slider-thumb {
     box-shadow:
       inset 0 0 0 1px var(--background),
       inset 0 0 0 3px var(--ring);
   }
 
-  [data-keyboard-navigation] .settings-slider:focus-visible::-moz-range-thumb {
+  [data-keyboard-navigation] .settings-slider:focus::-moz-range-thumb {
     box-shadow:
       inset 0 0 0 1px var(--background),
       inset 0 0 0 3px var(--ring);
@@ -2638,7 +2641,7 @@ html[data-theme-id="codex"] [data-composer-skill] {
 }
 
 /* A workspace area with no control of its own takes F6 focus itself; keep that visible. */
-[data-workspace-area]:focus-visible {
+[data-keyboard-navigation] [data-workspace-area]:focus {
   outline: 2px solid var(--ring);
   outline-offset: -2px;
 }

@@ -7,6 +7,7 @@ import { Input } from "../components/ui/input";
 import { InputGroup, InputGroupInput } from "../components/ui/input-group";
 import { NumberField, NumberFieldGroup, NumberFieldInput } from "../components/ui/number-field";
 import { installFocusVisibility } from "./focusVisibility";
+import { createWorkspaceFocusController, workspaceAreaProps } from "./workspaceFocus";
 
 function trackFocusVisibility() {
   return { [Symbol.dispose]: installFocusVisibility(window) };
@@ -199,4 +200,57 @@ it("shows number-field focus only when navigating or adjusting with the keyboard
   expect(getComputedStyle(group).getPropertyValue("--tw-ring-shadow")).not.toBe(pointerShadow);
   await userEvent.keyboard("{Meta}");
   expect(getComputedStyle(group).getPropertyValue("--tw-ring-shadow")).toBe(pointerShadow);
+});
+
+it("keeps workspace outlines limited to keyboard navigation", async () => {
+  using _focusVisibility = trackFocusVisibility();
+  await using screen = await render(
+    <>
+      <section {...workspaceAreaProps("conversation", 1, "Conversation")} tabIndex={0}>
+        Conversation history
+      </section>
+      <button>After conversation</button>
+    </>,
+  );
+  const area = screen.getByRole("region", { name: "Conversation" });
+  await area.click();
+  await userEvent.keyboard("a");
+  expect(getComputedStyle(area.element()).outlineStyle).toBe("none");
+  await userEvent.tab();
+  await userEvent.tab({ shift: true });
+  expect(document.activeElement).toBe(area.element());
+  expect(getComputedStyle(area.element()).outlineStyle).not.toBe("none");
+  await userEvent.keyboard("{Meta}");
+  expect(getComputedStyle(area.element()).outlineStyle).toBe("none");
+});
+
+it.each([
+  ["F6", "{F6}"],
+  ["Ctrl+F6", "{Control>}{F6}{/Control}"],
+  ["forwarded desktop command", ""],
+])("shows focus after workspace navigation through %s", async (_name, key) => {
+  using _focusVisibility = trackFocusVisibility();
+  await using screen = await render(
+    <>
+      <section {...workspaceAreaProps("sidebar", 0, "Sidebar")}>
+        <button>Before</button>
+      </section>
+      <section {...workspaceAreaProps("panel", 1, "Panel")}>
+        <button className="outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
+          Panel action
+        </button>
+      </section>
+    </>,
+  );
+  const controller = createWorkspaceFocusController(document);
+  using _controller = { [Symbol.dispose]: controller.dispose };
+  const before = screen.getByRole("button", { name: "Before" });
+  const after = screen.getByRole("button", { name: "Panel action" });
+  await before.click();
+  if (key) await userEvent.keyboard(key);
+  expect(controller.move(1)).toBe(true);
+  expect(document.activeElement).toBe(after.element());
+  expect(getComputedStyle(after.element()).boxShadow).not.toBe("none");
+  await userEvent.keyboard("{Meta}");
+  expect(getComputedStyle(after.element()).boxShadow).toBe("none");
 });

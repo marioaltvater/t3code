@@ -237,6 +237,7 @@ export function createWorkspaceFocusController(doc: Document) {
           : areas.length - 1
         : (current + direction + areas.length) % areas.length;
     const area = areas[index]!;
+    doc.documentElement.toggleAttribute("data-keyboard-navigation", true);
     return focusArea(area);
   };
 
