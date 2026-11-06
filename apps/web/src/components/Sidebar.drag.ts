@@ -68,7 +68,7 @@ export function positionSidebarDragCard(
   node: HTMLElement,
   anchor: { pointerY: number; grabFraction: number; bounds: { top: number; height: number } },
 ) {
-  const card = node.querySelector<HTMLElement>('[role="button"]');
+  const card = node.querySelector<HTMLElement>("[data-sidebar-row]");
   if (!card) return;
   // Fixed cards use viewport coordinates, independently of dnd-kit's ancestor
   // scroll compensation, which changes when the pointer enters another section.

@@ -25,7 +25,7 @@ function progress(animation: Animation) {
 
 function rowVisual(node: HTMLElement) {
   return node.dataset.threadItem
-    ? (node.querySelector<HTMLElement>('[role="button"]') ?? node)
+    ? (node.querySelector<HTMLElement>("[data-sidebar-row]") ?? node)
     : node.firstElementChild instanceof HTMLElement
       ? node.firstElementChild
       : node;

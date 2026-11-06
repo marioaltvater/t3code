@@ -12,7 +12,7 @@ import {
   type AuthSessionId,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -62,7 +62,7 @@ const make = Effect.gen(function* () {
   const environmentId = yield* (yield* ServerEnvironment.ServerEnvironmentIdentity)
     .getEnvironmentId;
   const threads = yield* ThreadManagement.ThreadManagementService;
-  const crypto = yield* Crypto.Crypto;
+  const random = yield* SecureRandom.SecureRandom;
   const connections = new Map<string, Connection>();
   const pending = new Map<string, Pending>();
   const checkEnvironment = (id: SidebarTarget["environmentId"]) =>
@@ -92,7 +92,7 @@ const make = Effect.gen(function* () {
       | Omit<Extract<SidebarSectionRequest, { type: "assign" }>, "requestId">,
   ) {
     const connection = yield* resolve(target);
-    const requestId = yield* crypto.randomUUIDv4().pipe(Effect.orDie);
+    const requestId = yield* random.uuidV4().pipe(Effect.orDie);
     const result = yield* Deferred.make<SidebarSectionsSnapshot, SidebarSectionError>();
     pending.set(requestId, { connection, mutation: operation.type === "assign", result });
     yield* Queue.offer(connection.queue, {
@@ -121,7 +121,7 @@ const make = Effect.gen(function* () {
     registration: SidebarClientRegistration,
   ) {
     yield* checkEnvironment(registration.environmentId);
-    const connectionId = yield* crypto.randomUUIDv4().pipe(Effect.orDie);
+    const connectionId = yield* random.uuidV4().pipe(Effect.orDie);
     const queue = yield* Queue.unbounded<SidebarSectionEvent>();
     const connection = { identity: { ...registration, connectionId }, sessionId, queue };
     yield* Effect.acquireRelease(
@@ -224,7 +224,7 @@ const make = Effect.gen(function* () {
           type: "thread.pin",
           onlyIfActive: true,
           threadId: input.threadId,
-          commandId: CommandId.make(yield* crypto.randomUUIDv4().pipe(Effect.orDie)),
+          commandId: CommandId.make(yield* random.uuidV4().pipe(Effect.orDie)),
         })
         .pipe(
           Effect.mapError(

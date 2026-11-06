@@ -24,6 +24,7 @@ function partition(
   threads: ReturnType<typeof thread>[],
   options: {
     workingShelfEnabled?: boolean;
+    disconnectedEnvironmentIds?: ReadonlySet<EnvironmentId>;
     scopedProjectKeys?: ReadonlySet<string>;
     now?: string;
   } = {},
@@ -47,6 +48,7 @@ function partition(
     optimisticDrop: null,
     workingShelfEnabled: options.workingShelfEnabled ?? false,
     now: options.now ?? now,
+    disconnectedEnvironmentIds: options.disconnectedEnvironmentIds ?? new Set(),
   });
 }
 
@@ -112,6 +114,12 @@ it("follows Working shelf eligibility and return order across sidebar and fallba
   expect(
     partition([working, idle], { workingShelfEnabled: true }).activeThreads.map((t) => t.id),
   ).toEqual([idle.id]);
+  const disconnected = partition([working, idle], {
+    workingShelfEnabled: true,
+    disconnectedEnvironmentIds: new Set([environmentId]),
+  });
+  expect(disconnected.activeThreads.map((thread) => thread.id)).toEqual([idle.id, working.id]);
+  expect(disconnected.workingThreads).toEqual([]);
   const returned = { ...working, runtime: null };
   const held = partition([returned, idle], { workingShelfEnabled: true });
   expect(held.activeThreads.map((t) => t.id)).toEqual([idle.id]);
@@ -192,4 +200,26 @@ it("keeps missing LED targets dark without shifting later slots or the button se
     0x2e2e2e, 0, 0x55ffaa, 0, 0, 0,
   ]);
   expect(controllerThreadTargetFromCommand("thread.active.3", targets)?.threadId).toBe("third");
+});
+
+it("uses visible project-folder order and excludes collapsed rows from controller slots", () => {
+  const first = thread("first-folder", { projectId: ProjectId.make("first") });
+  const second = thread("second-folder", { projectId: ProjectId.make("second") });
+  const input = {
+    activeThreads: [second, first],
+    pinnedThreads: [],
+    pinnedSections: [],
+    projectFolders: [{ threads: [first] }, { threads: [second] }],
+  };
+  const targets = resolveControllerThreadTargets(input);
+  expect(controllerThreadTargetFromCommand("thread.active.1", targets)?.threadId).toBe(first.id);
+  expect(controllerThreadTargetFromCommand("thread.active.2", targets)?.threadId).toBe(second.id);
+  const collapsed = resolveControllerThreadTargets({
+    ...input,
+    projectFolders: [{ threads: [] }, { threads: [second] }],
+  });
+  expect(collapsed.activeThreads.map((ref) => ref.threadId)).toEqual([second.id]);
+  expect(resolveControllerThreadTargets({ ...input, projectFolders: [] }).activeThreads).toEqual(
+    [],
+  );
 });

@@ -49,6 +49,7 @@ const minimalDesktopFlags = (baseDir: string) => ({
   logWebSocketEvents: Option.none<boolean>(),
   tailscaleServeEnabled: Option.none<boolean>(),
   tailscaleServePort: Option.none<number>(),
+  lan: Option.none<boolean>(),
 });
 
 const encodeDesktopBootstrap = Schema.encodeEffect(Schema.fromJsonString(DesktopBackendBootstrap));
@@ -237,6 +238,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         logWebSocketEvents: Option.none<boolean>(),
         tailscaleServeEnabled: Option.none<boolean>(),
         tailscaleServePort: Option.none<number>(),
+        lan: Option.none<boolean>(),
       };
       const layerConfig = ConfigProvider.layer(
         ConfigProvider.fromEnv({
@@ -299,6 +301,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         logWebSocketEvents: Option.none<boolean>(),
         tailscaleServeEnabled: Option.none<boolean>(),
         tailscaleServePort: Option.none<number>(),
+        lan: Option.none<boolean>(),
       };
       const layerConfig = ConfigProvider.layer(
         ConfigProvider.fromEnv({ env: { T3CODE_DEV_AUTH_TOKEN: secret } }),
@@ -337,6 +340,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           mode: Option.none(),
           port: Option.none(),
           host: Option.none(),
+          lan: Option.none(),
           baseDir: Option.none(),
           cwd: Option.none(),
           devUrl: Option.none(),
@@ -410,6 +414,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           mode: Option.some("web"),
           port: Option.some(8788),
           host: Option.some("127.0.0.1"),
+          lan: Option.none(),
           baseDir: Option.some(baseDir),
           cwd: Option.none(),
           devUrl: Option.some(new URL("http://127.0.0.1:4173")),
@@ -489,6 +494,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           mode: Option.some("web"),
           port: Option.some(8788),
           host: Option.some("127.0.0.1"),
+          lan: Option.none(),
           baseDir: Option.some(baseDir),
           cwd: Option.none(),
           devUrl: Option.some(new URL("http://127.0.0.1:4173")),
@@ -566,6 +572,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           mode: Option.none(),
           port: Option.some(8788),
           host: Option.some("127.0.0.1"),
+          lan: Option.none(),
           baseDir: Option.none(),
           cwd: Option.none(),
           devUrl: Option.some(new URL("http://127.0.0.1:4173")),
@@ -714,6 +721,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           mode: Option.some("desktop"),
           port: Option.some(4888),
           host: Option.none(),
+          lan: Option.none(),
           baseDir: Option.some(baseDir),
           cwd: Option.none(),
           devUrl: Option.none(),
@@ -762,6 +770,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           mode: Option.some("desktop"),
           port: Option.some(4888),
           host: Option.none(),
+          lan: Option.none(),
           baseDir: Option.some(baseDir),
           cwd: Option.none(),
           devUrl: Option.none(),
@@ -802,6 +811,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           mode: Option.some("web"),
           port: Option.some(3773),
           host: Option.none(),
+          lan: Option.none(),
           baseDir: Option.some(baseDir),
           cwd: Option.none(),
           devUrl: Option.none(),
@@ -864,6 +874,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           mode: Option.some("web"),
           port: Option.some(3773),
           host: Option.none(),
+          lan: Option.none(),
           baseDir: Option.some(baseDir),
           cwd: Option.none(),
           devUrl: Option.none(),
@@ -912,7 +923,45 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
     logWebSocketEvents: Option.none<boolean>(),
     tailscaleServeEnabled: Option.none<boolean>(),
     tailscaleServePort: Option.none<number>(),
+    lan: Option.none<boolean>(),
   });
+
+  it.effect("uses the automatic port selector only when no port is configured", () =>
+    Effect.gen(function* () {
+      const baseDir = yield* FileSystem.FileSystem.pipe(
+        Effect.flatMap((fs) => fs.makeTempDirectoryScoped({ prefix: "t3-cli-auto-port-" })),
+      );
+      const selected: number[] = [];
+      const selectAutomaticPort = (preferred: number) =>
+        Effect.sync(() => {
+          selected.push(preferred);
+          return 50_123;
+        });
+      const resolvePort = (flags: {
+        readonly mode?: Option.Option<"web" | "desktop">;
+        readonly port: Option.Option<number>;
+      }) =>
+        resolveServerConfig({ ...minimalWebFlags(baseDir), ...flags }, Option.none(), {
+          selectAutomaticPort,
+        }).pipe(
+          Effect.map((config) => config.port),
+          Effect.provide(
+            Layer.merge(
+              NetService.layer,
+              ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} })),
+            ),
+          ),
+        );
+
+      expect(yield* resolvePort({ port: Option.none() })).toBe(50_123);
+      expect(selected).toEqual([3773]);
+      expect(yield* resolvePort({ port: Option.some(8788) })).toBe(8788);
+      expect(
+        yield* resolvePort({ mode: Option.some("desktop" as const), port: Option.none() }),
+      ).toBe(3773);
+      expect(selected).toEqual([3773]);
+    }),
+  );
 
   it.effect(
     "resolves each signal's endpoint through T3CODE_OTLP_*_URL, an OTEL endpoint, the bootstrap envelope, and persisted Settings, in that order",
@@ -1033,7 +1082,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
       }),
   );
 
-  it.effect("listens on private networks only under the service launcher with no host set", () =>
+  it.effect("listens on private networks per T3CODE_LAN, else under the service launcher", () =>
     Effect.gen(function* () {
       const { join } = yield* Path.Path;
       const baseDir = join(NodeOS.tmpdir(), "t3-cli-config-service-host");
@@ -1063,6 +1112,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
           }),
         );
 
+      // A service installed before T3CODE_LAN existed.
       expect(yield* resolveHost({ connected: true })).toEqual({
         host: "0.0.0.0",
         privateNetworkOnly: true,
@@ -1071,6 +1121,14 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
       expect(yield* resolveHost({ connected: true, env: { T3CODE_HOST: "127.0.0.1" } })).toEqual({
         host: "127.0.0.1",
         privateNetworkOnly: undefined,
+      });
+      expect(yield* resolveHost({ connected: true, env: { T3CODE_LAN: "false" } })).toEqual({
+        host: undefined,
+        privateNetworkOnly: undefined,
+      });
+      expect(yield* resolveHost({ connected: false, env: { T3CODE_LAN: "true" } })).toEqual({
+        host: "0.0.0.0",
+        privateNetworkOnly: true,
       });
       // Without the launcher's IPC channel the context was inherited, e.g. by
       // `t3 serve` started from an agent inside the service.

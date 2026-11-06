@@ -1,6 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
 import { useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { isElectron } from "../../env";
 import { isCommandPaletteOpen } from "../../commandPaletteBus";
@@ -14,7 +14,10 @@ import { environmentServerConfigsAtom, primaryServerKeybindingsAtom } from "../.
 import { buildThreadRouteParams } from "../../threadRoutes";
 import { useThreadSelectionStore } from "../../threadSelectionStore";
 import { useUiStateStore } from "../../uiStateStore";
-import { partitionSidebarThreads } from "../Sidebar.threadPartition";
+import { inboxReturns, partitionSidebarThreads } from "../Sidebar.threadPartition";
+import { isSidebarEnvironmentDisconnected } from "../Sidebar.logic";
+import { useEnvironmentConnectionSummaries } from "../../state/environments";
+import { liveShellEnvironmentIdsAtom } from "../../state/shell";
 import { ControllerLightingCoordinator } from "./ControllerLightingCoordinator";
 import { controllerSnoozeWakeDelay } from "./ControllerLightingCoordinator.logic";
 import { useControllerUiSnapshot } from "./controllerUiState";
@@ -28,12 +31,28 @@ export function ControllerThreadCoordinator() {
   const threads = useThreadShells();
   const configs = useAtomValue(environmentServerConfigsAtom);
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
+  const connections = useEnvironmentConnectionSummaries();
+  const liveShellEnvironmentIds = useAtomValue(liveShellEnvironmentIdsAtom);
+  const disconnectedEnvironmentIds = new Set(
+    connections
+      .filter((connection) =>
+        isSidebarEnvironmentDisconnected(
+          connection.connectionState,
+          liveShellEnvironmentIds.has(connection.environmentId),
+        ),
+      )
+      .map((connection) => connection.environmentId),
+  );
+  const inboxReturnsVersion = useSyncExternalStore(
+    inboxReturns.subscribe,
+    inboxReturns.getSnapshot,
+  );
   const workingShelfEnabled = useClientSettings((settings) => settings.sidebarWorkingShelfEnabled);
   const pinnedSections = useUiStateStore((state) => state.sidebarPinnedSections);
   const ui = useControllerUiSnapshot();
   const navigate = useNavigate();
   const [wakeTime, setWakeTime] = useState(() => Date.now());
-  // oxlint-disable-next-line t3code/react-effect-budget -- Refresh off-screen controller targets when snoozed threads wake.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Refresh off-screen controller targets when snoozed threads wake.
   useEffect(() => {
     if (ui.threadTargets !== null) return;
     const delay = controllerSnoozeWakeDelay(threads, Math.max(wakeTime, Date.now()));
@@ -50,7 +69,8 @@ export function ControllerThreadCoordinator() {
         serverConfigs: configs,
         optimisticDrop: null,
         workingShelfEnabled,
-        clockKey: String(wakeTime),
+        disconnectedEnvironmentIds,
+        clockKey: `${wakeTime}:${inboxReturnsVersion}`,
       }),
       pinnedSections,
     });
@@ -92,7 +112,7 @@ export function ControllerThreadCoordinator() {
     event.stopPropagation();
     onAction(command);
   });
-  // oxlint-disable-next-line t3code/react-effect-budget -- Hardware actions require a mounted window and menu subscription.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Hardware actions require a mounted window and menu subscription.
   useEffect(() => {
     window.addEventListener("keydown", onKeyDown);
     const unsubscribe = window.desktopBridge?.onMenuAction(onAction);

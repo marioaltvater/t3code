@@ -29,6 +29,7 @@ function session(client: WsRpcProtocolClient): RpcSession {
       environment: { capabilities: { sidebarSections: true } },
     } as ServerConfig),
     subscribeServerConfig: () => Stream.never,
+    inboundFrames: Effect.succeed(0),
     ready: Effect.void,
     probe: Effect.void,
     closed: Effect.never,

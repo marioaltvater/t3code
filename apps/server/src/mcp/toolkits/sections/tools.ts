@@ -8,7 +8,7 @@ import {
   OrchestratorMcpFailure,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import { Tool, Toolkit } from "effect/ai";
 import * as SidebarSections from "../../../sidebar/SidebarSections.ts";
 import * as ThreadManagement from "../../../orchestration-v2/ThreadManagementService.ts";
@@ -20,7 +20,7 @@ const shared = {
     SidebarSections.SidebarSections,
     McpInvocationContext.McpInvocationContext,
     ThreadManagement.ThreadManagementService,
-    Crypto.Crypto,
+    SecureRandom.SecureRandom,
   ],
 };
 const Clients = Tool.make("t3_section_clients", {

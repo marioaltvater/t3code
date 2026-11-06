@@ -90,7 +90,11 @@ it("keeps a fixed held card under the pointer while its outer list scrolls", asy
     <div data-testid="viewport" style={{ height: 100, overflowY: "auto", marginTop: 160 }}>
       <ul style={{ height: 900, margin: 0, padding: 0 }}>
         <li data-thread-item="held" style={{ height: 82, listStyle: "none" }}>
-          <div role="button" style={{ position: "fixed", top: 0, left: 0, height: 36 }}>
+          <div
+            role="treeitem"
+            data-sidebar-row="held"
+            style={{ position: "fixed", top: 0, left: 0, height: 36 }}
+          >
             Held
           </div>
         </li>
@@ -99,7 +103,7 @@ it("keeps a fixed held card under the pointer while its outer list scrolls", asy
   );
   const viewport = screen.container.querySelector<HTMLElement>('[data-testid="viewport"]')!;
   const held = screen.container.querySelector<HTMLElement>('[data-thread-item="held"]')!;
-  const card = held.querySelector<HTMLElement>('[role="button"]')!;
+  const card = held.querySelector<HTMLElement>("[data-sidebar-row]")!;
   const origin = held.getBoundingClientRect().top;
   const pointerTop = origin + 20;
   for (const scroll of [0, 300, 600, 0]) {

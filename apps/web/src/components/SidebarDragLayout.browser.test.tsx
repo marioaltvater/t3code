@@ -167,12 +167,21 @@ function SourceBoundaryLayout({ expanded }: { expanded: boolean }) {
         >
           <ul style={{ position: "relative", padding: 0, margin: 0 }}>
             <li data-thread-item="held" data-thread-dragging style={{ height: 82 }}>
-              <div role="button" style={{ position: "fixed", top: 280, height: 78 }}>
+              <div
+                role="treeitem"
+                data-sidebar-row="held"
+                style={{ position: "fixed", top: 280, height: 78 }}
+              >
                 Held
               </div>
             </li>
             <li data-thread-item="peer" style={{ height: 82, transform: "translateY(-82px)" }}>
-              <div role="button" data-testid="source-peer" style={{ height: 78 }}>
+              <div
+                role="treeitem"
+                data-sidebar-row="peer"
+                data-testid="source-peer"
+                style={{ height: 78 }}
+              >
                 Peer
               </div>
             </li>
@@ -189,7 +198,7 @@ it("keeps the source title, viewport and reordered peer together through collaps
     '[data-testid="sidebar-destination:named"]',
   )!;
   const title = screen.container.querySelector<HTMLElement>('[data-testid="source-title"]')!;
-  const held = screen.container.querySelector<HTMLElement>('[role="button"]')!;
+  const held = screen.container.querySelector<HTMLElement>("[data-sidebar-row]")!;
   const sourceList = screen.container.querySelector<HTMLElement>("[data-sidebar-source-list]")!;
   const peer = screen.container.querySelector<HTMLElement>('[data-testid="source-peer"]')!;
   const animations = () => [

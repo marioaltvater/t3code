@@ -60,7 +60,7 @@ export function ControllerLightingCoordinator({
     };
   });
   const hasWorkingPin = pinStates.some((pin) => pin?.state === "working");
-  // oxlint-disable-next-line t3code/react-effect-budget -- Clock ticks drive the physical controller working pulse.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Clock ticks drive the physical controller working pulse.
   useEffect(() => {
     if (!hasWorkingPin || !window.desktopBridge?.controller?.setLighting) return;
     const timer = window.setInterval(() => setPulseTime(Date.now()), 120);
@@ -73,7 +73,7 @@ export function ControllerLightingCoordinator({
   });
   const frameKey = frame.join(",");
 
-  // oxlint-disable-next-line t3code/react-effect-budget -- Send changed light frames to the external controller bridge.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Send changed light frames to the external controller bridge.
   useEffect(() => {
     const bridge = window.desktopBridge?.controller;
     if (!bridge?.setLighting) return;

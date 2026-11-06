@@ -63,6 +63,21 @@ describe("environment release checks", () => {
         .join("")}</feed>`,
     );
 
+  it("finds updates for personal servers in the fork only", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        expect(url).toBe(
+          "https://api.github.com/repos/marioaltvater/t3code/releases?per_page=100&page=1",
+        );
+        return Response.json([{ tag_name: "v0.1.8" }, { tag_name: "v0.1.7-personal.2026110503" }]);
+      }),
+    );
+    expect(await findEnvironmentUpdate("0.1.7-personal.2026110502", signal)).toBe(
+      "0.1.7-personal.2026110503",
+    );
+  });
+
   it("keeps nightly and preview hosts on their channel without using the anonymous API quota", async () => {
     vi.stubGlobal(
       "fetch",
