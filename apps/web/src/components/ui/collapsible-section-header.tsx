@@ -38,9 +38,12 @@ export function CollapsibleSectionHeader({
         tones[tone].label,
       )}
     >
-      <span className={variant === "sidebar" ? "min-w-0 truncate" : "shrink-0"}>{children}</span>
+      <span className="min-w-0 truncate">{children}</span>
       {variant !== "sidebar" ? (
-        <span aria-hidden className={cn("h-px min-w-2 flex-1", tones[tone].line)} />
+        <span
+          aria-hidden
+          className={cn("h-px min-w-2 flex-1", tones[tone].line, accessory && "invisible")}
+        />
       ) : null}
       {accessory}
       {variant !== "sidebar" ? (

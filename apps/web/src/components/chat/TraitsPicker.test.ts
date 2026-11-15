@@ -47,7 +47,7 @@ it("changes the agent's declared reasoning control without changing its session 
     ],
     reportedModelSelection: null,
     prompt: "Explain the change",
-    planModeEnabled: true,
+    includePlanAgent: true,
   };
   expect(getReasoningTraitStep({ ...input, direction: 1 })).toEqual({
     prompt: input.prompt,
@@ -64,7 +64,6 @@ it("changes the agent's declared reasoning control without changing its session 
   });
   expect(
     buildTraitsTriggerDisplay({
-      provider: input.provider,
       descriptors,
       primarySelectDescriptorId: "mode",
       ultrathinkPromptControlled: false,
@@ -105,7 +104,7 @@ it("does not offer a prompt-only reasoning level through controller stepping", (
     modelOptions: [{ id: "effort", value: "high" }],
     reportedModelSelection: null,
     prompt: "Explain the change",
-    planModeEnabled: true,
+    includePlanAgent: true,
   };
   expect(getReasoningTraitStep({ ...input, direction: 1 })).toBeNull();
   expect(getReasoningTraitSnapshot(input)).toEqual({
@@ -145,7 +144,7 @@ it.each([{ levels: ["low", "medium", "high", "xhigh", "max", "ultracode"] }, { l
       modelOptions: [{ id: "effort", value: "high" }],
       reportedModelSelection: null,
       prompt: "Ultrathink:\nExplain the change",
-      planModeEnabled: true,
+      includePlanAgent: true,
     };
     expect(getReasoningTraitStep({ ...input, direction: -1 })).toEqual({
       prompt: "Explain the change",

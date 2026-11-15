@@ -1,4 +1,5 @@
 import { DesktopControllerLighting, type DesktopControllerEvent } from "@t3tools/contracts";
+import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
@@ -48,7 +49,8 @@ export const initializeDesktopController = Effect.fn("desktop.controller.initial
     main.value.webContents.send(Channels.CONTROLLER_EVENT_CHANNEL, event);
   });
   const controller =
-    environment.platform === "linux" && process.env.T3CODE_K0_CONTROLLER !== "0"
+    environment.platform === "linux" &&
+    (yield* Config.String("T3CODE_K0_CONTROLLER").pipe(Config.withDefault("1"))) !== "0"
       ? startLinuxK0Controller({
           command: (command) =>
             run(

@@ -2,6 +2,7 @@ import type { DesktopControllerEvent } from "@t3tools/contracts";
 import * as NodeEvents from "node:events";
 import type * as Electron from "electron";
 import * as Effect from "effect/Effect";
+import * as ConfigProvider from "effect/ConfigProvider";
 import { it } from "@effect/vitest";
 import { expect, vi } from "vite-plus/test";
 import { DesktopEnvironment } from "../app/DesktopEnvironment.ts";
@@ -173,6 +174,13 @@ it.effect("does not claim the controller when explicitly disabled or outside Lin
             handle: () => Effect.void,
           } as unknown as DesktopIpc["Service"]),
           Effect.provideService(DesktopWindow, {} as DesktopWindow["Service"]),
+          Effect.provide(
+            ConfigProvider.layer(
+              ConfigProvider.fromEnv({
+                env: flag === undefined ? {} : { T3CODE_K0_CONTROLLER: flag },
+              }),
+            ),
+          ),
         );
         expect(receiver.options).toBeNull();
       } finally {

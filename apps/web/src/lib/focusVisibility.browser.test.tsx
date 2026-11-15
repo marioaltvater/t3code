@@ -212,6 +212,7 @@ it("keeps workspace outlines limited to keyboard navigation", async () => {
       <button>After conversation</button>
     </>,
   );
+  using _workspace = { [Symbol.dispose]: createWorkspaceFocusController(document).dispose };
   const area = screen.getByRole("region", { name: "Conversation" });
   await area.click();
   await userEvent.keyboard("a");

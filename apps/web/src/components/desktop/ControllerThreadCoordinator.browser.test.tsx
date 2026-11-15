@@ -26,7 +26,12 @@ vi.mock("../../state/server", () => ({
 }));
 vi.mock("@effect/atom-react", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@effect/atom-react")>()),
-  useAtomValue: (atom: string) => (atom === "configs" ? fixture.configs : fixture.bindings),
+  useAtomValue: (atom: string) =>
+    atom === "configs"
+      ? fixture.configs
+      : atom === "liveShell"
+        ? new Set(["test-environment"])
+        : fixture.bindings,
 }));
 vi.mock("../../state/entities", () => ({ useThreadShells: () => fixture.threads }));
 vi.mock("../../hooks/useSettings", () => ({
@@ -36,7 +41,11 @@ vi.mock("../../state/environments", () => ({
   useEnvironments: () => ({
     presentationById: new Map([["test-environment", { connection: { phase: "connected" } }]]),
   }),
+  useEnvironmentConnectionSummaries: () => [
+    { environmentId: "test-environment", connectionState: "connected" },
+  ],
 }));
+vi.mock("../../state/shell", () => ({ liveShellEnvironmentIdsAtom: "liveShell" }));
 vi.mock("../../hooks/useHandleNewThread", () => ({
   useHandleNewThread: () => ({ routeThreadRef: null }),
 }));
