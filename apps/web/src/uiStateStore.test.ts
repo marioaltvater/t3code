@@ -225,7 +225,7 @@ describe("parsePersistedState", () => {
       pullRequestMergeMethod: "squash",
     });
     const invalid = parsePersistedState({
-      pullRequestMergeMethod: "fast-forward",
+      pullRequestMergeMethod: "invalid",
     });
 
     expect(parsed.pullRequestMergeMethod).toBe("squash");
@@ -599,7 +599,7 @@ describe("uiStateStore persistence", () => {
     expect(parsePersistedState(persisted)).toEqual(state);
   });
 
-  it("drops the temporary expanded-only migration fallback when rewriting state", () => {
+  it("preserves the expanded-only migration fallback and removes obsolete panel state", () => {
     const migrated = parsePersistedState({
       expandedProjectCwds: ["/repo/a"],
     });
@@ -609,7 +609,7 @@ describe("uiStateStore persistence", () => {
     const persisted = JSON.parse(
       localStorageStub.getItem(PERSISTED_STATE_KEY) ?? "{}",
     ) as PersistedUiState;
-    expect(resolveProjectExpanded(persisted.projectExpandedById ?? {}, ["unknown"])).toBe(true);
+    expect(resolveProjectExpanded(persisted.projectExpandedById ?? {}, ["unknown"])).toBe(false);
     expect(persisted).not.toHaveProperty("threadPanelOpen");
   });
 });

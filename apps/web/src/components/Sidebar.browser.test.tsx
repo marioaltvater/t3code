@@ -357,7 +357,15 @@ describe("sidebar settled pagination", () => {
           activeProject.environmentId,
           {
             scratchWorkspaceRoot: null,
-            shellThreadFamilies: false,
+            environment: {
+              capabilities: {
+                threadSettlement: true,
+                threadSnooze: true,
+                threadPinning: true,
+                threadPinReorder: true,
+                shellThreadFamilies: false,
+              },
+            },
           } as unknown as EnvironmentServerConfig,
         ],
       ]),

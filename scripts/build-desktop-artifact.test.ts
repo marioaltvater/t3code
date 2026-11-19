@@ -579,30 +579,35 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         undefined,
       );
 
-      assert.nestedPropertyVal(linux, "linux.desktop.entry.StartupWMClass", "com.t3tools.T3Code");
+      assert.nestedPropertyVal(linux, "linux.desktop.entry.StartupWMClass", "t3code-personal");
     }),
   );
 
-  it.effect("names updatable AppImages without a version and apart per channel", () =>
-    Effect.gen(function* () {
-      const appImageName = (version: string) =>
-        createBuildConfig("linux", "AppImage", version, false, false, undefined, undefined).pipe(
-          Effect.map((config) => (config.appImage as { artifactName: string }).artifactName),
-        );
-
-      const stable = yield* appImageName("0.0.37");
-      const nightly = yield* appImageName("0.0.38-nightly.20261026.3740");
-
-      assert.notInclude(stable, "${version}");
-      assert.notInclude(nightly, "${version}");
-      assert.notEqual(stable, nightly);
-    }).pipe(
-      Effect.provide(
-        ConfigProvider.layer(
-          ConfigProvider.fromEnv({ env: { GITHUB_REPOSITORY: "pingdotgg/t3code" } }),
+  it.effect(
+    "keeps personal AppImage artifacts versioned and separate from official update feeds",
+    () =>
+      Effect.gen(function* () {
+        for (const version of ["0.1.10-personal.1", "0.1.10-personal.2"]) {
+          const config = yield* createBuildConfig(
+            "linux",
+            "AppImage",
+            version,
+            false,
+            false,
+            undefined,
+            undefined,
+          );
+          assert.equal(config.artifactName, "T3-Code-Personal-${version}-${arch}.${ext}");
+          assert.isNull(config.publish);
+          assert.notProperty(config, "appImage");
+        }
+      }).pipe(
+        Effect.provide(
+          ConfigProvider.layer(
+            ConfigProvider.fromEnv({ env: { GITHUB_REPOSITORY: "marioaltvater/t3code" } }),
+          ),
         ),
       ),
-    ),
   );
 
   it.effect("declares Calendar access for hosted commands in macOS builds", () =>
@@ -1475,7 +1480,10 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       const path = yield* Path.Path;
       const workflow = yield* fs.readFileString(
         yield* path.fromFileUrl(
-          new URL("../.github/workflows/desktop-macos-preview-publish.yml", import.meta.url),
+          new URL(
+            "../.github/upstream-workflows/desktop-macos-preview-publish.yml",
+            import.meta.url,
+          ),
         ),
       );
       const { jobs } = yield* Schema.decodeEffect(

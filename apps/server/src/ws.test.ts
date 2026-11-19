@@ -920,6 +920,7 @@ it.live.each([
         Layer.mock(ServerBrowser.ServerBrowser)({
           profileReporter: Effect.succeed(() => Effect.void),
         }),
+        Layer.mock(SidebarSections.SidebarSections)({}),
         Layer.mock(EnvironmentAuth.EnvironmentAuth)({
           authenticateWebSocketUpgrade: () =>
             Effect.succeed({
@@ -1294,6 +1295,7 @@ it.effect("access changes made while the snapshot loads reach the client after i
           },
           {},
           yield* ServerBrowser.ServerBrowser,
+          yield* SidebarSections.SidebarSections,
           () => Effect.void,
           { secretReferences: true },
         ).pipe(
@@ -1376,6 +1378,7 @@ it.effect("access changes made while the snapshot loads reach the client after i
         Layer.fresh(layerConfigSources),
         Layer.mock(PreviewAutomationBroker.PreviewAutomationBroker)({}),
         Layer.mock(ServerBrowser.ServerBrowser)({}),
+        Layer.mock(SidebarSections.SidebarSections)({}),
       ),
     ),
   ),
@@ -1954,6 +1957,7 @@ it.effect("a git action that fails partway still refreshes the repository status
           },
           {},
           yield* ServerBrowser.ServerBrowser,
+          yield* SidebarSections.SidebarSections,
           () => Effect.void,
           { secretReferences: true },
         ).pipe(
@@ -1978,6 +1982,7 @@ it.effect("a git action that fails partway still refreshes the repository status
         Layer.fresh(layerConfigSources),
         Layer.mock(PreviewAutomationBroker.PreviewAutomationBroker)({}),
         Layer.mock(ServerBrowser.ServerBrowser)({}),
+        Layer.mock(SidebarSections.SidebarSections)({}),
       ),
     ),
   ),
@@ -2569,6 +2574,7 @@ it.effect("ACP session RPCs list a thread missing its history and repair it on i
           },
           {},
           yield* ServerBrowser.ServerBrowser,
+          yield* SidebarSections.SidebarSections,
           () => Effect.void,
           { secretReferences: true },
         ).pipe(
@@ -2626,6 +2632,7 @@ it.effect("ACP session RPCs list a thread missing its history and repair it on i
         EventSink.layer.pipe(Layer.provideMerge(acpStores)),
         Layer.mock(PreviewAutomationBroker.PreviewAutomationBroker)({}),
         Layer.mock(ServerBrowser.ServerBrowser)({}),
+        Layer.mock(SidebarSections.SidebarSections)({}),
       ),
     ),
   ),
