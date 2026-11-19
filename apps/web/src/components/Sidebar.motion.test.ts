@@ -99,6 +99,8 @@ function fixture(rows: TestRow[]) {
   };
   const parent = {
     children: rows,
+    visible: true,
+    getClientRects: () => (parent.visible ? [{}] : []),
     ownerDocument: { defaultView: { matchMedia: () => media } },
     getBoundingClientRect: () => ({ top: 0 }),
     append(node: TestRow) {
@@ -169,6 +171,24 @@ beforeEach(() => vi.stubGlobal("HTMLElement", TestRow));
 afterEach(() => vi.unstubAllGlobals());
 
 describe("sidebar list motion", () => {
+  it("refreshes hidden sheet positions without replaying its opening layout", () => {
+    const a = new TestRow("a");
+    const b = new TestRow("b");
+    const { motion, layout, parent } = fixture([a, b]);
+    motion.update(true);
+    parent.visible = false;
+    layout([b, a]);
+    motion.update(true);
+    parent.visible = true;
+    motion.update(true);
+    expect(a.animate).not.toHaveBeenCalled();
+    expect(b.animate).not.toHaveBeenCalled();
+    layout([a, b]);
+    motion.update(true);
+    expectMove(a, 83);
+    expectMove(b, -83);
+  });
+
   it("keeps the sticky Settled header anchored when Working expands and collapses", () => {
     const workingHeader = new TestRow("Working", 32);
     const working = new TestRow("working");
