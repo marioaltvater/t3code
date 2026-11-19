@@ -292,6 +292,7 @@ export const layer = HttpApiBuilder.group(
               const paired = yield* serverAuth.autoPairBrowserSession(request);
               if (paired !== undefined) {
                 yield* appendSessionCookie(
+                  request,
                   sessions.cookieName,
                   paired.sessionToken,
                   paired.response.expiresAt,
