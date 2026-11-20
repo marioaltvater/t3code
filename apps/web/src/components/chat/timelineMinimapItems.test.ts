@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
-import { MessageId } from "@t3tools/contracts";
+import { EnvironmentId, MessageId, ThreadId } from "@t3tools/contracts";
+import { serializeAssistantCitation } from "@t3tools/shared/assistantCitations";
+import {
+  ATTACHMENT_ONLY_BOOTSTRAP_PROMPT,
+  formatComposerContextReference,
+  toComposerContextId,
+} from "@t3tools/shared/composerContextReferences";
 import type { MessagesTimelineRow } from "./MessagesTimeline.logic";
 import type { ChatMessage } from "../../types";
 
@@ -26,7 +32,6 @@ function rows(
     assistantCopyStreaming: false,
   }));
 }
-import { ATTACHMENT_ONLY_BOOTSTRAP_PROMPT } from "@t3tools/shared/composerContextReferences";
 
 import { deriveTimelineMinimapItems, resolveTimelineMinimapPreview } from "./timelineMinimapItems";
 
@@ -192,5 +197,33 @@ describe("timeline minimap previews", () => {
         "Started <t3-thread://v2/env-1/thread-1> and [Fix CI](t3-thread://v2/env-1/t2).",
     });
     expect(preview?.assistantText).toBe("Started a thread and Fix CI.");
+  });
+
+  it("previews citations and context chips while keeping user-authored markup literal", () => {
+    const quote = serializeAssistantCitation({
+      version: 1,
+      environmentId: EnvironmentId.make("env-1"),
+      threadId: ThreadId.make("thread-1"),
+      messageId: MessageId.make("assistant-1"),
+      text: "The cache misses on a cold start.",
+      start: 0,
+      end: 33,
+      prefix: "",
+      suffix: "",
+    });
+    const file = formatComposerContextReference({
+      kind: "file",
+      contextId: toComposerContextId("readme"),
+      label: "README.md",
+    });
+    const preview = resolveTimelineMinimapPreview({
+      id: "turn-1",
+      rowIndex: 0,
+      userText: `${quote}\nWhere do ${file} and [math.ts](src/math.ts) cover this?`,
+      assistantText: null,
+    });
+    expect(preview?.userText).toBe(
+      "The cache misses on a cold start. Where do README.md and [math.ts](src/math.ts) cover this?",
+    );
   });
 });
