@@ -1,3 +1,4 @@
+import { useGT } from "gt-react";
 import { AuthPreviewOperateScope, type ScopedThreadRef } from "@t3tools/contracts";
 import {
   isAtomCommandInterrupted,
@@ -30,6 +31,7 @@ import {
 } from "./threadDetailsPanelStyles";
 
 export function ThreadPinnedPages({ threadRef }: { threadRef: ScopedThreadRef }) {
+  const gt = useGT();
   const pages = usePinnedBrowserPages(threadRef);
   const available = usePreviewAvailable(threadRef.environmentId);
   const canOperate = useEnvironmentScope(threadRef.environmentId, AuthPreviewOperateScope);
@@ -53,7 +55,7 @@ export function ThreadPinnedPages({ threadRef }: { threadRef: ScopedThreadRef })
         if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
           toastManager.add({
             type: "error",
-            title: "Could not open pinned page",
+            title: gt("Could not open pinned page"),
             description: String(squashAtomCommandFailure(result)),
           });
         }
@@ -61,7 +63,7 @@ export function ThreadPinnedPages({ threadRef }: { threadRef: ScopedThreadRef })
       .catch((error: unknown) => {
         toastManager.add({
           type: "error",
-          title: "Could not open pinned page",
+          title: gt("Could not open pinned page"),
           description: String(error),
         });
       })
@@ -74,7 +76,7 @@ export function ThreadPinnedPages({ threadRef }: { threadRef: ScopedThreadRef })
   return (
     <ThreadDetailsSection
       headingId="thread-details-pinned-pages-heading"
-      title="Pinned pages"
+      title={gt("Pinned pages")}
       showHeading={false}
     >
       <div className="flex max-h-64 flex-col overflow-y-auto">
@@ -101,16 +103,16 @@ export function ThreadPinnedPages({ threadRef }: { threadRef: ScopedThreadRef })
               </TooltipTrigger>
               <TooltipPopup>
                 {!available
-                  ? "The integrated browser is unavailable."
+                  ? gt("The integrated browser is unavailable.")
                   : !canOperate
-                    ? "Pair this client with preview access to open pinned pages."
+                    ? gt("Pair this client with preview access to open pinned pages.")
                     : page.url}
               </TooltipPopup>
             </Tooltip>
             <div className="absolute inset-y-0 end-1 flex items-center">
               <ThreadDetailsControl
                 part="icon"
-                aria-label={`Unpin ${page.title || page.url}`}
+                aria-label={gt("Unpin {page}", { page: page.title || page.url })}
                 onClick={() => usePinnedBrowserPagesStore.getState().unpin(threadRef, page)}
               >
                 <PinOff />

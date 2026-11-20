@@ -1,3 +1,4 @@
+import { T, useGT } from "gt-react";
 import {
   buildTraitsTriggerDisplay,
   getDescriptorStringValue,
@@ -109,7 +110,7 @@ type TraitsPersistence =
 function DefaultBadge() {
   return (
     <Badge variant="outline" size="sm" className="min-w-0">
-      Default
+      <T context="the default option in a list">Default</T>
     </Badge>
   );
 }
@@ -385,6 +386,7 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
   includePlanAgent,
   ...persistence
 }: TraitsMenuContentProps & TraitsPersistence) {
+  const gt = useGT();
   const modelSelection =
     instanceId && model ? { instanceId, model, options: modelOptions ?? [] } : null;
   const setProviderModelOptions = useComposerDraftStore((store) => store.setProviderModelOptions);
@@ -487,8 +489,10 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
               </div>
               {ultrathinkInBodyText && descriptor.id === primarySelectDescriptor?.id ? (
                 <div className="px-2 pb-1.5 text-muted-foreground/80 text-xs">
-                  Your prompt contains &quot;ultrathink&quot; in the text. Remove it to change this
-                  option.
+                  <T>
+                    Your prompt contains &quot;ultrathink&quot; in the text. Remove it to change
+                    this option.
+                  </T>
                 </div>
               ) : null}
               <MenuRadioGroup
@@ -542,7 +546,11 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
                 {(["on", "off"] as const).map((value) => (
                   <MenuRadioItem key={value} value={value} hideIndicator closeOnClick>
                     <span className="flex w-full min-w-0 items-center justify-between gap-3">
-                      <span>{value === "on" ? "On" : "Off"}</span>
+                      <span>
+                        {value === "on"
+                          ? gt("On", { $context: "enabled model option" })
+                          : gt("Off", { $context: "disabled model option" })}
+                      </span>
                     </span>
                   </MenuRadioItem>
                 ))}

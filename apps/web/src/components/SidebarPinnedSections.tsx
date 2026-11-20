@@ -1,3 +1,5 @@
+import { msg, T, useGT } from "gt-react";
+import { m } from "../i18n/messages";
 import { useEffect, useId, useState } from "react";
 import { CircleDashedIcon, EllipsisIcon } from "lucide-react";
 import { create } from "zustand";
@@ -55,9 +57,9 @@ export function pinnedSectionMenuItems(
   return [
     {
       id: "pinned-section",
-      label: "Move to pinned section",
+      label: m(msg("Move to pinned section")),
       children: [
-        { id: "pinned-section:move:default", label: "Pinned", checked: current == null },
+        { id: "pinned-section:move:default", label: m(msg("Pinned")), checked: current == null },
         ...sections.map((section) => ({
           id: `pinned-section:move:${section.id}` as const,
           label: section.name,
@@ -65,7 +67,7 @@ export function pinnedSectionMenuItems(
         })),
         {
           id: "pinned-section:new",
-          label: "New section…",
+          label: m(msg("New section…")),
           separatorBefore: true,
           disabled: sections.length >= MAX_SIDEBAR_PINNED_SECTIONS,
         },
@@ -101,7 +103,7 @@ export function usePinnedSectionActions() {
           if (!isAtomCommandInterrupted(result))
             toastManager.add({
               type: "error",
-              title: "Could not move thread",
+              title: m(msg("Could not move thread")),
               description: String(squashAtomCommandFailure(result)),
             });
           continue;
@@ -135,6 +137,7 @@ export function SidebarThreadSectionHeader({
   expanded?: boolean;
   onToggle?: () => void;
 }) {
+  const gt = useGT();
   const toggle = useUiStateStore((state) => state.toggleSidebarPinnedSection);
   const [menuOpen, setMenuOpen] = useState(false);
   const label = section?.name ?? shelf[0]!.toUpperCase() + shelf.slice(1);
@@ -155,30 +158,30 @@ export function SidebarThreadSectionHeader({
             ? [
                 {
                   id: "new",
-                  label: "New section…",
+                  label: gt("New section…"),
                   disabled: state.sidebarPinnedSections.length >= MAX_SIDEBAR_PINNED_SECTIONS,
                 },
               ]
             : []),
           ...(section
             ? [
-                { id: "rename", label: "Rename section…" },
-                { id: "up", label: "Move section up", disabled: index === 0 },
+                { id: "rename", label: gt("Rename section…") },
+                { id: "up", label: gt("Move section up"), disabled: index === 0 },
                 {
                   id: "down",
-                  label: "Move section down",
+                  label: gt("Move section down"),
                   disabled: index === state.sidebarPinnedSections.length - 1,
                 },
-                { id: "delete", label: "Delete section", destructive: true },
+                { id: "delete", label: gt("Delete section"), destructive: true },
               ]
             : []),
           {
             id: "display",
-            label: "Display",
+            label: gt("Display"),
             separatorBefore: shelf === "pinned",
             children: [
-              { id: "display:default", label: "Default", checked: !compact },
-              { id: "display:compact", label: "Compact", checked: compact },
+              { id: "display:default", label: gt("Default"), checked: !compact },
+              { id: "display:compact", label: gt("Compact"), checked: compact },
             ],
           },
         ],
@@ -246,7 +249,7 @@ export function SidebarThreadSectionHeader({
           <Button
             variant="ghost"
             size="icon-sm"
-            aria-label={`Manage ${label}`}
+            aria-label={gt("Manage {section}", { section: label })}
             aria-haspopup="menu"
             aria-expanded={menuOpen}
             onClick={(event) => {
@@ -274,6 +277,7 @@ export function PinnedSectionDialogHost() {
   ) : null;
 }
 function PinnedSectionDialog({ sectionId }: { sectionId: string | null }) {
+  const gt = useGT();
   const id = useId();
   const sections = useUiStateStore((state) => state.sidebarPinnedSections);
   const section = sections.find((entry) => entry.id === sectionId);
@@ -299,7 +303,7 @@ function PinnedSectionDialog({ sectionId }: { sectionId: string | null }) {
                   ? sectionId
                   : null;
             if (result === null) {
-              setError("Choose a unique section name. You can create up to 20 sections.");
+              setError(gt("Choose a unique section name. You can create up to 20 sections."));
               return;
             }
             finishSectionRequest(result);
@@ -307,21 +311,23 @@ function PinnedSectionDialog({ sectionId }: { sectionId: string | null }) {
         >
           <DialogHeader>
             <DialogTitle>
-              {sectionId === null ? "New pinned section" : "Rename section"}
+              {sectionId === null ? gt("New pinned section") : gt("Rename section")}
             </DialogTitle>
             <DialogDescription>
-              Keep related pinned threads together on this device.
+              <T>Keep related pinned threads together on this device.</T>
             </DialogDescription>
           </DialogHeader>
           <DialogPanel>
             <div className="space-y-2">
-              <Label htmlFor={id}>Section name</Label>
+              <Label htmlFor={id}>
+                <T>Section name</T>
+              </Label>
               <Input
                 id={id}
                 autoFocus
                 value={name}
                 maxLength={MAX_SIDEBAR_SECTION_NAME_LENGTH}
-                placeholder="Enter a section name"
+                placeholder={gt("Enter a section name")}
                 onChange={(event) => {
                   setName(event.target.value);
                   setError(null);
@@ -338,10 +344,10 @@ function PinnedSectionDialog({ sectionId }: { sectionId: string | null }) {
           </DialogPanel>
           <DialogFooter>
             <Button variant="outline" onClick={() => finishSectionRequest(null)}>
-              Cancel
+              <T>Cancel</T>
             </Button>
             <Button type="submit" disabled={!name.trim()}>
-              {sectionId === null ? "Create section" : "Save"}
+              {sectionId === null ? gt("Create section") : gt("Save")}
             </Button>
           </DialogFooter>
         </form>

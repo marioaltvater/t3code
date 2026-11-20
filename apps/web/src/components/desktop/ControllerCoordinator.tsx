@@ -1,3 +1,5 @@
+import { msg } from "gt-react";
+import { m } from "../../i18n/messages";
 import { useEffect, useLayoutEffect, useRef } from "react";
 import type { DesktopControllerEvent, ScopedThreadRef } from "@t3tools/contracts";
 import { useHandleNewThread } from "../../hooks/useHandleNewThread";
@@ -34,7 +36,7 @@ function reportControllerError(title: string, error: unknown) {
     stackedThreadToast({
       type: "error",
       title,
-      description: error instanceof Error ? error.message : "Try again.",
+      description: error instanceof Error ? error.message : m(msg("Try again.")),
     }),
   );
 }
@@ -103,8 +105,8 @@ export function ControllerCoordinator() {
           toastManager.add(
             stackedThreadToast({
               type: "error",
-              title: "Dictation could not start",
-              description: "Open a thread or draft before using the controller microphone.",
+              title: m(msg("Dictation could not start")),
+              description: m(msg("Open a thread or draft before using the controller microphone.")),
             }),
           );
           return;
@@ -116,7 +118,7 @@ export function ControllerCoordinator() {
         captures.set(event.captureId, pinnedTarget);
         void controller.acceptDictation(event.captureId).catch((error: unknown) => {
           if (captures.delete(event.captureId)) {
-            reportControllerError("Dictation could not start", error);
+            reportControllerError(m(msg("Dictation could not start")), error);
           }
         });
         return;
@@ -128,7 +130,7 @@ export function ControllerCoordinator() {
         toastManager.add(
           stackedThreadToast({
             type: "error",
-            title: "Dictation failed",
+            title: m(msg("Dictation failed")),
             description: event.message,
           }),
         );
@@ -140,8 +142,8 @@ export function ControllerCoordinator() {
         toastManager.add(
           stackedThreadToast({
             type: "error",
-            title: "Dictation could not be delivered",
-            description: "The original thread or draft is no longer available.",
+            title: m(msg("Dictation could not be delivered")),
+            description: m(msg("The original thread or draft is no longer available.")),
           }),
         );
         return;
@@ -154,20 +156,22 @@ export function ControllerCoordinator() {
       const nextPrompt = appendDictationText(draft?.prompt ?? "", event.text);
       if (nextPrompt === null) {
         reportControllerError(
-          "Dictation could not be delivered",
-          new Error("No speech was recognized. The recording is still available for recovery."),
+          m(msg("Dictation could not be delivered")),
+          new Error(
+            m(msg("No speech was recognized. The recording is still available for recovery.")),
+          ),
         );
         return;
       }
       store.setPrompt(destination, nextPrompt);
       void controller.acknowledgeDictation(event.captureId).catch((error: unknown) => {
-        reportControllerError("Dictation recording could not be removed", error);
+        reportControllerError(m(msg("Dictation recording could not be removed")), error);
       });
     };
 
     const unsubscribe = controller.onEvent(onEvent);
     void controller.setReady(true).catch((error: unknown) => {
-      reportControllerError("Controller is unavailable", error);
+      reportControllerError(m(msg("Controller is unavailable")), error);
     });
     return () => {
       unsubscribe();

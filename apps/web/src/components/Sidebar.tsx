@@ -3682,6 +3682,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                     >
                       <ul
                         {...SIDEBAR_TREE_PROPS}
+                        aria-label={gt("Threads")}
                         ref={attachTreeRef}
                         data-sidebar-drag-list={organizingDrag || undefined}
                         style={

@@ -10,7 +10,7 @@ function setTabIndex(element: HTMLElement, value: number) {
   if (element.tabIndex !== value) element.tabIndex = value;
 }
 
-export const SIDEBAR_TREE_PROPS = { role: "tree", "aria-label": "Threads" } as const;
+export const SIDEBAR_TREE_PROPS = { role: "tree" } as const;
 
 /** Ref callback for a sidebar list; installs the tree and returns its cleanup. */
 export function attachSidebarTree(element: HTMLElement | null) {
